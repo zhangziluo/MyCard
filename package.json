@@ -1,0 +1,7 @@
+{
+  "name": "mycard",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Mycard 学习卡片 PWA - 基于艾宾浩斯遗忘曲线的间隔重复记忆应用（纯前端）",
+  "type": "module"
+}
