@@ -221,5 +221,5 @@ node --check js/*.js              # 语法检查
 ## 数据来源
 
 单词库来源：KyleBing/english-vocabulary。
-本项目仅供学习用途。觉得有帮助的话，欢迎前往 GitHub 项目主页 点亮 Star ⭐
+本项目仅供学习用途。觉得有帮助的话，欢迎前往 [GitHub 项目主页](https://github.com/zhangziluo/MyCard) 点亮 Star ⭐
 
