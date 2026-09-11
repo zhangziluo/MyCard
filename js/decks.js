@@ -6,7 +6,10 @@ import * as store from './store.js';
 import * as lv from './levels.js';
 import * as ls from './levelstats.js';
 import * as hw from './hardwords.js';
+import * as te from './test-engine.js';
 import { clearTestSession } from './test.js';
+import { addWordsPanelHtml } from './add-words.js';
+import { importFileButtonHtml, dropzoneHtml, bindDropzone } from './import-file.js';
 import { esc, on, navigate, openModal, closeModal, readForm, toast, confirmDialog, parseTags } from './ui.js';
 
 const ACTIVE_TAG_KEY = 'mycard-active-tag';
@@ -29,7 +32,8 @@ function icon(name, size = 18) {
     play: '<path d="M7 5.5v13l11-6.5L7 5.5Z"/>',
     refresh: '<path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3.5V9h-5.5"/>',
     card: '<rect x="5" y="3" width="14" height="18" rx="2.5"/><path d="M9 8h6M9 12h6"/>',
-    tag: '<path d="M12 2H2v10l9.3 9.3a2 2 0 0 0 2.8 0l7-7a2 2 0 0 0 0-2.8L12 2Z"/><circle cx="7.5" cy="7.5" r="1.2"/>'
+    tag: '<path d="M12 2H2v10l9.3 9.3a2 2 0 0 0 2.8 0l7-7a2 2 0 0 0 0-2.8L12 2Z"/><circle cx="7.5" cy="7.5" r="1.2"/>',
+    chevron: '<path d="m6 9 6 6 6-6"/>'
   };
   return `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${paths[name] || ''}</svg>`;
 }
@@ -114,16 +118,19 @@ export function renderHome(root) {
   root.innerHTML = `
     <div class="view">
       ${demoBanner}
+      ${addWordsPanelHtml()}
       <div class="section-head">
         <h2 class="screen-title">我的卡组</h2>
         <div class="section-tools">
+          ${importFileButtonHtml()}
           <button class="icon-btn glass" data-action="nav-settings" aria-label="设置">${icon('gear', 20)}</button>
-          <button class="icon-btn glass accent" data-action="new-deck" aria-label="新建卡组">${icon('plus', 22)}</button>
         </div>
       </div>
+      ${dropzoneHtml()}
       ${tags.length ? `<div class="chips scroll-x">${chips}</div>` : ''}
       <div class="deck-grid">${decks.map(deckTileHtml).join('') || empty}</div>
     </div>`;
+  bindDropzone(root); // 绑定拖拽导入（CSV / JSON → 预览 → 确认导入）
 }
 /* ------------------------------ 卡组详情（关卡视图） ------------------------------ */
 
@@ -190,6 +197,28 @@ function levelCardHtml(deck, lvInfo, state, now) {
   </section>`;
 }
 
+/* ------------------------------ 关卡分页 ------------------------------ */
+
+/** 从 hash 读取页号（URL 为 1 基：?page=2 → 第 2 页） */
+function pageFromHash() {
+  const m = /[?&]page=(\d+)/.exec(location.hash || '');
+  return m ? Math.max(1, Number(m[1])) : null;
+}
+
+/** 关卡分页条：关卡数 > 15 时展示「第 2/45 页」 */
+function pagerHtml(deckId, page, totalLevels) {
+  const total = lv.levelPageCount(totalLevels);
+  if (total <= 1) return '';
+  const from = page * lv.LEVELS_PER_PAGE + 1;
+  const to = Math.min(totalLevels, (page + 1) * lv.LEVELS_PER_PAGE);
+  return `
+  <div class="pager glass">
+    <button class="pager-btn" data-action="deck-page" data-id="${esc(deckId)}" data-page="${page}" ${page <= 0 ? 'disabled' : ''}>‹ 上一页</button>
+    <div class="pager-info"><b>${lv.levelPageLabel(page, totalLevels)}</b><span>第 ${from}–${to} 关 / 共 ${totalLevels} 关</span></div>
+    <button class="pager-btn" data-action="deck-page" data-id="${esc(deckId)}" data-page="${page + 2}" ${page >= total - 1 ? 'disabled' : ''}>下一页 ›</button>
+  </div>`;
+}
+
 export function renderDeck(root, deckId) {
   const deck = store.getDeck(deckId);
   if (!deck) {
@@ -202,6 +231,12 @@ export function renderDeck(root, deckId) {
   const stats = lv.deckStats(deck, now);
   const per = lv.effectivePerLevel(deck, store.getDb().settings);
 
+  const totalLevels = levels.length;
+  const firstOpen = levels.find((l) => states[l.index] !== 'passed');
+  const autoPage = firstOpen ? lv.levelPageOf(firstOpen.index) : 0;
+  const hashPage = pageFromHash();
+  const page = lv.clampLevelPage(hashPage ? hashPage - 1 : autoPage, totalLevels);
+
   let levelsHtml;
   if (!levels.length) {
     levelsHtml = `<div class="empty glass">
@@ -211,9 +246,11 @@ export function renderDeck(root, deckId) {
       <button class="btn btn-primary" data-action="open-cards" data-id="${esc(deck.id)}">添加卡片</button>
     </div>`;
   } else {
-    levelsHtml = levels
-      .map((l) => levelCardHtml(deck, l, states[l.index] || 'locked', now))
-      .join('');
+    levelsHtml =
+      lv
+        .sliceLevelsPage(levels, page)
+        .map((l) => levelCardHtml(deck, l, states[l.index] || 'locked', now))
+        .join('') + pagerHtml(deck.id, page, totalLevels);
   }
 
   const heroBadges = [
@@ -238,6 +275,7 @@ export function renderDeck(root, deckId) {
         ${stats.total ? `<div class="hero-actions">
           <button class="btn btn-primary btn-block hero-flip-btn" data-action="open-all-review" data-id="${esc(deck.id)}">${icon('refresh', 18)} 翻转记忆 · 整卡组循环${hw.hardCount(deck.id) ? `（困难词 ${hw.hardCount(deck.id)}）` : ''}</button>
           <button class="btn btn-test btn-block" data-action="open-deck-test" data-id="${esc(deck.id)}">${icon('card', 18)} 整卡组测试 · 20~150 题</button>
+          <button class="btn btn-ghost btn-block" data-action="rearrange-deck" data-id="${esc(deck.id)}">${icon('refresh', 16)} 按难度重排关卡（错题提前）</button>
         </div>` : ''}
       </div>
       <div class="levels-wrap">${levelsHtml}</div>
@@ -439,14 +477,6 @@ export async function importDemoDeck() {
   return store.seedDemoDeck({ ...payload, groupsMap, extraDefs });
 }
 
-/** 从 /data/ 拉取考研词汇词库并导入（数据已按内置格式重构） */
-export async function importKaoyanDeck() {
-  const resp = await fetch('./data/kaoyan.json', { cache: 'no-cache' });
-  if (!resp.ok) throw new Error('考研词库文件加载失败 HTTP ' + resp.status);
-  const payload = await resp.json();
-  return store.seedKaoyanDeck(payload);
-}
-
 /**
  * v0.2 升级：为“已存在但缺分组”的示范卡组补标易混组/多释义（保留复习进度）。
  * 离线时若缓存缺失则静默跳过，下次联网自动补齐。
@@ -578,6 +608,31 @@ on('open-all-review', (el) => navigate(`#/review/${el.dataset.id}`));
 
 /* 整卡组可配置测试（顶部按钮）：20~150 题 */
 on('open-deck-test', (el) => navigate(`#/test/${el.dataset.id}`));
+
+/* 关卡分页（关卡数 > 15 时，每页 15 关；URL 为 1 基页号） */
+on('deck-page', (el) => {
+  const id = el.dataset.id;
+  const page = Math.max(1, Number(el.dataset.page) || 1);
+  if (id) navigate(`#/deck/${id}?page=${page}`);
+});
+
+/* 按难度重排关卡：难度分层 + 错峰 + 错题动态提前 */
+on('rearrange-deck', (el) => {
+  const deck = store.getDeck(el.dataset.id);
+  if (!deck) return;
+  const levels = lv.deckLevels(deck);
+  const states = lv.levelStates(deck);
+  const first = levels.find((l) => states[l.index] !== 'passed');
+  const activeLevel = first ? first.index : 0;
+  const res = store.rearrangeDeck(deck.id, {
+    errorIds: te.getPriorityIds(deck.id),
+    hardIds: hw.hardSet(deck.id),
+    activeLevel,
+    minGapLevels: 2
+  });
+  toast(`已重排 ${res.levels} 关 · ${res.moved} 张卡片位置更新`, 'good');
+  navigate(`#/deck/${deck.id}?page=${Math.floor(activeLevel / lv.LEVELS_PER_PAGE) + 1}`);
+});
 
 /* 重新挑战：清测试会话（题目池重新洗牌）+ 清除通关标记（保留复习进度）+ 重刷计数 +1 */
 on('level-retry', (el) => {

@@ -56,6 +56,8 @@ for (const g of conf.groups) for (const m of g.members) {
 }
 const deck = store.seedDemoDeck({ ...words, groupsMap, extraDefs: conf.extraDefs });
 const byFront = new Map(deck.cards.map((c) => [c.front, c]));
+// 关卡编排按难度分层后，time 不一定落在第 1 关 → 以它实际所在关卡为准
+const timeLevel = byFront.get('time').level;
 const take = byFront.get('take');
 const makeCard = byFront.get('make');
 const oldCard = byFront.get('old');
@@ -163,8 +165,8 @@ console.log('\n[三种题型 buildQuestions 随机混合]');
 {
   let pick = 0;
   const cycling = () => (pick++ % 3) / 3; // 依次命中第 0/1/2 种题型
-  const mix = testMod.buildQuestions(deck, 0, { random: cycling });
-  ok(mix.length === 20, '第 1 关生成 20 题（每卡一题）');
+  const mix = testMod.buildQuestions(deck, timeLevel, { random: cycling });
+  ok(mix.length === 20, '该关生成 20 题（每卡一题）');
   const mcq = mix.filter((q) => q.type !== 'fill');
   const kinds = new Set(mix.map((q) => q.type)).size;
   ok(kinds >= 3, '一次出题即可覆盖多种题型（实际 ' + kinds + ' 种）');
@@ -177,11 +179,14 @@ console.log('\n[三种题型 buildQuestions 随机混合]');
 
 console.log('\n[端到端渲染（固定题型 · 真实词库）]');
 function renderWith(types, { apply, resolved = false } = {}) {
-  const questions = testMod.buildQuestions(deck, 0, { types });
+  const questions = testMod.buildQuestions(deck, timeLevel, { types });
+  // 按难度编排后 time 不再恰好是该关第一张卡 → 把被考词 time 的题目排到第 1 题
+  const ti = questions.findIndex((q) => q.cardId === byFront.get('time').id);
+  if (ti > 0) questions.unshift(...questions.splice(ti, 1));
   if (apply) apply(questions);
-  storage.setItem('mycard-test-session', JSON.stringify({ deckId: deck.id, level: 0, questions, pos: 0, correct: 0 }));
+  storage.setItem('mycard-test-session', JSON.stringify({ deckId: deck.id, level: timeLevel, questions, pos: 0, correct: 0 }));
   const root = fakeEl();
-  testMod.renderTest(root, deck.id, 0, { renderResolved: resolved });
+  testMod.renderTest(root, deck.id, timeLevel, { renderResolved: resolved });
   return root;
 }
 {

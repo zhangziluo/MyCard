@@ -79,6 +79,21 @@ export function suggestLevelForNewCard(deck) {
   return last.index + 1;
 }
 
+/**
+ * 按「每关卡片数」重新划分关卡：保持卡片原有顺序，仅重写 card.level。
+ * 用于用户修改每关词数（卡组级 / 全局设置）后即时刷新各组词汇数。
+ * @returns {Array<Array>} 新的关卡分组
+ */
+export function resplitLevels(cards, per) {
+  const list = Array.isArray(cards) ? cards : [];
+  if (!list.length) return [];
+  const groups = splitCards(list, clampPerLevel(per));
+  groups.forEach((g, gi) => {
+    for (const c of g) if (c && typeof c === 'object') c.level = gi;
+  });
+  return groups;
+}
+
 /** 依据 card.level 分组（升序、连续），返回 [{ index, cards }] */
 export function deckLevels(deck) {
   const groups = new Map();
@@ -161,3 +176,48 @@ export function deckStats(deck, now = Date.now()) {
   const due = deck.cards ? deck.cards.filter((c) => c.lastReview != null && c.due <= now).length : 0;
   return { total, learned, due, newCount: total - learned };
 }
+
+/* ------------------------------- 关卡分页 ------------------------------- */
+
+/**
+ * 关卡超过 LEVELS_PER_PAGE 时，卡组详情按页展示（每页 15 关）。
+ * 例如 45 关 → 第 2/3 页。
+ */
+export const LEVELS_PER_PAGE = 15;
+
+/** 总页数（至少 1 页） */
+export function levelPageCount(totalLevels, perPage = LEVELS_PER_PAGE) {
+  const n = Math.max(0, Math.floor(Number(totalLevels) || 0));
+  const p = Math.max(1, Math.floor(Number(perPage) || LEVELS_PER_PAGE));
+  return Math.max(1, Math.ceil(n / p));
+}
+
+/** 某关卡所在页（0 基） */
+export function levelPageOf(levelIndex, perPage = LEVELS_PER_PAGE) {
+  const p = Math.max(1, Math.floor(Number(perPage) || LEVELS_PER_PAGE));
+  const idx = Math.max(0, Math.floor(Number(levelIndex) || 0));
+  return Math.floor(idx / p);
+}
+
+/** 页号夹取到合法范围 */
+export function clampLevelPage(page, totalLevels, perPage = LEVELS_PER_PAGE) {
+  const last = levelPageCount(totalLevels, perPage) - 1;
+  const p = Math.floor(Number(page) || 0);
+  return Math.max(0, Math.min(last, p));
+}
+
+/** 取某一页的关卡（levels 为 deckLevels 的结果） */
+export function sliceLevelsPage(levels, page, perPage = LEVELS_PER_PAGE) {
+  const list = Array.isArray(levels) ? levels : [];
+  const p = clampLevelPage(page, list.length, perPage);
+  const size = Math.max(1, Math.floor(Number(perPage) || LEVELS_PER_PAGE));
+  return list.slice(p * size, p * size + size);
+}
+
+/** 分页文案：如「第 2/3 页」 */
+export function levelPageLabel(page, totalLevels, perPage = LEVELS_PER_PAGE) {
+  const total = levelPageCount(totalLevels, perPage);
+  const p = clampLevelPage(page, totalLevels, perPage);
+  return `第 ${p + 1}/${total} 页`;
+}
+

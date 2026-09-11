@@ -315,7 +315,7 @@ function completionHtml() {
         .map(([k, n]) => `<span class="stat fb-${k}">${sched.FEEDBACK_BY_KEY[k].label} ${n}</span>`)
         .join('') || '<span class="stat">全部完成</span>'}
     </div>
-    ${showTest ? `<button class="btn btn-primary btn-lg" data-action="review-go-test">进入测试 · 冲刺通关</button>` : ''}
+    ${showTest ? `<button class="btn btn-primary btn-lg" data-action="review-go-test" data-id="${esc(S.deckId)}" data-level="${S.level}">进入测试 · 冲刺通关</button>` : ''}
     <button class="btn btn-ghost btn-lg" data-action="review-back" data-id="${S.deckId}">返回卡组</button>
   </div>`;
 }
@@ -495,11 +495,18 @@ on('review-back', (el) => {
   if (deckId) navigate(`#/deck/${deckId}`);
 });
 
-on('review-go-test', () => {
-  if (!S) return;
-  const { deckId, level } = S;
+/**
+ * 进入本关测试冲刺通关。
+ * 注意：学完最后一张卡时完成页是在 clearSession() 之后渲染的（S 已为 null），
+ * 因此必须支持从按钮的 data-id / data-level 兜底取参，否则点击无反应。
+ */
+on('review-go-test', (el) => {
+  const ds = (el && el.dataset) || {};
+  const deckId = (S && S.deckId) || ds.id || '';
+  const levelRaw = S && S.level != null ? S.level : ds.level;
+  const level = levelRaw == null || levelRaw === '' ? null : Number(levelRaw);
   clearSession();
-  navigate(`#/test/${deckId}/${level}`);
+  if (deckId && level != null && Number.isFinite(level)) navigate(`#/test/${deckId}/${level}`);
 });
 
 /* 跳过翻面：直接进入本关测试（测试 ≥80% 即通关，未翻面卡片自动记为已学） */

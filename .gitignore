@@ -3,3 +3,7 @@ node_modules/
 *.log
 .env
 .env.*
+# GCIDE 词典源数据（仅供 scripts/split-gcide.mjs、scripts/build-engdefs.mjs 本地使用：
+# 先生成 data/eng-defs.json 才有英英 / 多义题型数据），体积约 60MB，不入版本库。
+# 需要重建时自行下载 GCIDE（gcide-0.51）放到此处，再运行上述脚本。
+gcide-0.51/

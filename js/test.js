@@ -14,6 +14,7 @@ import * as ls from './levelstats.js';
 import * as hw from './hardwords.js';
 import * as cfg from './test-config.js';
 import * as engine from './test-engine.js';
+import * as engdefs from './engdefs.js';
 import { esc, on, navigate, toast, openModal } from './ui.js';
 
 const SESSION_KEY = 'mycard-test-session';
@@ -222,10 +223,87 @@ export function wordForms(word) {
  * 返回的数组可直接作为 buildQuestions 的 types 参数（重复项即权重）。
  */
 export function typesForRetry(retry = 0) {
+  const types = enabledTypes();
   const r = Math.max(0, Math.floor(Number(retry) || 0));
-  if (r <= 0) return [...cfg.QUESTION_TYPES];
-  const idx = (r - 1) % cfg.QUESTION_TYPES.length;
-  return cfg.QUESTION_TYPES.flatMap((t, i) => (i === idx ? [t, t] : [t]));
+  if (r <= 0) return [...types];
+  const idx = (r - 1) % types.length;
+  return types.flatMap((t, i) => (i === idx ? [t, t] : [t]));
+}
+
+/* --------------------------- 可选题型 / 释义来源 --------------------------- */
+
+/** 当前已启用的题型（基础 5 种 + 配置里开启的可选题型） */
+export function enabledTypes() {
+  return cfg.enabledTypeIds(cfg.loadConfig().enabled);
+}
+
+/** 卡组内该词的中文释义（back + extraBacks，去空去重） */
+export function cardChineseSenses(card) {
+  const out = [];
+  const seen = new Set();
+  const pool = [card && card.back, ...((card && card.extraBacks) || [])];
+  for (const raw of pool) {
+    const t = String(raw ?? '').trim();
+    if (!t || seen.has(t)) continue;
+    seen.add(t);
+    out.push(t);
+  }
+  return out;
+}
+
+/** 英英选择的释义（始终用 GCIDE 英文释义） */
+export function engSenses(card, max = 4) {
+  return card ? engdefs.senses(card.front, max) : [];
+}
+
+/**
+ * 多义多选的释义集合（词典口径）：
+ *  1) 优先**卡组内中文释义**（≥2 条）；
+ *  2) 否则回退 **GCIDE 英文释义**（≥2 条）；
+ *  3) 均不足 2 条 → null（该题不生成 multi_sense）
+ */
+export function multiSenseSet(card, max = 4) {
+  const zh = cardChineseSenses(card);
+  if (zh.length >= 2) return { kind: 'zh', list: zh.slice(0, max), all: zh };
+  const en = engSenses(card, max);
+  if (en.length >= 2) return { kind: 'en', list: en.slice(0, max), all: en };
+  return null;
+}
+
+/** 英文释义池（GCIDE）：每张卡的释义入池，文本去重 */
+export function buildEngPool(deck) {
+  const byText = new Map();
+  for (const c of deck.cards || []) {
+    for (const t of engSenses(c, 4)) {
+      if (!t || byText.has(t)) continue;
+      byText.set(t, { id: c.id, text: t, word: String(c.front || '') });
+    }
+  }
+  return [...byText.values()];
+}
+
+/** 中文释义池：每张卡的中文释义入池，文本去重 */
+export function buildZhPool(deck) {
+  const byText = new Map();
+  for (const c of deck.cards || []) {
+    for (const t of cardChineseSenses(c)) {
+      if (!t || byText.has(t)) continue;
+      byText.set(t, { id: c.id, text: t, word: String(c.front || '') });
+    }
+  }
+  return [...byText.values()];
+}
+
+/** 从释义池抽 count 条干扰释义（排除自身卡片与给定文本） */
+export function pickPoolDistractors(card, pool, count, bannedTexts = []) {
+  const banned = new Set(bannedTexts.map((t) => String(t)));
+  const usable = (pool || []).filter((e) => e && e.text && e.id !== card.id && !banned.has(e.text));
+  return shuffle(usable).slice(0, Math.max(0, count));
+}
+
+/** 从单词池抽 count 个干扰单词（排除自身） */
+export function pickWordTexts(card, wordPool, count) {
+  return shuffle((wordPool || []).filter((e) => e && e.text && e.text !== String(card.front || ''))).slice(0, Math.max(0, count));
 }
 
 function escapeRegExp(s) {
@@ -373,6 +451,39 @@ export function applyAttempt(q, index) {
 }
 
 /**
+ * 多选题（multi_sense）判题：全对才算对；漏选 / 多选 / 错选均算错。
+ * 规则：勾选后点「提交」判分；最多 MAX_ATTEMPTS 次机会。
+ *  - 未选中任何项 → 不判分（返回 resolved:false，等待选择）；
+ *  - 完全正确 → resolved + correct；
+ *  - 否则若机会用尽 → resolved + 错误（错题会进优先池）；否则清空所选、可重选。
+ * 注意：多选不使用「选错即禁用」（否则会禁用正确项导致永远无法全对）。
+ * @param {object} q 题目
+ * @param {number[]} selected 已勾选的选项下标
+ */
+export function applyMulti(q, selected) {
+  if (!q || q.answered) return { resolved: !!q && q.answered, correct: !!q && q.correct };
+  const picked = [...new Set((selected || []).map(Number))].filter((i) => q.options[i]).sort((a, b) => a - b);
+  if (!picked.length) return { resolved: false, correct: false };
+  q.attempts = (q.attempts || 0) + 1;
+  q.selected = picked;
+  q.lastPicked = picked.slice();
+  const correctIdx = q.options.map((o, i) => (o.isCorrect ? i : -1)).filter((i) => i >= 0);
+  const exact = picked.length === correctIdx.length && picked.every((v, k) => v === correctIdx[k]);
+  if (exact) {
+    q.answered = true;
+    q.correct = true;
+    return { resolved: true, correct: true };
+  }
+  if (q.attempts >= MAX_ATTEMPTS) {
+    q.answered = true;
+    q.correct = false;
+    return { resolved: true, correct: false };
+  }
+  q.selected = []; // 清空勾选，允许重新选择（不禁用任何选项）
+  return { resolved: false, correct: false };
+}
+
+/**
  * 填空题判题（文本输入）：大小写、首尾/连续空格、单复数（常见屈折）均容错。
  * 规则同 applyAttempt：最多 MAX_ATTEMPTS 次；答对即 resolved；用尽机会仍未对 → resolved + 错误。
  */
@@ -414,17 +525,89 @@ function buildOptions(correctText, distractorTexts) {
  * sentence2word 仅当例句确含可挖空的目标词时才会被选中。
  * 可注入 { types, random } 便于单测固定题型 / 随机源。
  */
-/** 为某张卡决定题型（sentence2word 需例句可挖空，否则排除） */
+/** 为某张卡决定题型（按卡片的可用性过滤：句子题需可挖空，英英/多义题需有释义） */
 function pickQuestionType(card, types, random, canSentence) {
-  const eligible = types.filter((t) => t !== 'sentence2word' || canSentence);
+  const eligible = (types || []).filter((t) => {
+    if (t === 'sentence2word') return canSentence;
+    if (t === 'eng_eng') return engSenses(card, 1).length > 0;
+    if (t === 'multi_sense') return !!multiSenseSet(card);
+    return true;
+  });
   const poolTypes = eligible.length ? eligible : ['word2def'];
   return poolTypes[Math.floor(random() * poolTypes.length)];
 }
 
-/** 依据卡片与题型构建单道题目（各题型共用；例句不可用时安全回退为 word2def） */
-function buildOneQuestion(card, type, { defPool, wordPool, hard, random }) {
+/** 依据卡片与题型构建单道题目；不可用（如缺少英文释义）时返回 null 由调用方回退 */
+function buildOneQuestion(card, type, { defPool, wordPool, hard, random, engPool = [], zhPool = [] }) {
   const canSentence = !!(card.example && blankWord(card.example, card.front).includes('____'));
   const kind = type === 'sentence2word' && !canSentence ? 'word2def' : type;
+
+  // 英英选择：题干=英文单词（子模式 A）或英文释义（子模式 B），选项同为英文释义/单词
+  if (kind === 'eng_eng') {
+    const senses = engSenses(card, 4);
+    if (!senses.length) return null;
+    const sub = random() < 0.5 ? 'word2def' : 'def2word'; // A：看词选义 / B：看义猜词
+    const sense = senses[Math.floor(random() * senses.length)];
+    if (sub === 'word2def') {
+      const distractors = pickPoolDistractors(card, engPool, 3, senses).map((d) => d.text);
+      if (!distractors.length) return null;
+      return {
+        cardId: card.id,
+        type: 'eng_eng',
+        sub,
+        prompt: String(card.front || ''),
+        promptSense: sense,
+        options: buildOptions(sense, distractors),
+        answered: false,
+        correct: false,
+        attempts: 0,
+        wrongPicks: [],
+        lastPicked: null
+      };
+    }
+    const distractors = pickWordTexts(card, wordPool, 3).map((d) => d.text);
+    if (!distractors.length) return null;
+    return {
+      cardId: card.id,
+      type: 'eng_eng',
+      sub,
+      prompt: sense,
+      promptSense: sense,
+      options: buildOptions(String(card.front || ''), distractors),
+      answered: false,
+      correct: false,
+      attempts: 0,
+      wrongPicks: [],
+      lastPicked: null
+    };
+  }
+
+  // 多义多选：正确项 = 该词全部释义（中文优先，缺失回退 GCIDE 英文），另加 1 条其它词的干扰释义
+  if (kind === 'multi_sense') {
+    const set = multiSenseSet(card);
+    if (!set) return null;
+    const pool = set.kind === 'zh' ? zhPool : engPool;
+    const distractors = pickPoolDistractors(card, pool, 1, set.list).map((d) => d.text);
+    if (!distractors.length) return null;
+    const options = shuffle([
+      ...set.list.map((text) => ({ text, isCorrect: true })),
+      ...distractors.map((text) => ({ text, isCorrect: false }))
+    ]).map((o, i) => ({ ...o, key: i }));
+    return {
+      cardId: card.id,
+      type: 'multi_sense',
+      senseKind: set.kind,
+      multi: true,
+      prompt: String(card.front || ''),
+      options,
+      selected: [],
+      answered: false,
+      correct: false,
+      attempts: 0,
+      wrongPicks: [], // 多选不使用「已选错即禁用」，故恒为空
+      lastPicked: null
+    };
+  }
 
   // 填空题：题干随机用「例句挖空」或「中文释义」，用户输入英文作答
   if (kind === 'fill') {
@@ -469,11 +652,19 @@ function buildOneQuestion(card, type, { defPool, wordPool, hard, random }) {
   };
 }
 
-export function buildQuestions(deck, levelIndex, { types = cfg.QUESTION_TYPES, random = Math.random, hardIds = null } = {}) {
+/** 构建单题并按需回退（英英/多义题数据不足时退回 word2def），保证每题一定有题 */
+function buildQuestionSafe(card, type, ctx) {
+  return buildOneQuestion(card, type, ctx) || buildOneQuestion(card, 'word2def', ctx);
+}
+
+export function buildQuestions(deck, levelIndex, { types = null, random = Math.random, hardIds = null } = {}) {
+  const list = types && types.length ? types : enabledTypes();
   const levelCards = lv.cardsInLevel(deck, levelIndex);
   const hard = hardIds instanceof Set ? hardIds : new Set(hardIds || []);
   const defPool = buildOptionPool(deck); // 释义池（back + extraBacks）
-  const wordPool = buildWordPool(deck);  // 单词池（front）
+  const wordPool = buildWordPool(deck); // 单词池（front）
+  const engPool = buildEngPool(deck); // 英文释义池（GCIDE）
+  const zhPool = buildZhPool(deck); // 中文释义池
 
   // 困难词：前置到序列前部，并额外多出一道题（提高其在测试中的出现概率）
   const ordered = [...levelCards].sort((a, b) => Number(hard.has(b.id)) - Number(hard.has(a.id)));
@@ -485,22 +676,24 @@ export function buildQuestions(deck, levelIndex, { types = cfg.QUESTION_TYPES, r
 
   return quizCards.map((card) => {
     const canSentence = !!(card.example && blankWord(card.example, card.front).includes('____'));
-    const type = pickQuestionType(card, types, random, canSentence);
-    return buildOneQuestion(card, type, { defPool, wordPool, hard, random });
+    const type = pickQuestionType(card, list, random, canSentence);
+    return buildQuestionSafe(card, type, { defPool, wordPool, hard, random, engPool, zhPool });
   });
 }
 
 /** 整卡组可配置测试：按「抽题计划」构建题目（计划由 test-engine.samplePlan 生成） */
-export function buildQuestionsFromPlan(deck, plan, hardIds = null) {
+export function buildQuestionsFromPlan(deck, plan, hardIds = null, random = Math.random) {
   const hard = hardIds instanceof Set ? hardIds : new Set(hardIds || []);
   const defPool = buildOptionPool(deck);
   const wordPool = buildWordPool(deck);
+  const engPool = buildEngPool(deck);
+  const zhPool = buildZhPool(deck);
   const byId = new Map((deck.cards || []).map((c) => [c.id, c]));
   const out = [];
   for (const item of plan || []) {
     const card = byId.get(item && item.cardId);
     if (!card) continue;
-    out.push(buildOneQuestion(card, item.type, { defPool, wordPool, hard, random: Math.random }));
+    out.push(buildQuestionSafe(card, item.type, { defPool, wordPool, hard, random, engPool, zhPool }));
   }
   return out;
 }
@@ -538,7 +731,17 @@ function isWrongPick(q, i) {
   return Array.isArray(q.wrongPicks) && q.wrongPicks.includes(i);
 }
 
+/** 多选题：该项是否已勾选 */
+function isSelected(q, i) {
+  return !!(q && Array.isArray(q.selected) && q.selected.includes(i));
+}
+
 function optionClass(q, opt, i) {
+  const multi = q.type === 'multi_sense';
+  if (!q.answered && multi) {
+    const base = isSelected(q, i) ? 'opt-picked' : '';
+    return isWrongPick(q, i) ? `${base} opt-wrong`.trim() : base;
+  }
   if (isWrongPick(q, i)) return 'opt-wrong'; // 本轮已选错的选项（红色禁用）
   if (!q.answered) return '';
   if (opt.isCorrect) return 'opt-right'; // 揭示正确项
@@ -546,13 +749,16 @@ function optionClass(q, opt, i) {
 }
 
 function optionMark(q, opt, i) {
+  const multi = q.type === 'multi_sense';
   if (opt.isCorrect && q.answered) return '<span class="opt-mark">✓</span>';
+  if (multi && !q.answered && isSelected(q, i)) return '<span class="opt-mark opt-mark-pick">✓</span>';
   if (i === q.lastPicked && q.answered && !opt.isCorrect) return '<span class="opt-mark">✕</span>';
   return '';
 }
 
 function feedbackHtml(q) {
   const isFill = q.type === 'fill';
+  const isMulti = q.type === 'multi_sense';
   let text = '';
   let cls = '';
   if (q.answered) {
@@ -560,12 +766,20 @@ function feedbackHtml(q) {
       text = '回答正确，即将进入下一题…';
       cls = 'fb-ok';
     } else {
-      text = isFill ? '机会已用尽，正确答案见下方，即将进入下一题…' : '机会已用尽，正确答案已标出，即将进入下一题…';
+      text = isFill
+        ? '机会已用尽，正确答案见下方，即将进入下一题…'
+        : isMulti
+          ? '机会已用尽，正确释义已标出，即将进入下一题…'
+          : '机会已用尽，正确答案已标出，即将进入下一题…';
       cls = 'fb-bad';
     }
   } else if (q.attempts > 0) {
     const left = MAX_ATTEMPTS - q.attempts;
-    text = isFill ? `答案不对，还可以再试 ${left} 次` : `选错了，还可以再选 ${left} 次`;
+    text = isFill
+      ? `答案不对，还可以再试 ${left} 次`
+      : isMulti
+        ? `全对才算通过，还可以再提交 ${left} 次`
+        : `选错了，还可以再选 ${left} 次`;
     cls = 'fb-bad';
   }
   return text ? `<div class="quiz-feedback ${cls}">${text}</div>` : '';
@@ -573,7 +787,15 @@ function feedbackHtml(q) {
 
 /** 题型名（进度行「第 N 题」后的小标签） */
 function typeName(type) {
-  return { word2def: '选释义', def2word: '选单词', sentence2word: '句子选词', fill: '填空', listen: '听音辨意' }[type] || '选择';
+  return {
+    word2def: '选释义',
+    def2word: '选单词',
+    sentence2word: '句子选词',
+    fill: '填空',
+    listen: '听音辨意',
+    eng_eng: '英英选择',
+    multi_sense: '多义多选'
+  }[type] || '选择';
 }
 
 /** 题干顶部小字提示 */
@@ -587,6 +809,10 @@ function questionTag(type, card, q) {
       return q && q.promptKind === 'sentence' ? '根据例句，填入缺失的英文单词' : '根据中文释义，输入对应的英文单词';
     case 'listen':
       return '听发音，选择正确的释义';
+    case 'eng_eng':
+      return q && q.sub === 'def2word' ? '看英文释义，选择对应的单词' : '看单词，选择正确的英文释义';
+    case 'multi_sense':
+      return q && q.senseKind === 'zh' ? '多选：选出该词的全部中文释义' : '多选：选出该词的全部英文释义';
     default:
       return card.example ? '请选择与例句最匹配的释义' : '请选择正确释义';
   }
@@ -607,7 +833,7 @@ function blankSentenceHtml(sentence, word) {
   return `<p class="q-prompt q-prompt-sent">${esc(prompt).split('____').join('<span class="q-blank">____</span>')}</p>`;
 }
 
-/** 题干主体：front 单词 / back 释义 / 挖空后的例句 / 填空题干 */
+/** 题干主体：front 单词 / back 释义 / 挖空后的例句 / 填空题干 / 英英题 / 多义多选 */
 function questionPromptHtml(type, card, q) {
   if (type === 'def2word') {
     return `<p class="q-prompt q-prompt-def">${esc(card.back)}</p>`;
@@ -623,6 +849,12 @@ function questionPromptHtml(type, card, q) {
   if (type === 'listen') {
     return listenHtml(card);
   }
+  if (type === 'eng_eng') {
+    // 子模式 B：题干 = 英文释义（看义猜词）；子模式 A：题干 = 单词（看词选义）
+    return q.sub === 'def2word'
+      ? `<p class="q-prompt q-prompt-def q-prompt-eng">${esc(q.prompt)}</p>`
+      : `<p class="q-prompt">${esc(card.front)}</p>`;
+  }
   return `<p class="q-prompt">${esc(card.front)}</p>`;
 }
 
@@ -637,8 +869,27 @@ function fullInfoHtml(card) {
   </div>`;
 }
 
-/** 选择题选项区 + 键盘提示 */
+/** 选择题选项区 + 键盘提示；多义多选为「勾选 + 提交」模式 */
 function optionsHtml(q) {
+  if (q.type === 'multi_sense') {
+    const picked = Array.isArray(q.selected) ? q.selected.length : 0;
+    return `
+      <div class="q-options q-options-multi">
+        ${q.options.map((opt, i) => `
+          <button class="opt opt-multi ${optionClass(q, opt, i)}" data-action="test-pick" data-i="${i}"
+            ${q.answered ? 'disabled' : ''} aria-pressed="${isSelected(q, i) ? 'true' : 'false'}">
+            <span class="opt-key">${String.fromCharCode(65 + i)}</span>
+            <span class="opt-text">${esc(opt.text)}</span>
+            ${optionMark(q, opt, i)}
+          </button>`).join('')}
+      </div>
+      <div class="multi-actions">
+        <button class="btn btn-primary btn-block" data-action="test-multi-submit" ${!q.answered && picked ? '' : 'disabled'}>
+          提交（已选 ${picked} 项 · 全对才算通过）
+        </button>
+      </div>
+      <p class="quiz-kbd-hint"><span class="hint-kb">键盘 A–E / 1–5 勾选 · Enter 提交</span></p>`;
+  }
   return `
       <div class="q-options">
         ${q.options.map((opt, i) => `
@@ -720,8 +971,11 @@ function questionHtml() {
         <span class="quiz-score">已答对 ${T.correct} / ${done}</span>
       </div>
       <div class="progress-track"><i class="progress-fill" style="width:${Math.round((done / T.questions.length) * 100)}%"></i></div>
-      <div class="q-card glass">
-        <span class="q-tag">${questionTag(type, card, q)}</span>
+      <div class="q-card glass${q.multi ? ' q-card-multi' : ''}">
+        <div class="q-card-head">
+          ${q.multi ? '<span class="multi-badge">多选</span>' : ''}
+          <span class="q-tag">${questionTag(type, card, q)}</span>
+        </div>
         ${questionPromptHtml(type, card, q)}
         ${type === 'word2def' && card.example ? `<p class="q-ex">${esc(card.example)}</p>` : ''}
       </div>
@@ -882,13 +1136,37 @@ export function renderDeckTestConfig(root, deckId) {
       <b id="wt-val-${t}">${conf.weights[t]}%</b>
     </div>`
   ).join('');
-  const weightTotal = cfg.QUESTION_TYPES.reduce((s, t) => s + conf.weights[t], 0);
+
+  // 可选题型（默认关闭）：开关 + 说明 + 启用后的第 6/7 个滑块
+  const optionalRows = cfg.OPTIONAL_TYPES.map((o) => {
+    const on = !!conf.enabled[o.id];
+    const w = conf.weights[o.id] || 0;
+    return `
+    <div class="weight-item${on ? ' is-on' : ''}">
+      <div class="weight-row">
+        <span class="weight-name">${esc(o.label)}</span>
+        <label class="weight-toggle">
+          <input type="checkbox" data-action="deck-test-type-toggle" data-type="${o.id}" data-id="${esc(deckId)}" ${on ? 'checked' : ''}>
+          <span>${on ? '已启用' : '启用'}</span>
+        </label>
+        <b id="wt-val-${o.id}">${on ? w + '%' : '—'}</b>
+      </div>
+      ${on ? `<input id="wt-input-${o.id}" class="test-range weight-range" type="range" min="0" max="100" step="5" value="${w}" data-action="deck-test-weight" data-type="${o.id}" data-id="${esc(deckId)}" aria-label="${esc(o.label)} 比例">` : ''}
+      <p class="weight-desc">${esc(o.desc)}</p>
+    </div>`;
+  }).join('');
+
+  const weightTotal = cfg.ALL_TYPES.reduce((s, t) => s + (conf.weights[t] || 0), 0);
   const weightEditor = `
     <details class="weight-box" open>
       <summary>题型比例（合计 <b id="wt-total">${weightTotal}%</b>）</summary>
       ${weightRows}
-      <div class="weight-foot"><button class="btn-link" data-action="deck-test-weight-reset" data-id="${esc(deckId)}">恢复默认（各 20%）</button></div>
-      <p class="hint">拖动任一题型，其余题型按当前比例自动分摊，合计始终保持 100%。</p>
+      <div class="weight-optional">
+        <p class="weight-section-title">进阶题型（默认关闭，等比分配）</p>
+        ${optionalRows}
+      </div>
+      <div class="weight-foot"><button class="btn-link" data-action="deck-test-weight-reset" data-id="${esc(deckId)}">恢复默认（已启用题型等比平分）</button></div>
+      <p class="hint">拖动任一题型，其余已启用题型按当前比例自动分摊，合计始终保持 100%；启用可选题型后会与其余题型等比平分（如 6 种各约 1/6 ≈ 16.7%）。</p>
     </details>`;
 
   root.innerHTML = `
@@ -993,6 +1271,7 @@ export function startDeckTest(deckId, count, { onlyWrong = false } = {}) {
   const plan = engine.samplePlan(pool, {
     count: n,
     weights: conf.weights,
+    enabled: conf.enabled, // 可选题型（英英选择 / 多义多选）启用后才参与抽题
     priorityIds: onlyWrong ? new Set() : engine.getPriorityIds(deckId)
   });
   const questions = buildQuestionsFromPlan(deck, plan, hw.hardSet(deckId));
@@ -1107,7 +1386,9 @@ function deckResultHtml(deck, sum, elapsedMs) {
 function pickOption(i) {
   if (!T) return false;
   const q = T.questions[T.pos];
-  if (!q || q.answered || !q.options[i] || isWrongPick(q, i)) return false;
+  if (!q) return false;
+  if (q.type === 'multi_sense') return toggleMultiOption(i);
+  if (q.answered || !q.options[i] || isWrongPick(q, i)) return false;
   const res = applyAttempt(q, i);
   if (res.correct) T.correct += 1;
   saveSession();
@@ -1124,8 +1405,46 @@ function pickOption(i) {
   return true;
 }
 
+/** 多义多选：勾选 / 取消勾选一项（不立即判分） */
+function toggleMultiOption(i) {
+  if (!T) return false;
+  const q = T.questions[T.pos];
+  if (!q || q.type !== 'multi_sense' || q.answered || !q.options[i]) return false;
+  const sel = new Set(Array.isArray(q.selected) ? q.selected : []);
+  if (sel.has(i)) sel.delete(i);
+  else sel.add(i);
+  q.selected = [...sel].sort((a, b) => a - b);
+  saveSession();
+  const container = document.getElementById('view');
+  if (container) renderTest(container, T.deckId, T.level, { kind: T.mode });
+  return true;
+}
+
+/** 多义多选：提交判分（全对才算对；机会用尽则记为错题） */
+function submitMulti() {
+  if (!T) return false;
+  const q = T.questions[T.pos];
+  if (!q || q.type !== 'multi_sense' || q.answered) return false;
+  const res = applyMulti(q, q.selected || []);
+  if (res.resolved && res.correct) T.correct += 1;
+  saveSession();
+  const container = document.getElementById('view');
+  if (!container) return false;
+  if (res.resolved) {
+    renderTest(container, T.deckId, T.level, { renderResolved: true, kind: T.mode });
+    scheduleAdvance(container, res.correct);
+  } else {
+    renderTest(container, T.deckId, T.level, { kind: T.mode });
+  }
+  return true;
+}
+
 on('test-pick', (el) => {
   pickOption(Number(el.dataset.i));
+});
+
+on('test-multi-submit', () => {
+  submitMulti();
 });
 
 /** 提交填空题答案（读取输入框 → 判题 → 反馈/跳题） */
@@ -1197,9 +1516,9 @@ on('test-fill-hint', () => {
 /** 键盘按键 → 选项下标：A/B/C/D 或 1/2/3/4（其它键返回 null） */
 export function keyToOptionIndex(evt) {
   const k = String((evt && evt.key) || '').toLowerCase();
-  const letter = ['a', 'b', 'c', 'd'].indexOf(k);
+  const letter = ['a', 'b', 'c', 'd', 'e'].indexOf(k);
   if (letter >= 0) return letter;
-  const num = ['1', '2', '3', '4'].indexOf(k);
+  const num = ['1', '2', '3', '4', '5'].indexOf(k);
   return num >= 0 ? num : null;
 }
 
@@ -1237,6 +1556,21 @@ function onKeydown(e) {
 
   // 填空题等无选项题型：不做 A–D / 方向键操作（Enter 在输入框内提交）
   if (!Array.isArray(q.options) || !q.options.length) return;
+
+  // 多义多选：Enter / 空格 = 提交；A–E / 1–5 = 勾选或取消勾选
+  if (q.type === 'multi_sense') {
+    if (confirm) {
+      e.preventDefault();
+      submitMulti();
+      return;
+    }
+    const mi = keyToOptionIndex(e);
+    if (mi == null) return;
+    e.preventDefault();
+    hlOn = false;
+    toggleMultiOption(mi);
+    return;
+  }
 
   if (e.key === 'ArrowUp' || e.key === 'ArrowLeft' || e.key === 'ArrowDown' || e.key === 'ArrowRight') {
     e.preventDefault();
@@ -1301,20 +1635,30 @@ on('deck-test-again', (el) => startDeckTest(el.dataset.id, Number(el.dataset.cou
 /* 错题专项再练：只抽优先池里的错题 */
 on('deck-test-wrong', (el) => startDeckTest(el.dataset.id, null, { onlyWrong: true }));
 
-/* 题型比例：恢复默认 */
+/* 题型比例：恢复默认（已启用题型等比平分；默认 5 种 → 各 20%） */
 on('deck-test-weight-reset', (el) => {
-  cfg.saveConfig({ weights: { ...cfg.DEFAULT_WEIGHTS } });
+  const conf = cfg.loadConfig();
+  const next = cfg.resetDefaults(conf.enabled);
+  cfg.saveConfig({ weights: next.weights, enabled: next.enabled });
   rerenderConfig(el.dataset.id);
 });
 
-/* 题型比例滑块：调一项，其余按比例自动分摊（合计 100%） */
+/* 启用 / 停用可选题型（英英选择 / 多义多选）：启用后与其余题型等比平分 */
+on('deck-test-type-toggle', (el) => {
+  const conf = cfg.loadConfig();
+  const next = cfg.setTypeEnabled(conf.weights, conf.enabled, el.dataset.type, !!el.checked);
+  cfg.saveConfig({ weights: next.weights, enabled: next.enabled });
+  rerenderConfig(el.dataset.id);
+});
+
+/* 题型比例滑块：调一项，其余**已启用**题型按比例自动分摊（合计 100%） */
 on(
   'deck-test-weight',
   (el) => {
     const conf = cfg.loadConfig();
-    const weights = cfg.adjustWeights(conf.weights, el.dataset.type, Number(el.value));
+    const weights = cfg.adjustWeights(conf.weights, el.dataset.type, Number(el.value), conf.enabled);
     cfg.saveConfig({ weights });
-    cfg.QUESTION_TYPES.forEach((t) => {
+    cfg.enabledTypeIds(conf.enabled).forEach((t) => {
       const lab = document.getElementById('wt-val-' + t);
       if (lab) lab.textContent = weights[t] + '%';
       if (t !== el.dataset.type) {
@@ -1323,7 +1667,7 @@ on(
       }
     });
     const tot = document.getElementById('wt-total');
-    if (tot) tot.textContent = cfg.QUESTION_TYPES.reduce((s, t) => s + weights[t], 0) + '%';
+    if (tot) tot.textContent = cfg.ALL_TYPES.reduce((s, t) => s + (weights[t] || 0), 0) + '%';
   },
   'input'
 );

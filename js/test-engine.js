@@ -7,7 +7,7 @@
 //   优先池存储：localStorage['mycard-test-priority']
 // ============================================================================
 
-import { QUESTION_TYPES, PASS_RATIO } from './test-config.js';
+import { QUESTION_TYPES, PASS_RATIO, enabledTypeIds } from './test-config.js';
 
 const PRIORITY_KEY = 'mycard-test-priority';
 const PROGRESS_PREFIX = 'test_progress_';
@@ -31,24 +31,26 @@ export function shuffle(arr, random = Math.random) {
 
 /* ------------------------------ 题型分配 ------------------------------ */
 
-/** 按权重分配 N 题的题型数量（返回打乱后的题型数组） */
-export function allocateTypes(n, weights, random = Math.random) {
-  const total = QUESTION_TYPES.reduce((s, t) => s + (Number(weights && weights[t]) || 0), 0);
+/** 按权重分配 N 题的题型数量（返回打乱后的题型数组）
+ *  typesList：参与分配的题型（默认基础 5 种；传入已启用集合可含可选题型） */
+export function allocateTypes(n, weights, typesList = QUESTION_TYPES, random = Math.random) {
+  const types = Array.isArray(typesList) && typesList.length ? typesList : QUESTION_TYPES;
+  const total = types.reduce((s, t) => s + (Number(weights && weights[t]) || 0), 0);
   const list = [];
   if (total <= 0) {
-    for (let i = 0; i < n; i++) list.push(QUESTION_TYPES[i % QUESTION_TYPES.length]);
+    for (let i = 0; i < n; i++) list.push(types[i % types.length]);
     return shuffle(list, random);
   }
   let assigned = 0;
-  QUESTION_TYPES.forEach((t, i) => {
+  types.forEach((t, i) => {
     const share =
-      i === QUESTION_TYPES.length - 1
+      i === types.length - 1
         ? n - assigned
         : Math.round((n * (Number(weights[t]) || 0)) / total);
     for (let k = 0; k < Math.max(0, share); k++) list.push(t);
     assigned += Math.max(0, share);
   });
-  while (list.length < n) list.push(QUESTION_TYPES[0]);
+  while (list.length < n) list.push(types[0]);
   list.length = n;
   return shuffle(list, random);
 }
@@ -126,12 +128,13 @@ export function buildCardSequence(cards, n, priorityIds = new Set(), random = Ma
 }
 
 /** 生成抽题计划：[{ cardId, type }] */
-export function samplePlan(deck, { count = 50, weights = null, priorityIds = new Set(), random = Math.random } = {}) {
+export function samplePlan(deck, { count = 50, weights = null, priorityIds = new Set(), random = Math.random, enabled = null } = {}) {
   const cards = (deck && deck.cards ? deck.cards : []).filter((c) => c.front);
   const n = Math.max(1, Math.floor(Number(count) || 0));
   if (!cards.length) return [];
   const seq = buildCardSequence(cards, n, priorityIds, random);
-  const typeList = allocateTypes(seq.length, weights, random);
+  const typesList = enabled ? enabledTypeIds(enabled) : QUESTION_TYPES;
+  const typeList = allocateTypes(seq.length, weights, typesList, random);
   const types = assignTypesByCard(seq, typeList, random);
   return seq.map((cardId, i) => ({ cardId, type: types[i] }));
 }

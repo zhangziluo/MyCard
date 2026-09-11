@@ -1,32 +1,45 @@
 #!/usr/bin/env node
 // ============================================================================
-// gen-examples.mjs — 为 data/kaoyan.json 的考研词汇抓取真实英文例句
+// gen-examples.mjs — 为词库 JSON 抓取真实英文例句
 //   数据源: https://freedictionaryapi.com （Wiktionary 派生，CC BY-SA 4.0，无需 Key）
 //   英文: 优先选取「像完整句子且包含目标词」的例句（无 examples 时回退 quotes）
 //   中文: 用该词原有释义兜底（API 不提供中文）
 //   用法:
-//     node scripts/gen-examples.mjs --sample 8     # 抽样 8 词试跑（不写回数据）
-//     node scripts/gen-examples.mjs                # 全量生成并写回 data/kaoyan.json
-//     node scripts/gen-examples.mjs --only-empty   # 只补齐 example 为空的词
+//     node scripts/gen-examples.mjs --data data/words.json --sample 8     # 抽样 8 词试跑（不写回数据）
+//     node scripts/gen-examples.mjs --data data/words.json                # 全量生成并写回
+//     node scripts/gen-examples.mjs --data data/words.json --only-empty   # 只补齐 example 为空的词
+//   参数: --data <词库 JSON 文件>（必填） / --sample N / --only-empty / --fix-bad / --clean
 //   特性: 并发 + 指数退避重试 + 断点续跑（scripts/.examples-cache.json）
 // ============================================================================
 
-import { readFileSync, writeFileSync, existsSync, unlinkSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, unlinkSync, mkdirSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const DATA = resolve(ROOT, 'data/kaoyan.json');
+
+const argv = process.argv.slice(2);
+const dataArg = argv.find((a) => a.startsWith('--data=')) || (argv.includes('--data') ? argv[argv.indexOf('--data') + 1] : '');
+/** 目标词库文件（--data 指定，相对当前工作目录解析） */
+const DATA = dataArg ? resolve(process.cwd(), dataArg) : '';
 const CACHE = resolve(ROOT, 'scripts/.examples-cache.json');
 const API = 'https://freedictionaryapi.com/api/v1/entries/en/';
 
-const argv = process.argv.slice(2);
 const SAMPLE = argv.includes('--sample') ? Number(argv[argv.indexOf('--sample') + 1]) || 5 : 0;
 const ONLY_EMPTY = argv.includes('--only-empty');
 const CONCURRENCY = Number((argv.find((a) => a.startsWith('--concurrency=')) || '').split('=')[1]) || 6;
 const DELAY = 120; // 每个 worker 请求间隔（ms）
 const MAX_RETRY = 6;
 const CLEAN = argv.includes('--clean'); // 全部完成后清理缓存需要显式指定
+
+if (!DATA) {
+  console.error('缺少 --data 参数（目标词库 JSON 文件），例如：--data data/words.json');
+  process.exit(1);
+}
+if (!existsSync(DATA)) {
+  console.error(`词库文件不存在：${DATA}`);
+  process.exit(1);
+}
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -272,13 +285,14 @@ for (const w of limited.filter((x) => x.example).slice(0, SAMPLE || 3)) {
 }
 
 if (SAMPLE) {
-  console.log('\n抽样模式：未写回 data/kaoyan.json（缓存已保存，可继续全量运行）');
+  console.log(`\n抽样模式：未写回 ${DATA}（缓存已保存，可继续全量运行）`);
 } else {
+  mkdirSync(dirname(DATA), { recursive: true });
   writeFileSync(DATA, JSON.stringify(raw, null, 2) + '\n');
   if (CLEAN && existsSync(CACHE)) unlinkSync(CACHE);
   console.log(
     stillError > 0
-      ? `\n已写回 data/kaoyan.json（缓存保留，可再次运行重试 ${stillError} 个限流失败项；全部完成后用 --clean 清理缓存）`
-      : '\n已写回 data/kaoyan.json（缓存保留，如需清理请加 --clean）'
+      ? `\n已写回 ${DATA}（缓存保留，可再次运行重试 ${stillError} 个限流失败项；全部完成后用 --clean 清理缓存）`
+      : `\n已写回 ${DATA}（缓存保留，如需清理请加 --clean）`
   );
 }

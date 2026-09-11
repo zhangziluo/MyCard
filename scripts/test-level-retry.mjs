@@ -212,7 +212,10 @@ ok(testMod.keyToOptionIndex({ key: 'Enter' }) === null, 'Enter 不映射为选�
 ok(testMod.keyToOptionIndex({ key: '1' }) === 0, '数字键 1 → 第 1 个选项');
 ok(testMod.keyToOptionIndex({ key: '2' }) === 1, '数字键 2 → 第 2 个选项');
 ok(testMod.keyToOptionIndex({ key: '4' }) === 3, '数字键 4 → 第 4 个选项');
-ok(testMod.keyToOptionIndex({ key: '5' }) === null, '数字键 5 不映射选项');
+// 多义多选题最多 5 个选项（4 正确 + 1 干扰）→ E / 5 也需映射
+ok(testMod.keyToOptionIndex({ key: 'e' }) === 4, 'E → 第 5 个选项（多选）');
+ok(testMod.keyToOptionIndex({ key: '5' }) === 4, '数字键 5 → 第 5 个选项（多选）');
+ok(testMod.keyToOptionIndex({ key: '6' }) === null, '数字键 6 不映射选项');
 
 // 键盘作答真实流程：按正确选项对应的字母
 testMod.clearTestSession();

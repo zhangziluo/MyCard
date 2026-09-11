@@ -68,6 +68,7 @@ const storage = {
 };
 
 const fakeBody = fakeEl();
+const appViewEl = fakeEl();
 globalThis.localStorage = storage;
 globalThis.sessionStorage = { ...storage };
 globalThis.document = {
@@ -81,19 +82,30 @@ globalThis.document = {
   querySelectorAll() {
     return [];
   },
-  getElementById() {
-    return fakeEl();
+  getElementById(id) {
+    return id === 'view' ? appViewEl : fakeEl();
   },
   createElement() {
     return fakeEl();
   }
 };
+/* window：捕获事件监听，便于测试中触发 hashchange（app.render → 设置页） */
+const winListeners = {};
 globalThis.window = {
-  addEventListener() {},
-  dispatchEvent() {},
+  addEventListener(type, fn) {
+    (winListeners[type] = winListeners[type] || []).push(fn);
+  },
+  dispatchEvent(evt) {
+    (winListeners[evt.type] || []).forEach((fn) => fn(evt));
+    return true;
+  },
   scrollTo() {}
 };
 globalThis.location = { hash: '#/home', href: '' };
+// ui.navigate 在「同 hash」时会派发合成 hashchange；Node 无此全局类，补一个最小桩
+globalThis.HashChangeEvent = class HashChangeEvent {
+  constructor(type) { this.type = type; }
+};
 
 let pass = 0;
 let fail = 0;
@@ -105,6 +117,14 @@ function ok(cond, msg) {
     fail++;
     console.error('  ✗ ' + msg);
   }
+}
+
+/** 模拟 data-action 点击（走 ui.handleEvent 事件委托） */
+async function fire(action, dataset = {}) {
+  const ui = await import('../js/ui.js');
+  const btn = { dataset: { action, ...dataset }, classList: { add() {}, remove() {} } };
+  btn.closest = () => btn;
+  ui.handleEvent({ type: 'click', target: { closest: () => btn }, preventDefault() {} });
 }
 
 // ---- 加载被测模块（全部浏览器模块，验证 import 图完整） ----
@@ -133,27 +153,7 @@ ok(new Set(demo.cards.map((c) => c.level)).size === 3, '60 张按每关 20 拆�
 ok(demo.cards.filter((c) => c.level === 0).length === 20, '第 1 关 20 张');
 
 const db = store.getDb();
-ok(db.decks.length === 1, '卡组已入库');
-
-// ---- 内置考研词汇导入 ----
-console.log('\n[内置考研词汇导入 seedKaoyanDeck]');
-const kaoyanPayload = {
-  name: '考研词汇冒烟组',
-  tags: ['考研', '英语'],
-  levelSize: 20,
-  words: Array.from({ length: 40 }, (_, i) => ({
-    front: 'kyword' + i,
-    back: '考研释义 ' + i,
-    example: 'kyword' + i + ' as',
-    exampleZh: '搭配' + i
-  }))
-};
-const kaoyan = store.seedKaoyanDeck(kaoyanPayload);
-ok(!!kaoyan && kaoyan.cards.length === 40 && kaoyan.source === 'kaoyan' && kaoyan.demo === false, 'seedKaoyanDeck 导入 40 张（非示范、source=kaoyan）');
-ok(new Set(kaoyan.cards.map((c) => c.level)).size === 2, '40 张按每关 20 拆为 2 个关卡');
-ok(store.seedKaoyanDeck(kaoyanPayload) === null, '同来源重复导入返回 null（不重复建卡组）');
-ok(store.hasKaoyanDeck(), 'hasKaoyanDeck() 为 true');
-ok(store.getDb().decks.length === 2, '示范 + 考研共 2 个卡组入库');
+ok(db.decks.length === 1, '卡组已入库（仅示范词库）');
 
 // ---- 首页 ----
 const root = fakeEl();
@@ -162,6 +162,22 @@ ok(root.innerHTML.includes('我的卡组'), '首页可渲染（标题）');
 ok(root.innerHTML.includes('冒烟测试组'), '首页展示卡组名');
 ok(root.innerHTML.includes('关卡 0/3'), '首页展示关卡进度 0/3');
 ok(root.innerHTML.includes('filter-tag'), '首页包含标签筛选');
+ok(root.innerHTML.includes('内置词库') === false, '首页不再有「内置词库」区块（考试词库已移除）');
+ok(root.innerHTML.includes('import-builtin') === false, '不再有按需「导入」词库按钮');
+
+// ---- 首页：统一「添加单词/词表」面板 ----
+{
+  ok(root.innerHTML.includes('class="add-words glass"'), '首页顶部渲染「添加单词」面板');
+  const inputs = root.innerHTML.match(/<textarea/g) || [];
+  ok(inputs.length === 1, '添加区域只有一个 textarea 输入框（实际 ' + inputs.length + ' 个）');
+  ok(root.innerHTML.includes('输入单词查释义，或粘贴词表（每行一个）...'), 'textarea 占位提示符合要求');
+  ok(root.innerHTML.includes('data-action="aw-submit"') && root.innerHTML.includes('>添加<'), '面板含 [添加] 按钮');
+  ok(root.innerHTML.includes('class="preview-area"'), '面板含 .preview-area 预览区');
+  ok(root.innerHTML.includes('aw-token-list') === false, '初始状态预览区为空（未渲染候选）');
+  ok(root.innerHTML.includes('data-action="import-file"'), '首页提供「导入词库」按钮（CSV / JSON）');
+  ok(root.innerHTML.includes('data-dropzone'), '首页提供拖拽区（data-dropzone）');
+  ok(root.innerHTML.includes('拖入 CSV / JSON 文件'), '拖拽区含提示文案');
+}
 
 // ---- 卡组详情 ----
 decks.renderDeck(root, demo.id);
@@ -170,6 +186,32 @@ ok(root.innerHTML.includes('level-learn'), '第 1 关有「开始学习」入口
 ok(root.innerHTML.includes('未解锁') || root.innerHTML.includes('lock'), '后续关卡显示锁定状态');
 ok(root.innerHTML.includes('管理卡片'), '详情页有管理入口');
 ok(root.innerHTML.includes('open-all-review') && root.innerHTML.includes('翻转记忆'), '详情页顶部有整卡组「翻转记忆」入口');
+ok(root.innerHTML.includes('rearrange-deck'), '详情页提供「按难度重排关卡」入口');
+
+// ---- 关卡分页（> 15 关）----
+const bigPayload = {
+  name: '分页冒烟组',
+  tags: ['测试'],
+  levelSize: 20,
+  words: Array.from({ length: 400 }, (_, i) => ({ front: 'pg' + i, back: '释义' + i }))
+};
+const big = store.seedBuiltinDeck(bigPayload, { demo: false, source: 'smoke-page' });
+ok(!!big && store.getDeck(big.id).cards.length === 400, '分页卡组导入 400 张');
+ok(store.getDeck(big.id).cards.filter((c) => c.level === 0).length === 20, '400 张按每关 20 拆为 20 关');
+decks.renderDeck(root, big.id);
+ok(root.innerHTML.includes('第 1/2 页'), '关卡 20 个 → 分页显示「第 1/2 页」');
+ok(root.innerHTML.includes('pager-btn'), '渲染分页按钮');
+ok((root.innerHTML.match(/class="level-card glass/g) || []).length === 15, '每页只渲染 15 个关卡');
+ok(root.innerHTML.includes('第 15 关') && !root.innerHTML.includes('第 16 关'), '第 1 页只含第 1–15 关');
+{
+  const prevHash = globalThis.location.hash;
+  globalThis.location.hash = '#/deck/' + big.id + '?page=2';
+  decks.renderDeck(root, big.id);
+  ok(root.innerHTML.includes('第 2/2 页'), 'URL ?page=2 → 显示第 2 页');
+  ok(root.innerHTML.includes('第 16 关') && root.innerHTML.includes('第 20 关'), '第 2 页含第 16–20 关');
+  ok(!root.innerHTML.includes('第 1 关<'), '第 2 页不再渲染第 1 关');
+  globalThis.location.hash = prevHash;
+}
 
 // ---- 翻转记忆 ----
 review.renderReview(root, demo.id, 0, 'learn');
@@ -285,6 +327,62 @@ const mkQuizQ = () => ({
 ok(testMod.MAX_ATTEMPTS === 3, 'MAX_ATTEMPTS = 3（两次机会，第三次自动跳）');
 
 // ---- 设置页（经由 app.render 需要 DOM 较复杂，跳过）----
+
+// ---- 题型比例面板：可选题型（英英选择 / 多义多选） ----
+console.log('\n[题型比例面板 · 可选题型]');
+{
+  const cfg = await import('../js/test-config.js');
+  const panel = fakeEl();
+  testMod.renderDeckTestConfig(panel, demo.id);
+  ok(panel.innerHTML.includes('题型比例'), '渲染题型比例面板');
+  ok(panel.innerHTML.includes('deck-test-type-toggle'), '提供可选题型启用开关');
+  ok(panel.innerHTML.includes('建议考研及以上水平使用'), '标注「建议考研及以上水平使用」');
+  ok(panel.innerHTML.includes('英英选择') && panel.innerHTML.includes('多义多选'), '列出两种可选题型');
+  ok(!panel.innerHTML.includes('wt-input-eng_eng'), '未启用时不渲染 eng_eng 滑块');
+
+  const c0 = cfg.loadConfig();
+  const on = cfg.setTypeEnabled(c0.weights, c0.enabled, 'eng_eng', true);
+  cfg.saveConfig({ weights: on.weights, enabled: on.enabled });
+  testMod.renderDeckTestConfig(panel, demo.id);
+  ok(panel.innerHTML.includes('wt-input-eng_eng'), '启用后出现第 6 个滑块');
+  ok(panel.innerHTML.includes('已启用'), '开关显示「已启用」');
+
+  const c1 = cfg.loadConfig();
+  const off = cfg.setTypeEnabled(c1.weights, c1.enabled, 'eng_eng', false);
+  cfg.saveConfig({ weights: off.weights, enabled: off.enabled });
+  testMod.renderDeckTestConfig(panel, demo.id);
+  ok(!panel.innerHTML.includes('wt-input-eng_eng'), '停用后滑块消失');
+  ok(cfg.loadConfig().enabled.eng_eng === false, '停用状态已保存');
+}
+
+// ---- 应用入口（app.js）：启动流程与首页渲染 ----
+console.log('\n[应用入口 app.js]');
+ok(typeof store.storageInfo === 'function', 'store.storageInfo 可用（设置页数据）');
+ok(store.storageInfo().mode === 'localstorage', '无 IndexedDB 环境自动回退 localStorage 模式');
+ok(store.storageInfo().cards === store.getDb().decks.reduce((n, d) => n + d.cards.length, 0), 'storageInfo 卡片数统计正确');
+try {
+  await import('../js/app.js'); // 触发 boot()：store.init() → 自动导入（离线失败已兜底）→ render()
+  await new Promise((r) => setTimeout(r, 80));
+  ok(true, 'app.js 启动流程未抛错（存储初始化 + 路由渲染）');
+} catch (e) {
+  ok(false, 'app.js 启动抛错：' + (e && e.message));
+}
+
+// ---- 设置页（app.render → renderSettings）：主题色区块 ----
+console.log('\n[设置页 · 主题色]');
+{
+  globalThis.location.hash = '#/settings';
+  (winListeners['hashchange'] || []).forEach((fn) => fn({ type: 'hashchange' }));
+  ok(appViewEl.innerHTML.includes('主题色'), '设置页渲染「主题色」区块');
+  ok(appViewEl.innerHTML.includes('theme-swatches') && appViewEl.innerHTML.includes('set-accent'), '渲染预设色块且可点击');
+  ok(appViewEl.innerHTML.includes('accent-input'), '渲染自定义取色输入框');
+  ok(appViewEl.innerHTML.includes('is-active'), '当前主题色对应色块高亮');
+  ok(appViewEl.innerHTML.includes('重新划分'), '关卡设置说明含「改词数即刻重新划分」提示');
+  ok(appViewEl.innerHTML.includes('hard-refresh'), '设置页提供「强制刷新到最新版」入口（清理旧缓存）');
+  await fire('set-accent', { color: '#34d399' });
+  ok(globalThis.localStorage.getItem('mycard-accent') === '#34d399', '点击预设色块后保存主题色到 localStorage');
+  ok(appViewEl.innerHTML.includes('#34d399'), '设置页重渲染后新主题色高亮');
+}
 
 console.log(`\n冒烟结果: ${pass} 通过, ${fail} 失败`);
 process.exit(fail ? 1 : 0);

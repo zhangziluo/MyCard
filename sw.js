@@ -1,10 +1,13 @@
 /* ============================================================
  * Mycard Service Worker
- * 策略：预缓存 App Shell + data/ 内置词库（首次打开即离线可用）；
- * 运行时同源静态资源 cache-first；导航请求 network-first 回退缓存页。
- * 发布新版本时递增 VERSION 即可触发缓存更新与旧缓存清理。
+ * 策略：
+ *   - 安装时预缓存 App Shell + data/ 内置词库（首次打开即离线可用）
+ *   - 页面导航 / JS / CSS / JSON：**网络优先**（在线总是拿到最新版，并回写缓存；离线回退缓存）
+ *   - 图片 / 图标：缓存优先（内容不常变）
+ * 说明：发布新版本时递增 VERSION，新 SW 会 skipWaiting + claim 立即接管，
+ *       配合 app.js 的 controllerchange 自动刷新，用户无需手动强刷即可看到新功能。
  * ============================================================ */
-const VERSION = 'v1.6.3';
+const VERSION = 'v1.7.9';
 const CACHE = 'mycard-' + VERSION;
 
 const PRECACHE = [
@@ -15,8 +18,15 @@ const PRECACHE = [
   './css/style.css',
   './js/app.js',
   './js/store.js',
+  './js/idb.js',
   './js/scheduler.js',
   './js/levels.js',
+  './js/difficulty.js',
+  './js/arrange.js',
+  './js/theme.js',
+  './js/engdefs.js',
+  './js/add-words.js',
+  './js/import-file.js',
   './js/levelstats.js',
   './js/hardwords.js',
   './js/test-config.js',
@@ -27,7 +37,7 @@ const PRECACHE = [
   './js/test.js',
   './data/words.json',
   './data/confusables.json',
-  './data/kaoyan.json',
+  './data/frequency.json',
   './icons/icon-192.png',
   './icons/icon-512.png',
   './icons/icon-maskable-512.png',
@@ -62,16 +72,12 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
 
-  // 页面导航：优先网络（保证拿到最新版），离线时回退缓存的 index.html
+  // 1) 页面导航：网络优先（保证拿到最新版），离线时回退缓存的 index.html
   if (request.mode === 'navigate') {
     event.respondWith(
       fetch(request)
         .then((response) => {
-          const copy = response.clone();
-          caches
-            .open(CACHE)
-            .then((cache) => cache.put('./index.html', copy))
-            .catch(() => {});
+          putInCache('./index.html', response.clone());
           return response;
         })
         .catch(() => caches.match('./index.html'))
@@ -79,20 +85,34 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // 静态资源：cache-first，缓存未命中时回源并顺带写入缓存
+  // 2) 图片 / 图标：缓存优先（内容不常变，优先本地、省流量）
+  if (/\.(png|jpe?g|svg|ico|webp|gif)$/i.test(url.pathname)) {
+    event.respondWith(
+      caches.match(request).then((cached) => cached || fetchAndCache(request))
+    );
+    return;
+  }
+
+  // 3) JS / CSS / HTML / JSON：网络优先（在线用最新代码并回写缓存；离线回退缓存）
   event.respondWith(
-    caches.match(request).then((cached) => {
-      if (cached) return cached;
-      return fetch(request).then((response) => {
-        if (response && response.status === 200 && response.type === 'basic') {
-          const copy = response.clone();
-          caches
-            .open(CACHE)
-            .then((cache) => cache.put(request, copy))
-            .catch(() => {});
-        }
-        return response;
-      });
-    })
+    fetchAndCache(request).catch(() => caches.match(request))
   );
 });
+
+function putInCache(key, response) {
+  if (!response || response.status !== 200) return;
+  caches
+    .open(CACHE)
+    .then((cache) => cache.put(key, response))
+    .catch(() => {});
+}
+
+/** 取网络并顺带写入缓存 */
+function fetchAndCache(request) {
+  return fetch(request).then((response) => {
+    if (response && response.status === 200 && response.type === 'basic') {
+      putInCache(request, response.clone());
+    }
+    return response;
+  });
+}

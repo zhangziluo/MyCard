@@ -1,29 +1,33 @@
 #!/usr/bin/env node
 // ============================================================================
-// gen-examples-llm.mjs — 用大模型（DeepSeek / OpenAI 兼容接口）为考研词库生成
-//   自然英文例句 + 真正的整句中文翻译，写入 data/kaoyan.json 的 example / exampleZh。
+// gen-examples-llm.mjs — 用大模型（DeepSeek / OpenAI 兼容接口）为词库生成
+//   自然英文例句 + 真正的整句中文翻译，写入目标 JSON 的 example / exampleZh 字段。
 //   用法:
-//     LLM_API_KEY=sk-xxx node scripts/gen-examples-llm.mjs --sample 6        # 抽样试跑
-//     LLM_API_KEY=sk-xxx node scripts/gen-examples-llm.mjs                   # 全量生成
-//     LLM_API_KEY=sk-xxx node scripts/gen-examples-llm.mjs --only-missing    # 仅补空缺/失败项
+//     LLM_API_KEY=sk-xxx node scripts/gen-examples-llm.mjs --data data/words.json --sample 6   # 抽样试跑
+//     LLM_API_KEY=sk-xxx node scripts/gen-examples-llm.mjs --data data/words.json              # 全量生成
+//     LLM_API_KEY=sk-xxx node scripts/gen-examples-llm.mjs --data data/words.json --only-missing
 //   环境变量: LLM_API_KEY(必填) / LLM_BASE_URL(默认 https://api.deepseek.com) / LLM_MODEL(默认 deepseek-chat)
+//   参数:     --data <词库 JSON 文件>（必填） / --sample N / --only-missing / --clean
 //   特性: 批量请求 + 并发 + 失败重试 + 断点续跑(scripts/.llm-cache.json)
 //   ⚠️ 不要把 API Key 写入任何文件；仅通过环境变量传入。
 // ============================================================================
 
-import { readFileSync, writeFileSync, existsSync, unlinkSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, unlinkSync, mkdirSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const DATA = resolve(ROOT, 'data/kaoyan.json');
 const CACHE = resolve(ROOT, 'scripts/.llm-cache.json');
+
+const argv = process.argv.slice(2);
+const dataArg = argv.find((a) => a.startsWith('--data=')) || (argv.includes('--data') ? argv[argv.indexOf('--data') + 1] : '');
+/** 目标词库文件（--data 指定，相对当前工作目录解析） */
+const DATA = dataArg ? resolve(process.cwd(), dataArg) : '';
 
 const API_KEY = process.env.LLM_API_KEY || '';
 const BASE_URL = (process.env.LLM_BASE_URL || 'https://api.deepseek.com').replace(/\/+$/, '');
 const MODEL = process.env.LLM_MODEL || 'deepseek-chat';
 
-const argv = process.argv.slice(2);
 const SAMPLE = argv.includes('--sample') ? Number(argv[argv.indexOf('--sample') + 1]) || 5 : 0;
 const ONLY_MISSING = argv.includes('--only-missing');
 const CLEAN = argv.includes('--clean');
@@ -32,7 +36,15 @@ const CONCURRENCY = Number((argv.find((a) => a.startsWith('--concurrency=')) || 
 const MAX_RETRY = 3;
 
 if (!API_KEY) {
-  console.error('缺少 LLM_API_KEY 环境变量（例如：LLM_API_KEY=sk-xxx node scripts/gen-examples-llm.mjs）');
+  console.error('缺少 LLM_API_KEY 环境变量（例如：LLM_API_KEY=sk-xxx node scripts/gen-examples-llm.mjs --data data/words.json）');
+  process.exit(1);
+}
+if (!DATA) {
+  console.error('缺少 --data 参数（目标词库 JSON 文件），例如：--data data/words.json');
+  process.exit(1);
+}
+if (!existsSync(DATA)) {
+  console.error(`词库文件不存在：${DATA}`);
   process.exit(1);
 }
 
@@ -237,9 +249,10 @@ if (SAMPLE) {
     const c = cache[w.front];
     console.log(`  ${w.front} → ${c && c.example ? c.example : '(无)'} ／ ${c && c.exampleZh ? c.exampleZh : ''}`);
   }
-  console.log('\n抽样模式：未写回 data/kaoyan.json（缓存已保存）');
+  console.log(`\n抽样模式：未写回 ${DATA}（缓存已保存）`);
 } else {
+  mkdirSync(dirname(DATA), { recursive: true });
   writeFileSync(DATA, JSON.stringify(raw, null, 2) + '\n');
   if (CLEAN && existsSync(CACHE)) unlinkSync(CACHE);
-  console.log('\n已写回 data/kaoyan.json' + (CLEAN ? '，并清理缓存' : '（缓存保留，可再次运行重试失败项；完成后加 --clean）'));
+  console.log(`\n已写回 ${DATA}` + (CLEAN ? '，并清理缓存' : '（缓存保留，可再次运行重试失败项；完成后加 --clean）'));
 }

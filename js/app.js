@@ -3,12 +3,15 @@
 // ============================================================================
 
 import * as store from './store.js';
+import * as difficulty from './difficulty.js';
+import * as engdefs from './engdefs.js';
+import * as theme from './theme.js';
 import { on, bindDocument, navigate, toast, confirmDialog } from './ui.js';
 import * as decks from './decks.js';
 import { renderReview, clearReviewSession } from './review.js';
 import { renderTest, clearTestSession } from './test.js';
 
-const APP_VERSION = 'v0.1.0';
+const APP_VERSION = 'v0.4.8';
 
 /* ------------------------------ 路由解析 ------------------------------ */
 
@@ -55,7 +58,7 @@ function renderAppbar(route) {
   switch (route.view) {
     case 'home':
       t = 'Mycard · 学习卡片';
-      side = '<span class="appbar-ver">v0.1</span>';
+      side = `<span class="appbar-ver">${APP_VERSION}</span>`;
       break;
     case 'deck':
       showBack = true;
@@ -132,18 +135,29 @@ export function render() {
 function renderSettings(root) {
   const db = store.getDb();
   const per = db.settings.cardsPerLevel;
-  const totalCards = db.decks.reduce((n, d) => n + d.cards.length, 0);
-  let sizeKb = 0;
-  try {
-    const raw = localStorage.getItem(store.STORAGE_KEY) || '';
-    sizeKb = (raw.length * 2) / 1024;
-  } catch (e) {}
+  const info = store.storageInfo();
+  const sizeKb = info.localBytes / 1024;
+  const accent = theme.loadAccent();
 
   root.innerHTML = `
   <div class="view settings-view">
     <section class="panel glass">
+      <h3 class="panel-title">主题色</h3>
+      <p class="panel-desc">选择网页主色调，按钮、进度条、徽标、氛围光会全局跟随；选择保存在本机（清空数据不会重置）。</p>
+      <div class="theme-swatches">
+        ${theme.ACCENT_PRESETS.map(
+          (p) =>
+            `<button class="swatch${accent === p.color ? ' is-active' : ''}" style="background:${p.color}" data-action="set-accent" data-color="${p.color}" aria-label="${p.name}" title="${p.name}"></button>`
+        ).join('')}
+      </div>
+      <label class="theme-custom">自定义颜色
+        <input type="color" data-action="accent-input" name="accent" value="${accent}" aria-label="自定义主题色">
+      </label>
+    </section>
+
+    <section class="panel glass">
       <h3 class="panel-title">关卡设置</h3>
-      <p class="panel-desc">每个卡组按「每关 15–30 张」自动划分关卡并顺序解锁。通关条件：学完本关全部卡片 + 测试正确率 ≥ 80%。</p>
+      <p class="panel-desc">每个卡组按「每关 15–30 张」自动划分关卡并顺序解锁。导入内置词库时会按难度自动编排：前几关高频短词打基础，后续逐步混入长难词；形近/同根词错峰出现；错题会动态提前。</p>
       <div class="stepper-row">
         <button class="stepper-btn" data-action="set-per-minus" aria-label="减少">−</button>
         <div class="stepper-val">
@@ -151,18 +165,21 @@ function renderSettings(root) {
         </div>
         <button class="stepper-btn" data-action="set-per-plus" aria-label="增加">＋</button>
       </div>
-      <p class="hint">当前设置作为新卡组 / 导入词库的默认每关卡片数，也可在每个卡组内单独调整。小于 30 张的小卡组始终作为单关卡。</p>
+      <p class="hint">修改后会立即按新词数重新划分「跟随全局设置」的卡组（每关词汇数即时更新）；给卡组单独设置过词数的，请在卡组编辑里单独调整。小于 30 张的小卡组始终作为单关卡；关卡超过 15 关时按页显示（每页 15 关）。</p>
     </section>
 
     <section class="panel glass">
       <h3 class="panel-title">数据</h3>
       <ul class="data-list">
-        <li><span>卡组数量</span><b>${db.decks.length}</b></li>
-        <li><span>卡片总数</span><b>${totalCards}</b></li>
-        <li><span>本地存储</span><b>${sizeKb.toFixed(1)} KB</b></li>
-        <li><span>存储位置</span><b class="mono">mycard-v1</b></li>
+        <li><span>卡组数量</span><b>${info.decks}</b></li>
+        <li><span>卡片总数</span><b>${info.cards}</b></li>
+        <li><span>存储方式</span><b>${info.mode === 'indexeddb' ? 'IndexedDB（推荐）' : 'localStorage（回退）'}</b></li>
+        <li><span>元数据占用</span><b>${sizeKb.toFixed(1)} KB</b></li>
+        <li><span>本地存储键</span><b class="mono">mycard-meta</b></li>
       </ul>
+      <p class="hint">卡片正文与学习进度保存在浏览器 IndexedDB，可容纳多本大词库；localStorage 只保留设置与卡组清单。</p>
       <button class="btn btn-danger btn-block" data-action="reset-all">清空全部数据并重置</button>
+      <button class="btn btn-ghost btn-block" data-action="hard-refresh">强制刷新到最新版（清理离线缓存）</button>
     </section>
 
     <section class="panel glass">
@@ -170,7 +187,7 @@ function renderSettings(root) {
       <p class="panel-desc">基于艾宾浩斯遗忘曲线的间隔重复记忆卡片。翻转记忆 + 关卡闯关 + 离线可用。</p>
       <ul class="about-list">
         <li>版本：${APP_VERSION}（${db.seededDemo ? '已初始化示范词库' : '未导入示范词库'}）</li>
-        <li>数据保存在本机浏览器 localStorage，不会上传任何服务器</li>
+        <li>数据保存在本机浏览器（IndexedDB + localStorage），不会上传任何服务器</li>
         <li>离线可用：Service Worker 已缓存应用与内置词库</li>
         <li>推荐：从浏览器菜单选择「添加到主屏幕」安装为 App</li>
       </ul>
@@ -189,6 +206,31 @@ on('set-per-plus', () => {
   render();
 });
 
+/* ------------------------------ 主题色 ------------------------------ */
+
+on('set-accent', (el) => {
+  const color = el.dataset && el.dataset.color;
+  if (!color) return;
+  theme.setAccent(color);
+  render();
+});
+/* 拖动取色时即时生效（不重渲染，避免打断系统取色器） */
+on(
+  'accent-input',
+  (el) => {
+    if (el && el.value) theme.setAccent(el.value);
+  },
+  'input'
+);
+/* 取色结束后同步色块高亮状态 */
+on(
+  'accent-input',
+  () => {
+    render();
+  },
+  'change'
+);
+
 on('reset-all', async () => {
   const ok = await confirmDialog('确定清空全部数据吗？所有卡组与学习进度都会被删除。', {
     title: '清空数据',
@@ -206,29 +248,51 @@ on('reset-all', async () => {
   }
 });
 
+/* 强制刷新到最新版：清掉 Service Worker 缓存与注册后再加载
+   （用于浏览器/PWA 仍在使用旧缓存页面、看不到新功能时） */
+on('hard-refresh', async () => {
+  try {
+    if (typeof caches !== 'undefined' && caches.keys) {
+      const keys = await caches.keys();
+      await Promise.all(keys.map((k) => caches.delete(k)));
+    }
+    if (navigator.serviceWorker && navigator.serviceWorker.getRegistrations) {
+      const regs = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(regs.map((r) => r.unregister()));
+    }
+  } catch (e) {
+    console.warn('[mycard] 清理离线缓存失败', e);
+  }
+  toast('已清理离线缓存，正在重新加载…');
+  setTimeout(() => location.reload(), 400);
+});
+
 /* ------------------------------ 启动 ------------------------------ */
 
 function boot() {
+  // 主题色：尽早写入 CSS 变量，避免首屏闪回默认色
+  try {
+    theme.init();
+  } catch (e) {}
+
   bindDocument();
 
-  // 首次启动自动导入内置词库（示范词库 + 考研词汇）；旧版示范卡组则补标 v0.2 易混数据
+  // 启动流程：初始化存储（IndexedDB 优先，自动迁移旧版 localStorage 数据）
+  //  → 首次启动自动导入示范词库 → 加载词频表 → 渲染
   (async () => {
     try {
+      const info = await store.init();
+      console.log(`[mycard] 存储就绪：${info.idb ? 'IndexedDB' : 'localStorage 回退'}`, info);
+    } catch (e) {
+      console.warn('[mycard] 存储初始化失败，使用内存模式', e);
+    }
+
+    try {
       if (store.getDb().decks.length === 0) {
-        // 任一失败只告警，不阻塞页面渲染（离线首次打开时提示稍后联网）
-        const [demoRes, kaoyanRes] = await Promise.allSettled([
-          decks.importDemoDeck(),
-          decks.importKaoyanDeck()
-        ]);
-        if (demoRes.status === 'fulfilled' && demoRes.value) {
-          console.log(`[mycard] 已自动导入示范卡组：${demoRes.value.name}（${demoRes.value.cards.length} 张）`);
-        } else if (demoRes.status === 'rejected') {
-          console.warn('[mycard] 示范词库自动导入失败', demoRes.reason);
-        }
-        if (kaoyanRes.status === 'fulfilled' && kaoyanRes.value) {
-          console.log(`[mycard] 已自动导入考研卡组：${kaoyanRes.value.name}（${kaoyanRes.value.cards.length} 张）`);
-        } else if (kaoyanRes.status === 'rejected') {
-          console.warn('[mycard] 考研词库自动导入失败（需联网一次）', kaoyanRes.reason);
+        // 失败只告警，不阻塞页面渲染（离线首次打开时提示稍后联网）
+        const demoDeck = await decks.importDemoDeck();
+        if (demoDeck) {
+          console.log(`[mycard] 已自动导入示范卡组：${demoDeck.name}（${demoDeck.cards.length} 张）`);
         }
       } else {
         const enriched = await decks.ensureDemoEnrichment();
@@ -237,8 +301,30 @@ function boot() {
     } catch (e) {
       console.warn('[mycard] 首次自动导入/升级词库失败（需联网一次）', e);
     }
+
+    // 词频表（难度判定的外部数据）：失败不影响使用，按中低频兜底
+    try {
+      const n = await difficulty.loadFrequency();
+      if (n) console.log(`[mycard] 已加载词频表（${n} 词）`);
+    } catch (e) {}
+
+    // GCIDE 英文释义表（英英选择 / 多义多选题型用）：失败不影响其它题型
+    try {
+      const map = await engdefs.ensureLoaded();
+      console.log(`[mycard] 已加载 GCIDE 英文释义（${map.size} 词）`);
+    } catch (e) {
+      console.warn('[mycard] GCIDE 英文释义加载失败（英英题/多义题将暂不可用）', e);
+    }
+
     render();
   })();
+
+  // 离开页面前把待写数据落盘（IndexedDB 写入是防抖批量的）
+  window.addEventListener('pagehide', () => {
+    try {
+      store.flushPending();
+    } catch (e) {}
+  });
 
   window.addEventListener('hashchange', () => {
     clearReviewSession();
@@ -248,8 +334,17 @@ function boot() {
 
   // PWA：注册 Service Worker（install 阶段预缓存，使应用离线可用）
   if ('serviceWorker' in navigator) {
+    const hadController = !!navigator.serviceWorker.controller;
     window.addEventListener('load', () => {
       navigator.serviceWorker.register('./sw.js').catch((e) => console.warn('[mycard] SW 注册失败', e));
+    });
+    // 新版本 SW 接管后自动刷新一次，避免用户停留在旧缓存页面看不到新功能
+    // （仅在「此前已有 SW 控制」时刷新，首次安装不会多刷）
+    let refreshed = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (!hadController || refreshed) return;
+      refreshed = true;
+      location.reload();
     });
   }
 }
