@@ -38,8 +38,8 @@
   - **JSON**：兼容词库文件格式 `{name?, description?, tags?, levelSize?, words:[...]}` 与纯单词数组 `[{front|word, back|meaning, example, exampleZh, phonetic, tags}]`（预览显示「单词 / 释义」两列）
   - 整份文件解析后**一次事务批量写入**本地库，按单词去重并报告跳过数；新建牌组时 `source=null` 故可重复导入（各自新建卡组）
 - **数据存储（v0.4）**：卡片正文与学习进度存 **IndexedDB**（库 `mycard` v2，stores：`decks` / `cards` / `meta` / `lookup`），localStorage 只保留设置与卡组清单（key `mycard-meta`）；旧版 `mycard-v1` 整库会在首次启动时**自动迁移**到 IndexedDB 并删除旧键，从而支持万词级词库
-- **内置词库**：仅内置「英语高频词（示范）」约 60 词（`data/words.json` ＋ 易混分组 `data/confusables.json`），首次打开**自动导入**并按难度编排 3 关；应用不再内置其它词库，需要时可用首页「导入」按钮导入自己的 CSV / JSON 词表（见上一条）
-- **PWA**：`manifest.json` ＋ `sw.js`；**代码 / 数据走网络优先**（在线总是最新，离线回退缓存），图片走缓存优先；新版本 SW 接管后自动刷新一次，通常**一次刷新即可看到新功能**；顶栏显示当前版本号（当前 `v0.4.8`），设置页另提供「强制刷新到最新版（清理离线缓存）」应对极端缓存情况
+- **内置词库**：仅内置「英语高频词（示范）」约 60 词（`data/words.json` ＋ 易混分组 `data/confusables.json`），首次打开**自动导入**并按难度编排 3 关；应用不再内置其它词库，需要时可用首页「导入」按钮导入自己的 CSV / JSON 词表（见上一条）。旧版本曾内置的 10 本考试词库（考研 / 四级 / 六级 / 托福 / 雅思 / 专四 / 专八 / SAT / 初中 / 高中）已下线，浏览器里**遗留的历史卡组会在启动时自动清理**（按 `source` 精确匹配，仅删这些内置卡组，不影响你自建的卡组与「我的生词」）
+- **PWA**：`manifest.json` ＋ `sw.js`；**代码 / 数据走网络优先**（在线总是最新，离线回退缓存），图片走缓存优先；新版本 SW 接管后自动刷新一次，通常**一次刷新即可看到新功能**；顶栏显示当前版本号（当前 `v0.4.9`），设置页另提供「强制刷新到最新版（清理离线缓存）」应对极端缓存情况
 - **界面**：移动端优先、深色主题、毛玻璃（glassmorphism）卡片；**桌面端自适应** —— `#app` 按 640 / 960 / 1280 / 1600px 断点逐级放宽（600 → 760 → 1080 → 1280 → 1440px），卡组用 `auto-fill` 网格随宽度平铺 2–5 列，宽屏下关卡列表两列平铺
 
 ## 目录结构
@@ -101,11 +101,11 @@
     ├── test-deck-test.mjs  # 整卡组可配置测试（81 项断言）
     ├── test-eng-eng.mjs    # 英英选择题型（34 项断言）
     ├── test-multi-sense.mjs# 多义多选题型（39 项断言）
-    ├── test-idb-store.mjs  # 存储层（迁移 / 写穿 / 重载水合 / 重排，31 项断言）
+    ├── test-idb-store.mjs  # 存储层（迁移 / 写穿 / 重载水合 / 重排 / 旧内置词库清理，42 项断言）
     ├── test-add-words.mjs  # 首页添加单词 / 词表（82 项断言）
     ├── test-import-file.mjs# 本地文件导入（解析/表头映射/预览/字段映射/目标牌组/追加/大词表，200 项断言）
     ├── smoke-dom.mjs       # 无头 DOM 冒烟（模块 + 各界面渲染，108 项断言）
-    └── verify-assets.mjs   # 资源完整性校验（104 项）
+    └── verify-assets.mjs   # 资源完整性校验（107 项）
 ```
 
 ## 本地运行
@@ -139,15 +139,15 @@ node scripts/test-listen.mjs          # 听音辨意（出题 / TTS 播放与降
 node scripts/test-deck-test.mjs       # 整卡组可配置测试（抽题/循环/优先池/权重/续做，81 项）
 node scripts/test-eng-eng.mjs         # 英英选择题型（子模式 A/B、选项构成、回退，34 项）
 node scripts/test-multi-sense.mjs     # 多义多选题型（中文优先→GCIDE 回退、多选判分，39 项）
-node scripts/test-idb-store.mjs       # 存储层（迁移 / 写穿 / 重载水合 / 重排，31 项）
+node scripts/test-idb-store.mjs       # 存储层（迁移 / 写穿 / 重载水合 / 重排 / 旧内置词库清理，42 项）
 node scripts/test-add-words.mjs       # 首页添加单词/词表（语种/分词/查词/缓存/限速/去重落库，82 项）
 node scripts/test-import-file.mjs     # 本地文件导入（解析/预览/字段映射/目标牌组/追加/大词表端到端，200 项）
 node scripts/smoke-dom.mjs            # 无头 DOM 冒烟（模块 + 各界面渲染，108 项）
-node scripts/verify-assets.mjs        # PWA 资源完整性 + 预览 / 字段映射校验（104 项）
+node scripts/verify-assets.mjs        # PWA 资源完整性 + 预览 / 字段映射 / 旧词库清理校验（107 项）
 node --check js/*.js                  # 语法检查
 ```
 
-当前合计 **1172 条校验**（各套件输出的 `✓`）**全部通过、0 失败**（含纯函数单测、无头 DOM 冒烟、IndexedDB 存储与大词表端到端）。
+当前合计 **1186 条校验**（各套件输出的 `✓`）**全部通过、0 失败**（含纯函数单测、无头 DOM 冒烟、IndexedDB 存储与大词表端到端）。
 
 ## 部署：Cloudflare Pages
 

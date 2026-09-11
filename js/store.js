@@ -783,6 +783,38 @@ export function hasSource(source) {
 }
 
 /**
+ * 已下线的内置词库来源：旧版本曾「自动导入考研词库 / 首页按需导入」这些考试词库，
+ * 现已全部从应用中移除。这里按 source 精确匹配清理浏览器里遗留的历史数据。
+ */
+export const REMOVED_BUILTIN_SOURCES = [
+  'kaoyan',
+  'chuzhong',
+  'gaozhong',
+  'cet4',
+  'cet6',
+  'sat',
+  'toefl',
+  'ielts',
+  'tem4',
+  'tem8'
+];
+
+/**
+ * 清理旧版本内置词库（启动时调用一次；幂等）。只删除 source 命中的内置卡组，
+ * 用户自建卡组（source=null）、示范卡组（demo）与「我的生词」（custom）不受影响。
+ * @returns {{ count:number, names:string[] }}
+ */
+export function purgeRemovedBuiltins() {
+  const targets = getDb().decks.filter((x) => x.source && REMOVED_BUILTIN_SOURCES.includes(x.source));
+  const names = [];
+  for (const deck of targets) {
+    names.push(deck.name);
+    deleteDeck(deck.id); // 同步移出内存 + 排队删除 IndexedDB 中的卡组与卡片 + 落盘
+  }
+  return { count: targets.length, names };
+}
+
+/**
  * 为已存在的示范卡组补标易混组/多释义（v0.2 升级用，保留学习进度）。
  * 只对尚缺该字段的卡片写入，不改动其复习状态。
  */

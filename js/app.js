@@ -11,7 +11,7 @@ import * as decks from './decks.js';
 import { renderReview, clearReviewSession } from './review.js';
 import { renderTest, clearTestSession } from './test.js';
 
-const APP_VERSION = 'v0.4.8';
+const APP_VERSION = 'v0.4.9';
 
 /* ------------------------------ 路由解析 ------------------------------ */
 
@@ -300,6 +300,17 @@ function boot() {
       }
     } catch (e) {
       console.warn('[mycard] 首次自动导入/升级词库失败（需联网一次）', e);
+    }
+
+    // 旧版本内置的考试词库（考研等）已下线：清理浏览器里遗留的历史卡组
+    try {
+      const purged = store.purgeRemovedBuiltins();
+      if (purged.count) {
+        console.log(`[mycard] 已清理 ${purged.count} 个已下线词库：${purged.names.join('、')}`);
+        toast(`已清理 ${purged.count} 个已下线词库：${purged.names.join('、')}`, 'info');
+      }
+    } catch (e) {
+      console.warn('[mycard] 清理旧内置词库失败', e);
     }
 
     // 词频表（难度判定的外部数据）：失败不影响使用，按中低频兜底

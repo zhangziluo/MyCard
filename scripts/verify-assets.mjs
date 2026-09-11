@@ -85,6 +85,10 @@ console.log('\n[应用内仅剩示范词库]');
 must(!existsSync(rel('js/decks-meta.js')), 'js/decks-meta.js 已删除（内置词库清单移除）');
 must(sw.includes("'./data/words.json'"), 'sw.js 仍预缓存示范词库 words.json');
 must(!/importBuiltinDeck|importAllBuiltins/.test(readFileSync(rel('js/decks.js'), 'utf8')), 'decks.js 已移除按需导入内置词库的逻辑');
+const storeSrc = readFileSync(rel('js/store.js'), 'utf8');
+must(storeSrc.includes('export function purgeRemovedBuiltins') && storeSrc.includes('REMOVED_BUILTIN_SOURCES'), 'store.js 提供「清理旧内置词库」');
+must(storeSrc.includes("'kaoyan'") && storeSrc.includes("'tem8'"), '清理清单覆盖 10 本考试词库来源');
+must(/purgeRemovedBuiltins\(\)/.test(readFileSync(rel('js/app.js'), 'utf8')), 'app.js 启动时清理浏览器中遗留的考试词库');
 
 // 7) 桌面端自适应布局（#app 放宽 + 卡组平铺）
 console.log('\n[css/style.css 桌面适配]');

@@ -131,5 +131,34 @@ console.log('\n[关卡重排：动态调序不丢卡]');
   ok(after.cards.find((c) => c.id === target.id).level === 0, '错题被提升到当前关卡（第 1 关）');
 }
 
+console.log('\n[旧内置词库清理 purgeRemovedBuiltins]');
+{
+  // 造：旧版本自动导入的考研卡组 + 示范卡组 + 用户自建卡组 + 「我的生词」
+  const legacy = store.seedBuiltinDeck(
+    { name: '考研英语核心词汇', tags: ['英语', '考研'], words: [{ front: 'abandon', back: 'v. 放弃' }] },
+    { demo: false, source: 'kaoyan' }
+  );
+  const demoDeck = store.getDb().decks.find((d) => d.demo) || store.seedDemoDeck({ name: '示范', words: [{ front: 'x', back: '例' }] });
+  const mine = store.createDeck({ name: '我的自建' });
+  const wordDeck = store.ensureUserDeck();
+  await store.flushPending();
+  const before = store.getDb().decks.length;
+  ok(store.getDb().decks.some((d) => d.source === 'kaoyan'), '准备：存在 source=kaoyan 的遗留卡组');
+
+  const res = store.purgeRemovedBuiltins();
+  ok(res.count === 1 && res.names[0] === '考研英语核心词汇', '只清理 source 命中的旧内置词库', res.names);
+  ok(store.getDeck(legacy.id) === null, '考研卡组已从内存移除');
+  ok(!!store.getDeck(demoDeck.id), '示范卡组保留');
+  ok(!!store.getDeck(mine.id), '用户自建卡组保留');
+  ok(!!store.getDeck(wordDeck.id), '「我的生词」保留');
+  ok(store.getDb().decks.length === before - 1, '卡组数 -1', store.getDb().decks.length);
+  ok(store.purgeRemovedBuiltins().count === 0, '重复执行无副作用（幂等）');
+
+  await store.flushPending();
+  ok(!dumpStore(dbs, 'mycard', 'decks').some((x) => x.id === legacy.id), 'IndexedDB 中该卡组已删除');
+  ok(!dumpStore(dbs, 'mycard', 'cards').some((c) => c.deckId === legacy.id), 'IndexedDB 中其卡片已删除');
+  ok(store.REMOVED_BUILTIN_SOURCES.includes('kaoyan') && store.REMOVED_BUILTIN_SOURCES.length === 10, '下线来源清单含 10 本考试词库');
+}
+
 console.log(`\n存储层结果: ${pass} 通过, ${fail} 失败`);
 process.exit(fail ? 1 : 0);
