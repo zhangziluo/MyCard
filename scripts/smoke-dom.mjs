@@ -105,6 +105,7 @@ globalThis.window = {
   },
   scrollTo() {}
 };
+globalThis.requestAnimationFrame = (fn) => setTimeout(fn, 0);
 globalThis.location = { hash: '#/home', href: '' };
 // ui.navigate 在「同 hash」时会派发合成 hashchange；Node 无此全局类，补一个最小桩
 globalThis.HashChangeEvent = class HashChangeEvent {
@@ -415,6 +416,19 @@ console.log('\n[设置页 · 外观（明暗模式）]');
 
   await fire('toggle-mode');
   ok(globalThis.localStorage.getItem('mycard-mode') === 'light', '再切一次 → 回到浅色');
+}
+
+console.log('\n[卡组菜单 · 导出 txt / apkg]');
+{
+  globalThis.location.hash = '#/home';
+  (winListeners['hashchange'] || []).forEach((fn) => fn({ type: 'hashchange' }));
+  await fire('deck-options', { id: demo.id });
+  const modal = fakeBody.children.filter((c) => c && c.className === 'modal-overlay').pop();
+  const html = modal ? String(modal.innerHTML) : '';
+  ok(html.includes('export-txt'), '卡组菜单含「导出为 txt 词表」');
+  ok(html.includes('export-apkg'), '卡组菜单含「导出为 Anki 卡包（.apkg）」');
+  ok(html.includes('data-action="export-txt"') && html.includes(`data-id="${demo.id}"`), '导出按钮带卡组 id');
+  ok(html.includes('导出为 txt 词表') && html.includes('Anki'), '导出文案正确');
 }
 
 console.log(`\n冒烟结果: ${pass} 通过, ${fail} 失败`);

@@ -23,6 +23,9 @@
     - **英英选择 `eng_eng`**（*建议考研及以上水平使用（需较强英文阅读理解能力）*）：子模式 A「看单词选英文释义」/ 子模式 B「看英文释义猜单词」随机出现，释义取自 GCIDE
     - **多义多选 `multi_sense`**（*建议考研及以上水平使用*）：勾选该词**全部释义**后提交判分，**全对才算对**，漏选 / 多选 / 错选均算错；释义优先取卡组内中文释义（`back` ＋ 多释义），缺失时回退 GCIDE 英文释义
 - **整卡组可配置测试**：题数 **20~150** 可调（快速 20 / 标准 50 / 挑战 150 ＋ 滑块，步长 10），题型按权重分配、词数不足时循环覆盖，错题进优先池，支持中途退出续做
+- **导出词表 / Anki 卡包（v0.4.11）**：卡组菜单（⋮）提供两种导出，纯前端下载（离线可用）
+  - **标准 txt（TSV）**：UTF-8 带 BOM、制表符分隔、一卡一行，列序 `正面 / 背面 / 例句 / 例句翻译 / 音标 / 标签(逗号)`，首行为列名；单元格内的制表符与换行会被清洗为空格，无正面的卡片不导出
+  - **Anki 卡包 `.apkg`**：ZIP（`collection.anki2` + `media`）内为 **Anki 2.1 schema 的 SQLite**（内置 `vendor/sql.js` WASM 生成），含 `col/notes/cards/revlog/graves` 与 **Basic 笔记模板**；卡组名沿用应用里的名称，正面含音标、背面含其余释义与例句/翻译，标签转为 Anki 标签；可直接在 Anki「文件 → 导入」打开
 - **明暗模式（v0.4.10）**：**浅色 / 深色 / 跟随系统** 三档，设置页顶部「外观」区块切换，顶栏右侧一键快捷切换（浅色 ⇄ 深色）；切换即时生效并保存在本机（`localStorage['mycard-mode']`）；跟随系统时监听 `prefers-color-scheme` 自动跟随，`<meta name="theme-color">` 与原生控件（`color-scheme`）一并跟随；`index.html` 首屏前内联读取模式写 `<html data-theme>`，**不会先闪一下深色**
 - **主题色（v0.4.1）**：设置页可切换主色调（8 个预设 ＋ 自定义取色），按钮 / 进度条 / 徽标 / 氛围光全局跟随（浅色 / 深色下均可用）
 - **首页添加单词 / 词表（v0.6）**：首页顶部只有一个输入框，自动判断三种输入并统一走「查词 → 预览 → 加入『我的生词』」
@@ -40,7 +43,7 @@
   - 整份文件解析后**一次事务批量写入**本地库，按单词去重并报告跳过数；新建牌组时 `source=null` 故可重复导入（各自新建卡组）
 - **数据存储（v0.4）**：卡片正文与学习进度存 **IndexedDB**（库 `mycard` v2，stores：`decks` / `cards` / `meta` / `lookup`），localStorage 只保留设置与卡组清单（key `mycard-meta`）；旧版 `mycard-v1` 整库会在首次启动时**自动迁移**到 IndexedDB 并删除旧键，从而支持万词级词库
 - **内置词库**：仅内置「英语高频词（示范）」约 60 词（`data/words.json` ＋ 易混分组 `data/confusables.json`），首次打开**自动导入**并按难度编排 3 关；应用不再内置其它词库，需要时可用首页「导入」按钮导入自己的 CSV / JSON 词表（见上一条）。旧版本曾内置的 10 本考试词库（考研 / 四级 / 六级 / 托福 / 雅思 / 专四 / 专八 / SAT / 初中 / 高中）已下线，浏览器里**遗留的历史卡组会在启动时自动清理**（按 `source` 精确匹配，仅删这些内置卡组，不影响你自建的卡组与「我的生词」）
-- **PWA**：`manifest.json` ＋ `sw.js`；**代码 / 数据走网络优先**（在线总是最新，离线回退缓存），图片走缓存优先；新版本 SW 接管后自动刷新一次，通常**一次刷新即可看到新功能**；顶栏显示当前版本号（当前 `v0.4.10`），设置页另提供「强制刷新到最新版（清理离线缓存）」应对极端缓存情况
+- **PWA**：`manifest.json` ＋ `sw.js`；**代码 / 数据走网络优先**（在线总是最新，离线回退缓存），图片走缓存优先；新版本 SW 接管后自动刷新一次，通常**一次刷新即可看到新功能**；顶栏显示当前版本号（当前 `v0.4.11`），设置页另提供「强制刷新到最新版（清理离线缓存）」应对极端缓存情况
 - **界面**：移动端优先、深色主题、毛玻璃（glassmorphism）卡片；**桌面端自适应** —— `#app` 按 640 / 960 / 1280 / 1600px 断点逐级放宽（600 → 760 → 1080 → 1280 → 1440px），卡组用 `auto-fill` 网格随宽度平铺 2–5 列，宽屏下关卡列表两列平铺
 
 ## 目录结构
@@ -72,7 +75,9 @@
 │   ├── test-engine.js      # 测试引擎（抽题 / 循环 / 题型分配 / 优先池 / 进度）
 │   ├── test.js             # 测试题模式（7 种题型 + 整卡组可配置测试）
 │   ├── add-words.js        # 首页添加单词/词表：语种检测 / 分词 / 在线查词 / 缓存 / 预览
-│   └── import-file.js      # 本地文件导入：CSV/TSV/JSON 解析（零依赖）+ 前 10 行预览弹窗 + 拖拽区 + 文件选择器
+│   └── import-file.js      # 本地文件导入：CSV/TSV/JSON 解析（零依赖）+ 前 10 行预览弹窗 + 字段映射 + 拖拽区
+├── vendor/
+│   └── sql.js/             # 内置 sql.js（MIT）：WASM 版 SQLite，用于导出 .apkg（含 package.json 声明 CommonJS）
 ├── data/
 │   ├── words.json          # 示范词库（60 词 / 3 关）
 │   ├── confusables.json    # 易混分组（39 组）+ 多释义（51 词）
@@ -105,8 +110,9 @@
     ├── test-idb-store.mjs  # 存储层（迁移 / 写穿 / 重载水合 / 重排 / 旧内置词库清理，42 项断言）
     ├── test-add-words.mjs  # 首页添加单词 / 词表（82 项断言）
     ├── test-import-file.mjs# 本地文件导入（解析/表头映射/预览/字段映射/目标牌组/追加/大词表，200 项断言）
-    ├── smoke-dom.mjs       # 无头 DOM 冒烟（模块 + 各界面渲染，120 项断言）
-    └── verify-assets.mjs   # 资源完整性校验（140 项）
+    ├── test-export.mjs     # 导出 txt/Anki apkg（ZIP+CRC32、Anki schema、Python sqlite3 校验产物，65 项断言）
+    ├── smoke-dom.mjs       # 无头 DOM 冒烟（模块 + 各界面渲染 + 明暗切换 + 导出入口，124 项断言）
+    └── verify-assets.mjs   # 资源完整性校验（156 项）
 ```
 
 ## 本地运行
@@ -143,12 +149,13 @@ node scripts/test-multi-sense.mjs     # 多义多选题型（中文优先→GCID
 node scripts/test-idb-store.mjs       # 存储层（迁移 / 写穿 / 重载水合 / 重排 / 旧内置词库清理，42 项）
 node scripts/test-add-words.mjs       # 首页添加单词/词表（语种/分词/查词/缓存/限速/去重落库，82 项）
 node scripts/test-import-file.mjs     # 本地文件导入（解析/预览/字段映射/目标牌组/追加/大词表端到端，200 项）
-node scripts/smoke-dom.mjs            # 无头 DOM 冒烟（模块 + 各界面渲染 + 明暗切换，120 项）
-node scripts/verify-assets.mjs        # PWA 资源完整性 + 预览 / 字段映射 / 明暗模式校验（140 项）
+node scripts/test-export.mjs          # 导出 txt / Anki apkg（ZIP·CRC32·Anki schema，Python sqlite3 校验，65 项）
+node scripts/smoke-dom.mjs            # 无头 DOM 冒烟（模块 + 各界面渲染 + 明暗切换 + 导出入口，124 项）
+node scripts/verify-assets.mjs        # PWA 资源完整性 + 字段映射 / 明暗模式 / 导出校验（156 项）
 node --check js/*.js                  # 语法检查
 ```
 
-当前合计 **1263 条校验**（各套件输出的 `✓`）**全部通过、0 失败**（含纯函数单测、无头 DOM 冒烟、IndexedDB 存储与大词表端到端）。
+当前合计 **1348 条校验**（各套件输出的 `✓`）**全部通过、0 失败**（含纯函数单测、无头 DOM 冒烟、IndexedDB 存储、大词表导入与 Anki 卡包产物校验）。
 
 ## 部署：Cloudflare Pages
 
@@ -309,6 +316,7 @@ node --check js/*.js                  # 语法检查
 
 - 英文释义（英英选择 / 多义多选）来自 **GCIDE**（GNU Collaborative International Dictionary of English），由 `scripts/build-engdefs.mjs` 生成 `data/eng-defs.json`（仓库内已提供；`gcide-0.51/` 源语料约 60MB、属本地数据不入库，需要重建时自行下载后放到该目录）；
 - 词频表 `data/frequency.json` 由 COCA 2 万高频词表生成，用于难度判定；
-- 在线查词使用 [Free Dictionary API](https://dictionaryapi.dev/) 与 [Jisho](https://jisho.org/api)。
+- 在线查词使用 [Free Dictionary API](https://dictionaryapi.dev/) 与 [Jisho](https://jisho.org/api)；
+- 导出 Anki 卡包所用的 SQLite 由内置的 [sql.js](https://github.com/sql-js/sql.js)（MIT）生成，已随仓库内置于 `vendor/sql.js/`。
 
 本项目仅供学习用途。觉得有帮助的话，欢迎前往 [GitHub 项目主页](https://github.com/zhangziluo/MyCard) 点亮 Star ⭐

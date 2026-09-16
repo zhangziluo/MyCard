@@ -214,5 +214,24 @@ console.log('\n[浅色 / 深色模式（js/theme.js + css/style.css + index.html
   must(css.split('{').length === css.split('}').length, 'CSS 花括号平衡');
 }
 
+console.log('\n[导出 txt / Anki apkg（js/export.js + vendor/sql.js）]');
+{
+  const expSrc = readFileSync(rel('js/export.js'), 'utf8');
+  const decksSrc = readFileSync(rel('js/decks.js'), 'utf8');
+  must(existsSync(rel('js/export.js')), 'js/export.js 存在');
+  must(sw.includes("'./js/export.js'"), 'sw.js PRECACHE 含 ./js/export.js');
+  must(existsSync(rel('vendor/sql.js/sql-wasm.js')) && existsSync(rel('vendor/sql.js/sql-wasm.wasm')), 'vendor/sql.js 已内置（js + wasm）');
+  must(existsSync(rel('vendor/sql.js/package.json')), 'vendor/sql.js/package.json 声明 CommonJS（供 Node 测试加载）');
+  must(sw.includes("'./vendor/sql.js/sql-wasm.wasm'"), 'sw.js 预缓存 sql.js WASM（离线也能导出 apkg）');
+  must(/export function deckToTxt/.test(expSrc) && /export async function deckToApkg/.test(expSrc), '提供 deckToTxt / deckToApkg');
+  must(/export function exportDeckTxt/.test(expSrc) && /export async function exportDeckApkg/.test(expSrc), '提供导出入口函数');
+  must(/export function crc32/.test(expSrc) && /export function zipStore/.test(expSrc), '内置最小 ZIP 写出器（CRC32 + STORED）');
+  must(expSrc.includes('collection.anki2') && expSrc.includes('CREATE TABLE col') && expSrc.includes('CREATE TABLE notes'), 'apkg 内为 Anki collection.anki2 + 完整 schema');
+  must(expSrc.includes('initSqlJs') && expSrc.includes('sql-wasm.wasm'), '通过 sql.js(WASM) 生成 SQLite');
+  must(expSrc.includes('createObjectURL') && expSrc.includes('downloadBlob'), '用 Blob + createObjectURL 触发下载');
+  must(/data-action="export-txt"/.test(decksSrc) && /data-action="export-apkg"/.test(decksSrc), '卡组菜单含两个导出入口');
+  must(/from '\.\/export\.js'|import '\.\/export\.js'/.test(decksSrc), 'decks.js 加载 export.js（注册导出动作）');
+}
+
 console.log(failed ? `\n共 ${failed} 项校验失败` : '\n全部资源校验通过 ✔');
 process.exit(failed ? 1 : 0);

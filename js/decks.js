@@ -10,6 +10,7 @@ import * as te from './test-engine.js';
 import { clearTestSession } from './test.js';
 import { addWordsPanelHtml } from './add-words.js';
 import { importFileButtonHtml, dropzoneHtml, bindDropzone } from './import-file.js';
+import './export.js'; // 注册卡组菜单的「导出 txt / apkg」动作
 import { esc, on, navigate, openModal, closeModal, readForm, toast, confirmDialog, parseTags } from './ui.js';
 
 const ACTIVE_TAG_KEY = 'mycard-active-tag';
@@ -32,6 +33,7 @@ function icon(name, size = 18) {
     play: '<path d="M7 5.5v13l11-6.5L7 5.5Z"/>',
     refresh: '<path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3.5V9h-5.5"/>',
     card: '<rect x="5" y="3" width="14" height="18" rx="2.5"/><path d="M9 8h6M9 12h6"/>',
+    download: '<path d="M12 4v11"/><path d="m7 10 5 5 5-5"/><path d="M5 20h14"/>',
     tag: '<path d="M12 2H2v10l9.3 9.3a2 2 0 0 0 2.8 0l7-7a2 2 0 0 0 0-2.8L12 2Z"/><circle cx="7.5" cy="7.5" r="1.2"/>',
     chevron: '<path d="m6 9 6 6 6-6"/>'
   };
@@ -512,6 +514,8 @@ function deckMenu(deckId) {
         <button class="menu-item" data-action="deck-edit" data-id="${esc(deck.id)}">${icon('edit', 18)} 编辑卡组</button>
         <button class="menu-item" data-action="deck-pause" data-id="${esc(deck.id)}">${icon(deck.paused ? 'play' : 'pause', 18)} ${deck.paused ? '恢复卡组' : '暂停卡组'}</button>
         <button class="menu-item" data-action="open-cards-from-menu" data-id="${esc(deck.id)}">${icon('cards', 18)} 管理卡片（${deck.cards.length} 张）</button>
+        <button class="menu-item" data-action="export-txt" data-id="${esc(deck.id)}">${icon('download', 18)} 导出为 txt 词表</button>
+        <button class="menu-item" data-action="export-apkg" data-id="${esc(deck.id)}">${icon('download', 18)} 导出为 Anki 卡包（.apkg）</button>
         <button class="menu-item danger-item" data-action="deck-delete" data-id="${esc(deck.id)}">${icon('trash', 18)} 删除卡组</button>
       </div>`
   });

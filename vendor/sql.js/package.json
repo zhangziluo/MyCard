@@ -1,0 +1,8 @@
+{
+  "name": "sql.js-vendor",
+  "private": true,
+  "description": "sql.js 官方发行版（sql-wasm.js + sql-wasm.wasm），本地内置用于导出 .apkg。此 package.json 仅用于声明该目录为 CommonJS，便于 Node 测试用 require 加载 UMD 构建。",
+  "version": "1.13.0",
+  "type": "commonjs",
+  "license": "MIT"
+}
