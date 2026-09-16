@@ -11,7 +11,7 @@ import * as decks from './decks.js';
 import { renderReview, clearReviewSession } from './review.js';
 import { renderTest, clearTestSession } from './test.js';
 
-const APP_VERSION = 'v0.4.9';
+const APP_VERSION = 'v0.4.10';
 
 /* ------------------------------ 路由解析 ------------------------------ */
 
@@ -41,6 +41,29 @@ function parseHash() {
     return { view: 'test', id: seg[1], level: Number(seg[2]), mode };
   }
   return { view: 'home', mode };
+}
+
+/* ------------------------------ 明暗模式 UI ------------------------------ */
+
+/** 明暗模式图标：sun / moon / auto */
+function modeIcon(name, size = 18) {
+  const paths = {
+    sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
+    moon: '<path d="M21 12.8A8.5 8.5 0 1 1 11.2 3a6.6 6.6 0 0 0 9.8 9.8Z"/>',
+    auto: '<circle cx="12" cy="12" r="9"/><path d="M12 3v18"/><path d="M12 3a9 9 0 0 1 0 18Z" fill="currentColor" stroke="none"/>'
+  };
+  return `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths[name] || ''}</svg>`;
+}
+
+/** 顶栏明暗快捷切换（图标 = 点击后会切换到的模式） */
+function themeToggleHtml() {
+  const effective = theme.resolveMode(theme.loadMode());
+  const next = effective === 'dark' ? 'light' : 'dark';
+  const label = next === 'light' ? '切换到浅色模式' : '切换到深色模式';
+  return `<button class="icon-btn glass" data-action="toggle-mode" aria-label="${label}" title="${label}">${modeIcon(
+    next === 'light' ? 'sun' : 'moon',
+    19
+  )}</button>`;
 }
 
 /* ------------------------------ 顶栏 ------------------------------ */
@@ -93,7 +116,7 @@ function renderAppbar(route) {
   back.dataset.href = backHref || '';
   title.textContent = t;
   const sideEl = document.getElementById('appbar-side');
-  sideEl.innerHTML = side;
+  sideEl.innerHTML = themeToggleHtml() + side;
 }
 
 on('nav-back', (el) => {
@@ -138,9 +161,23 @@ function renderSettings(root) {
   const info = store.storageInfo();
   const sizeKb = info.localBytes / 1024;
   const accent = theme.loadAccent();
+  const mode = theme.loadMode();
 
   root.innerHTML = `
   <div class="view settings-view">
+    <section class="panel glass">
+      <h3 class="panel-title">外观</h3>
+      <p class="panel-desc">浅色 / 深色主题，或跟随系统设置自动切换；选择保存在本机（清空数据不会重置）。</p>
+      <div class="segmented" role="group" aria-label="明暗模式">
+        ${theme.MODES.map(
+          (m) =>
+            `<button class="seg-btn${mode === m.id ? ' is-active' : ''}" data-action="set-mode" data-mode="${m.id}" aria-pressed="${
+              mode === m.id ? 'true' : 'false'
+            }">${modeIcon(m.icon, 16)}<span>${m.label}</span></button>`
+        ).join('')}
+      </div>
+    </section>
+
     <section class="panel glass">
       <h3 class="panel-title">主题色</h3>
       <p class="panel-desc">选择网页主色调，按钮、进度条、徽标、氛围光会全局跟随；选择保存在本机（清空数据不会重置）。</p>
@@ -214,6 +251,20 @@ on('set-accent', (el) => {
   theme.setAccent(color);
   render();
 });
+
+/* 设置页「外观」：浅色 / 深色 / 跟随系统 */
+on('set-mode', (el) => {
+  const m = el.dataset && el.dataset.mode;
+  if (!m) return;
+  theme.setMode(m);
+  render();
+});
+
+/* 顶栏：明暗快捷切换（浅色 ⇄ 深色） */
+on('toggle-mode', () => {
+  theme.toggleMode();
+  render();
+});
 /* 拖动取色时即时生效（不重渲染，避免打断系统取色器） */
 on(
   'accent-input',
@@ -272,7 +323,7 @@ on('hard-refresh', async () => {
 function boot() {
   // 主题色：尽早写入 CSS 变量，避免首屏闪回默认色
   try {
-    theme.init();
+    theme.init(() => render());
   } catch (e) {}
 
   bindDocument();

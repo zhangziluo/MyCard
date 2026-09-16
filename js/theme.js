@@ -1,15 +1,32 @@
 // ============================================================================
-// theme.js — 主题色（主色调）自定义
+// theme.js — 主题：主色调（accent）+ 明暗模式（浅色 / 深色 / 跟随系统）
 //
-// 做法：把选中的颜色换算成一组 CSS 变量写在 <html> 上，覆盖 style.css 里
+// 主色调：把选中的颜色换算成一组 CSS 变量写在 <html> 上，覆盖 style.css 里
 // :root 的默认值；CSS 中所有强调色都引用 var(--accent) / rgba(var(--accent-rgb), a)，
 // 因此换色后按钮、进度条、徽标、氛围光等会全局跟随。
 //
-// 存储：localStorage['mycard-accent']（独立于卡组数据，清空数据不会重置主题）。
+// 明暗模式：在 <html> 上写 data-theme="dark|light"，由 CSS 的
+// :root[data-theme="light"] 覆盖背景 / 文字 / 玻璃层等语义变量。
+//
+// 存储：localStorage['mycard-accent'] / localStorage['mycard-mode']
+//       （独立于卡组数据，清空数据不会重置主题）
 // ============================================================================
 
 export const ACCENT_KEY = 'mycard-accent';
 export const DEFAULT_ACCENT = '#6a7bff';
+
+export const MODE_KEY = 'mycard-mode';
+export const DEFAULT_MODE = 'dark';
+/** 明暗模式档位（mode='system' 时跟随系统 prefers-color-scheme） */
+export const MODES = [
+  { id: 'light', label: '浅色', icon: 'sun' },
+  { id: 'dark', label: '深色', icon: 'moon' },
+  { id: 'system', label: '跟随系统', icon: 'auto' }
+];
+export const MODE_IDS = MODES.map((m) => m.id);
+/** 浏览器地址栏 / 顶栏配色（<meta name="theme-color">） */
+export const THEME_COLOR = { dark: '#0b0d17', light: '#f4f5fa' };
+
 
 /** 预设主题色 */
 export const ACCENT_PRESETS = [
@@ -142,8 +159,108 @@ export function setAccent(hex) {
   return norm;
 }
 
-/** 启动时应用已保存的主题色 */
-export function init() {
-  return applyAccent(loadAccent());
+/* ------------------------------ 明暗模式 ------------------------------ */
+
+/** 系统是否偏好深色（无 matchMedia 的测试环境 → true，即默认深色） */
+export function systemPrefersDark(mq = null) {
+  try {
+    const q = mq || (typeof matchMedia === 'function' ? matchMedia('(prefers-color-scheme: dark)') : null);
+    if (q && typeof q.matches === 'boolean') return q.matches;
+  } catch (e) {}
+  return true;
+}
+
+/** 把 mode（light/dark/system）解析为实际生效的 'light' | 'dark' */
+export function resolveMode(mode, mq = null) {
+  const m = MODE_IDS.includes(mode) ? mode : DEFAULT_MODE;
+  if (m === 'system') return systemPrefersDark(mq) ? 'dark' : 'light';
+  return m;
+}
+
+/** 更新 <meta name="theme-color">（地址栏 / 状态栏配色跟随明暗） */
+export function applyThemeColor(effective, root = null) {
+  const doc = root && root.querySelector ? root : typeof document !== 'undefined' ? document : null;
+  if (!doc || typeof doc.querySelector !== 'function') return null;
+  const meta = doc.querySelector('meta[name="theme-color"]');
+  if (!meta || !meta.setAttribute) return null;
+  const color = THEME_COLOR[effective] || THEME_COLOR.dark;
+  meta.setAttribute('content', color);
+  return color;
+}
+
+/**
+ * 应用明暗模式：在 <html> 上写 data-theme，并同步 theme-color。
+ * @returns {'light'|'dark'} 实际生效的模式
+ */
+export function applyMode(mode, { mq = null, root = null } = {}) {
+  const effective = resolveMode(mode, mq);
+  const el = root || (typeof document !== 'undefined' ? document.documentElement : null);
+  if (el) {
+    if (el.dataset && typeof el.dataset === 'object') el.dataset.theme = effective;
+    else if (el.setAttribute) el.setAttribute('data-theme', effective);
+    if (el.style && typeof el.style.setProperty === 'function') el.style.setProperty('color-scheme', effective);
+  }
+  applyThemeColor(effective, root);
+  return effective;
+}
+
+/** 读取已保存模式（无 / 非法 → 默认深色） */
+export function loadMode() {
+  try {
+    const raw = localStorage.getItem(MODE_KEY);
+    return MODE_IDS.includes(raw) ? raw : DEFAULT_MODE;
+  } catch (e) {
+    return DEFAULT_MODE;
+  }
+}
+
+/** 保存模式 */
+export function saveMode(mode) {
+  const m = MODE_IDS.includes(mode) ? mode : DEFAULT_MODE;
+  try {
+    localStorage.setItem(MODE_KEY, m);
+  } catch (e) {}
+  return m;
+}
+
+/** 保存并应用模式（UI 入口调用） */
+export function setMode(mode, opts = {}) {
+  const m = saveMode(mode);
+  applyMode(m, opts);
+  return m;
+}
+
+/** 快速在浅色 / 深色之间切换（system 视为其反色） */
+export function toggleMode(opts = {}) {
+  const effective = resolveMode(loadMode(), opts.mq || null);
+  return setMode(effective === 'dark' ? 'light' : 'dark', opts);
+}
+
+let systemListenerBound = false;
+/** 跟随系统时，系统切换明暗自动跟随（只需绑定一次） */
+export function bindSystemWatcher(onChange = null) {
+  if (systemListenerBound || typeof matchMedia !== 'function') return false;
+  try {
+    const mq = matchMedia('(prefers-color-scheme: dark)');
+    if (!mq || typeof mq.addEventListener !== 'function') return false;
+    mq.addEventListener('change', () => {
+      if (loadMode() !== 'system') return;
+      const applied = applyMode('system', { mq });
+      if (onChange) onChange(applied);
+    });
+    systemListenerBound = true;
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
+/** 启动时应用已保存的主色调与明暗模式 */
+export function init(onChange = null) {
+  const mode = loadMode();
+  const accent = applyAccent(loadAccent());
+  const applied = applyMode(mode);
+  bindSystemWatcher(onChange);
+  return { accent, mode, applied };
 }
 

@@ -168,5 +168,51 @@ console.log('\n[本地文件导入词库（js/import-file.js）]');
   must(css.includes('var(--glass-brd)') && css.includes('var(--tx3)'), '预览/拖拽样式复用暗色 CSS 变量');
 }
 
+console.log('\n[浅色 / 深色模式（js/theme.js + css/style.css + index.html）]');
+{
+  const themeSrc = readFileSync(rel('js/theme.js'), 'utf8');
+  const appSrc = readFileSync(rel('js/app.js'), 'utf8');
+  const html = readFileSync(rel('index.html'), 'utf8');
+
+  must(themeSrc.includes("MODE_KEY = 'mycard-mode'"), 'theme.js 定义 mycard-mode 存储键');
+  must(/export function applyMode/.test(themeSrc) && /export function resolveMode/.test(themeSrc), 'theme.js 提供 applyMode / resolveMode');
+  must(/export function toggleMode/.test(themeSrc) && /export function setMode/.test(themeSrc), 'theme.js 提供 setMode / toggleMode');
+  must(themeSrc.includes("'light'") && themeSrc.includes("'dark'") && themeSrc.includes("'system'"), '三档：浅色 / 深色 / 跟随系统');
+  must(themeSrc.includes('prefers-color-scheme: dark'), '跟随系统用 prefers-color-scheme');
+  must(themeSrc.includes('theme-color'), '同步 <meta name="theme-color">');
+
+  must(/data-action="toggle-mode"/.test(appSrc), '顶栏渲染明暗快捷切换按钮');
+  must(/on\('set-mode'/.test(appSrc) && /on\('toggle-mode'/.test(appSrc), 'app.js 注册 set-mode / toggle-mode');
+  must(appSrc.includes('theme.MODES.map'), '设置页「外观」按 MODES 渲染分段按钮');
+  must(appSrc.includes('theme.init(() => render())'), '启动时应用明暗模式并跟随系统变化重渲染');
+
+  must(html.includes("mycard-mode"), 'index.html 首屏前读取已保存模式（防闪屏）');
+  must(html.includes("setAttribute('data-theme'"), 'index.html 内联脚本提前写 data-theme');
+
+  // CSS：浅色主题覆盖块 + color-scheme + 变量完整性
+  must(css.includes(":root[data-theme='light']"), 'CSS 存在浅色主题覆盖块');
+  must(/color-scheme:\s*dark/.test(css) && /color-scheme:\s*light/.test(css), '深/浅两套 color-scheme（原生控件跟随）');
+  const lightBlock = css.slice(css.indexOf(":root[data-theme='light']"));
+  for (const v of ['--bg', '--bg2', '--bg3', '--tx', '--tx2', '--tx3', '--glass-bg', '--glass-bg-strong', '--glass-brd', '--shadow', '--ovl-1', '--field-bg', '--panel-top', '--appbar-solid', '--teal-tx']) {
+    must(lightBlock.includes(v + ':'), `浅色主题覆盖 ${v}`);
+  }
+  must(css.includes('.seg-btn') && css.includes('.segmented'), '设置页分段按钮样式');
+  // 硬编码中性色已收敛为变量（浅色下才能整体翻转）；仅变量定义行允许保留
+  const cssNoDefs = css
+    .split('\n')
+    .filter((l) => !/^\s*--[a-z0-9-]+\s*:/.test(l))
+    .join('\n');
+  const leftover =
+    (cssNoDefs.match(/rgba\(255, ?255, ?255, 0\.0[0-9]\)/g) || []).length +
+    (cssNoDefs.match(/rgba\(10, ?13, ?26,/g) || []).length;
+  must(leftover === 0, `规则中不再有硬编码中性色（定义行除外），实际 ${leftover}`);
+  // 变量使用审计：var(--x) 必须都已定义
+  const defined = new Set([...css.matchAll(/^\s*(--[a-z0-9-]+)\s*:/gm)].map((m) => m[1]));
+  const used = new Set([...css.matchAll(/var\((--[a-z0-9-]+)/g)].map((m) => m[1]));
+  const missing = [...used].filter((v) => !defined.has(v));
+  must(missing.length === 0, `var() 引用均已定义（未定义：${missing.join(', ') || '无'}）`);
+  must(css.split('{').length === css.split('}').length, 'CSS 花括号平衡');
+}
+
 console.log(failed ? `\n共 ${failed} 项校验失败` : '\n全部资源校验通过 ✔');
 process.exit(failed ? 1 : 0);

@@ -23,7 +23,8 @@
     - **英英选择 `eng_eng`**（*建议考研及以上水平使用（需较强英文阅读理解能力）*）：子模式 A「看单词选英文释义」/ 子模式 B「看英文释义猜单词」随机出现，释义取自 GCIDE
     - **多义多选 `multi_sense`**（*建议考研及以上水平使用*）：勾选该词**全部释义**后提交判分，**全对才算对**，漏选 / 多选 / 错选均算错；释义优先取卡组内中文释义（`back` ＋ 多释义），缺失时回退 GCIDE 英文释义
 - **整卡组可配置测试**：题数 **20~150** 可调（快速 20 / 标准 50 / 挑战 150 ＋ 滑块，步长 10），题型按权重分配、词数不足时循环覆盖，错题进优先池，支持中途退出续做
-- **主题色（v0.4.1）**：设置页可切换主色调（8 个预设 ＋ 自定义取色），按钮 / 进度条 / 徽标 / 氛围光全局跟随
+- **明暗模式（v0.4.10）**：**浅色 / 深色 / 跟随系统** 三档，设置页顶部「外观」区块切换，顶栏右侧一键快捷切换（浅色 ⇄ 深色）；切换即时生效并保存在本机（`localStorage['mycard-mode']`）；跟随系统时监听 `prefers-color-scheme` 自动跟随，`<meta name="theme-color">` 与原生控件（`color-scheme`）一并跟随；`index.html` 首屏前内联读取模式写 `<html data-theme>`，**不会先闪一下深色**
+- **主题色（v0.4.1）**：设置页可切换主色调（8 个预设 ＋ 自定义取色），按钮 / 进度条 / 徽标 / 氛围光全局跟随（浅色 / 深色下均可用）
 - **首页添加单词 / 词表（v0.6）**：首页顶部只有一个输入框，自动判断三种输入并统一走「查词 → 预览 → 加入『我的生词』」
   - **单个单词**：在线查词典（按字符范围自动判断语种：英 / 德 / 法 / 希腊语走 [Free Dictionary API](https://dictionaryapi.dev/)，日语走 [Jisho](https://jisho.org/api)），预览音标 ＋ 多条释义后一键加入
   - **词表（每行一个，≤1000 词）**：批量查词，进度条显示「已处理 23/100」，请求间隔 ≥ 100ms，未查到的词集中列出
@@ -39,7 +40,7 @@
   - 整份文件解析后**一次事务批量写入**本地库，按单词去重并报告跳过数；新建牌组时 `source=null` 故可重复导入（各自新建卡组）
 - **数据存储（v0.4）**：卡片正文与学习进度存 **IndexedDB**（库 `mycard` v2，stores：`decks` / `cards` / `meta` / `lookup`），localStorage 只保留设置与卡组清单（key `mycard-meta`）；旧版 `mycard-v1` 整库会在首次启动时**自动迁移**到 IndexedDB 并删除旧键，从而支持万词级词库
 - **内置词库**：仅内置「英语高频词（示范）」约 60 词（`data/words.json` ＋ 易混分组 `data/confusables.json`），首次打开**自动导入**并按难度编排 3 关；应用不再内置其它词库，需要时可用首页「导入」按钮导入自己的 CSV / JSON 词表（见上一条）。旧版本曾内置的 10 本考试词库（考研 / 四级 / 六级 / 托福 / 雅思 / 专四 / 专八 / SAT / 初中 / 高中）已下线，浏览器里**遗留的历史卡组会在启动时自动清理**（按 `source` 精确匹配，仅删这些内置卡组，不影响你自建的卡组与「我的生词」）
-- **PWA**：`manifest.json` ＋ `sw.js`；**代码 / 数据走网络优先**（在线总是最新，离线回退缓存），图片走缓存优先；新版本 SW 接管后自动刷新一次，通常**一次刷新即可看到新功能**；顶栏显示当前版本号（当前 `v0.4.9`），设置页另提供「强制刷新到最新版（清理离线缓存）」应对极端缓存情况
+- **PWA**：`manifest.json` ＋ `sw.js`；**代码 / 数据走网络优先**（在线总是最新，离线回退缓存），图片走缓存优先；新版本 SW 接管后自动刷新一次，通常**一次刷新即可看到新功能**；顶栏显示当前版本号（当前 `v0.4.10`），设置页另提供「强制刷新到最新版（清理离线缓存）」应对极端缓存情况
 - **界面**：移动端优先、深色主题、毛玻璃（glassmorphism）卡片；**桌面端自适应** —— `#app` 按 640 / 960 / 1280 / 1600px 断点逐级放宽（600 → 760 → 1080 → 1280 → 1440px），卡组用 `auto-fill` 网格随宽度平铺 2–5 列，宽屏下关卡列表两列平铺
 
 ## 目录结构
@@ -60,7 +61,7 @@
 │   ├── levels.js           # 关卡拆分 / 解锁 / 通关判定 / 关卡分页（纯函数）
 │   ├── difficulty.js       # 难度判定（词频 / 词长 / 音节 / 熟悉度 / 语种特性，纯函数）
 │   ├── arrange.js          # 关卡编排（平缓进阶 / 错峰排列 / 动态调序，纯函数）
-│   ├── theme.js            # 主题色（主色调）自定义：CSS 变量 + 本机持久化
+│   ├── theme.js            # 主题：明暗模式（浅色/深色/跟随系统）+ 主色调自定义（CSS 变量 + 本机持久化）
 │   ├── engdefs.js          # GCIDE 英文释义表懒加载（英英题 / 多义题用）
 │   ├── levelstats.js       # 关卡挑战统计（重刷次数 / 最佳成绩，sessionStorage）
 │   ├── hardwords.js        # 困难词标记（翻转「不认识」记录，localStorage）
@@ -92,7 +93,7 @@
     ├── test-resplit-levels.mjs # 修改每关词数后重新分组（26 项断言）
     ├── test-review-complete.mjs # 翻转完成页「进入测试」可跳转（11 项断言）
     ├── test-review-interaction.mjs # 翻转记忆键盘 / 手势交互链路（12 项断言）
-    ├── test-theme.mjs      # 主题色（28 项断言）
+    ├── test-theme.mjs      # 明暗模式 + 主题色（60 项断言）
     ├── test-confusables.mjs# 干扰项 + 三种题型（82 项断言）
     ├── test-hardwords.mjs  # 整卡组翻转循环 / 困难词标记（26 项断言）
     ├── test-level-retry.mjs# 关卡重新挑战 / 直接测试（73 项断言）
@@ -104,8 +105,8 @@
     ├── test-idb-store.mjs  # 存储层（迁移 / 写穿 / 重载水合 / 重排 / 旧内置词库清理，42 项断言）
     ├── test-add-words.mjs  # 首页添加单词 / 词表（82 项断言）
     ├── test-import-file.mjs# 本地文件导入（解析/表头映射/预览/字段映射/目标牌组/追加/大词表，200 项断言）
-    ├── smoke-dom.mjs       # 无头 DOM 冒烟（模块 + 各界面渲染，108 项断言）
-    └── verify-assets.mjs   # 资源完整性校验（107 项）
+    ├── smoke-dom.mjs       # 无头 DOM 冒烟（模块 + 各界面渲染，120 项断言）
+    └── verify-assets.mjs   # 资源完整性校验（140 项）
 ```
 
 ## 本地运行
@@ -130,7 +131,7 @@ node scripts/test-pagination.mjs      # 关卡分页（> 15 关 → 第 2/X 页�
 node scripts/test-resplit-levels.mjs  # 修改每关词数后旧关卡自动重新分组（26 项）
 node scripts/test-review-complete.mjs # 翻转完成页「进入测试 · 冲刺通关」可跳转（11 项）
 node scripts/test-review-interaction.mjs # 翻转记忆键盘 / 手势交互链路（12 项）
-node scripts/test-theme.mjs           # 主题色（预设 / 自定义 / 持久化 / CSS 变量，28 项）
+node scripts/test-theme.mjs           # 明暗模式（浅色/深色/跟随系统）+ 主题色（60 项）
 node scripts/test-confusables.mjs     # 干扰项 + 三种题型（释义/同组/兜底/单词池/挖空，82 项）
 node scripts/test-hardwords.mjs       # 整卡组翻转循环 / 困难词标记（26 项）
 node scripts/test-level-retry.mjs     # 关卡重新挑战 / 直接测试 / 题型微调（73 项）
@@ -142,12 +143,12 @@ node scripts/test-multi-sense.mjs     # 多义多选题型（中文优先→GCID
 node scripts/test-idb-store.mjs       # 存储层（迁移 / 写穿 / 重载水合 / 重排 / 旧内置词库清理，42 项）
 node scripts/test-add-words.mjs       # 首页添加单词/词表（语种/分词/查词/缓存/限速/去重落库，82 项）
 node scripts/test-import-file.mjs     # 本地文件导入（解析/预览/字段映射/目标牌组/追加/大词表端到端，200 项）
-node scripts/smoke-dom.mjs            # 无头 DOM 冒烟（模块 + 各界面渲染，108 项）
-node scripts/verify-assets.mjs        # PWA 资源完整性 + 预览 / 字段映射 / 旧词库清理校验（107 项）
+node scripts/smoke-dom.mjs            # 无头 DOM 冒烟（模块 + 各界面渲染 + 明暗切换，120 项）
+node scripts/verify-assets.mjs        # PWA 资源完整性 + 预览 / 字段映射 / 明暗模式校验（140 项）
 node --check js/*.js                  # 语法检查
 ```
 
-当前合计 **1186 条校验**（各套件输出的 `✓`）**全部通过、0 失败**（含纯函数单测、无头 DOM 冒烟、IndexedDB 存储与大词表端到端）。
+当前合计 **1263 条校验**（各套件输出的 `✓`）**全部通过、0 失败**（含纯函数单测、无头 DOM 冒烟、IndexedDB 存储与大词表端到端）。
 
 ## 部署：Cloudflare Pages
 
@@ -177,7 +178,8 @@ node --check js/*.js                  # 语法检查
 | IndexedDB `mycard` | store `lookup` | 在线查词缓存（`${lang}_${word}` → 卡片） |
 | localStorage | `mycard-meta` | 设置 ＋ 卡组清单（精简元数据） |
 | localStorage | `mycard-v1` | **旧版整库**（仅迁移用，迁移完成后自动删除） |
-| localStorage | `mycard-accent` | 主题色 |
+| localStorage | `mycard-accent` | 主题色（主色调） |
+| localStorage | `mycard-mode` | 明暗模式（`light` / `dark` / `system`） |
 | localStorage | `mycard-active-tag` | 首页标签筛选 |
 | localStorage | `mycard-hard-words` | 困难词标记 |
 | localStorage | `mycard-test-config` | 测试配置（题数 / 题型权重 / 可选题型开关） |

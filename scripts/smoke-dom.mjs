@@ -69,11 +69,13 @@ const storage = {
 
 const fakeBody = fakeEl();
 const appViewEl = fakeEl();
+const appbarSideEl = fakeEl();
+const htmlEl = fakeEl();
 globalThis.localStorage = storage;
 globalThis.sessionStorage = { ...storage };
 globalThis.document = {
   body: fakeBody,
-  documentElement: fakeEl(),
+  documentElement: htmlEl,
   addEventListener() {},
   removeEventListener() {},
   querySelector() {
@@ -83,7 +85,9 @@ globalThis.document = {
     return [];
   },
   getElementById(id) {
-    return id === 'view' ? appViewEl : fakeEl();
+    if (id === 'view') return appViewEl;
+    if (id === 'appbar-side') return appbarSideEl;
+    return fakeEl();
   },
   createElement() {
     return fakeEl();
@@ -382,6 +386,35 @@ console.log('\n[设置页 · 主题色]');
   await fire('set-accent', { color: '#34d399' });
   ok(globalThis.localStorage.getItem('mycard-accent') === '#34d399', '点击预设色块后保存主题色到 localStorage');
   ok(appViewEl.innerHTML.includes('#34d399'), '设置页重渲染后新主题色高亮');
+}
+
+// ---- 设置页：外观（明暗模式）+ 顶栏快捷切换 ----
+console.log('\n[设置页 · 外观（明暗模式）]');
+{
+  ok(appViewEl.innerHTML.includes('外观'), '设置页渲染「外观」区块');
+  ok(appViewEl.innerHTML.includes('segmented') && appViewEl.innerHTML.includes('set-mode'), '渲染分段按钮（set-mode）');
+  ok(
+    appViewEl.innerHTML.includes('data-mode="light"') &&
+      appViewEl.innerHTML.includes('data-mode="dark"') &&
+      appViewEl.innerHTML.includes('data-mode="system"'),
+    '三档：浅色 / 深色 / 跟随系统'
+  );
+  ok(appViewEl.innerHTML.includes('跟随系统'), '含「跟随系统」文案');
+
+  ok(appbarSideEl.innerHTML.includes('toggle-mode'), '顶栏渲染明暗快捷切换按钮');
+  ok(/切换到(浅色|深色)模式/.test(appbarSideEl.innerHTML), '顶栏按钮带无障碍标签', appbarSideEl.innerHTML.slice(0, 80));
+
+  await fire('set-mode', { mode: 'light' });
+  ok(globalThis.localStorage.getItem('mycard-mode') === 'light', '点击「浅色」保存到 localStorage');
+  ok(globalThis.document.documentElement.dataset.theme === 'light', '<html data-theme="light">');
+  ok(appViewEl.innerHTML.includes('is-active') && appViewEl.innerHTML.includes('data-mode="light"'), '浅色档位高亮');
+
+  await fire('toggle-mode');
+  ok(globalThis.localStorage.getItem('mycard-mode') === 'dark', '顶栏切换 → 深色并保存');
+  ok(globalThis.document.documentElement.dataset.theme === 'dark', '<html data-theme="dark">');
+
+  await fire('toggle-mode');
+  ok(globalThis.localStorage.getItem('mycard-mode') === 'light', '再切一次 → 回到浅色');
 }
 
 console.log(`\n冒烟结果: ${pass} 通过, ${fail} 失败`);

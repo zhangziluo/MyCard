@@ -13,6 +13,22 @@
   <link rel="manifest" href="manifest.json">
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <script>
+    // 防闪屏：在样式表生效前按已保存的明暗模式写 <html data-theme>（与 theme.js 的 resolveMode 一致）
+    try {
+      var m = localStorage.getItem('mycard-mode');
+      var light = m === 'light'
+        ? true
+        : m === 'system'
+          ? !(window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches)
+          : false; // 无记录 / 深色 → 深色（默认主题）
+      var t = light ? 'light' : 'dark';
+      document.documentElement.setAttribute('data-theme', t);
+      document.documentElement.style.colorScheme = t;
+      var meta = document.querySelector('meta[name="theme-color"]');
+      if (meta) meta.setAttribute('content', light ? '#f4f5fa' : '#0b0d17');
+    } catch (e) {}
+  </script>
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>

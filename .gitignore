@@ -3,6 +3,17 @@ node_modules/
 *.log
 .env
 .env.*
+# 考试词库（本地测试用，不入库；需要时用首页「导入」按钮从任意位置选择文件导入）
+data/CET4.json
+data/CET6.json
+data/chuzhong.json
+data/gaozhong.json
+data/kaoyan.json
+data/SAT.json
+data/托福.json
+data/雅思.json
+data/专四.json
+data/专八.json
 # GCIDE 词典源数据（仅供 scripts/split-gcide.mjs、scripts/build-engdefs.mjs 本地使用：
 # 先生成 data/eng-defs.json 才有英英 / 多义题型数据），体积约 60MB，不入版本库。
 # 需要重建时自行下载 GCIDE（gcide-0.51）放到此处，再运行上述脚本。
