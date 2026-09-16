@@ -193,15 +193,20 @@ console.log('\n[浅色 / 深色模式（js/theme.js + css/style.css + index.html
   must(css.includes(":root[data-theme='light']"), 'CSS 存在浅色主题覆盖块');
   must(/color-scheme:\s*dark/.test(css) && /color-scheme:\s*light/.test(css), '深/浅两套 color-scheme（原生控件跟随）');
   const lightBlock = css.slice(css.indexOf(":root[data-theme='light']"));
-  for (const v of ['--bg', '--bg2', '--bg3', '--tx', '--tx2', '--tx3', '--glass-bg', '--glass-bg-strong', '--glass-brd', '--shadow', '--ovl-1', '--field-bg', '--panel-top', '--appbar-solid', '--teal-tx']) {
-    must(lightBlock.includes(v + ':'), `浅色主题覆盖 ${v}`);
-  }
-  must(css.includes('.seg-btn') && css.includes('.segmented'), '设置页分段按钮样式');
-  // 硬编码中性色已收敛为变量（浅色下才能整体翻转）；仅变量定义行允许保留
+  // 变量定义行之外的规则（用于检查是否还有写死的中性色）
   const cssNoDefs = css
     .split('\n')
     .filter((l) => !/^\s*--[a-z0-9-]+\s*:/.test(l))
     .join('\n');
+  for (const v of ['--bg', '--bg2', '--bg3', '--tx', '--tx2', '--tx3', '--glass-bg', '--glass-bg-strong', '--glass-brd', '--shadow', '--ovl-1', '--field-bg', '--panel-top', '--appbar-solid', '--teal-tx', '--modal-a', '--modal-b', '--tag-tx', '--soft-danger-tx']) {
+    must(lightBlock.includes(v + ':'), `浅色主题覆盖 ${v}`);
+  }
+  must(css.includes('.seg-btn') && css.includes('.segmented'), '设置页分段按钮样式');
+  // 弹窗与暗底专用文字必须走变量（浅色下才能整体翻转）
+  must(/\.modal \{[^}]*var\(--modal-a\)/.test(cssNoDefs), '弹窗背景使用 --modal-a/--modal-b 变量');
+  must(!/rgba\(26, 31, 58|rgba\(15, 19, 38/.test(cssNoDefs), '规则中不再有写死的深色弹窗渐变');
+  must(!/#b9c1ff|#ff9ba6|#ffb1b1/.test(cssNoDefs), '暗底专用浅色文字已变量化');
+  // 硬编码中性色已收敛为变量（浅色下才能整体翻转）；仅变量定义行允许保留
   const leftover =
     (cssNoDefs.match(/rgba\(255, ?255, ?255, 0\.0[0-9]\)/g) || []).length +
     (cssNoDefs.match(/rgba\(10, ?13, ?26,/g) || []).length;
