@@ -26,11 +26,13 @@
 # 本地运行（必须 http(s)，file:// 下模块与 SW 受限）
 python3 -m http.server 8080
 
-# 全量校验（20 个 test-*.mjs + smoke-dom + verify-assets = 22 个脚本，1355 条断言）
+# 全量校验（22 个 test-*.mjs + smoke-dom + verify-assets = 24 个脚本，1690 条断言）
 for f in scripts/test-*.mjs scripts/smoke-dom.mjs scripts/verify-assets.mjs; do node "$f"; done
 node --check js/*.js sw.js scripts/*.mjs      # 语法检查
 node scripts/verify-assets.mjs                # 资源/一致性校验（含 CSS 变量审计）
-node scripts/test-export.mjs                  # 会调用 python3（zipfile+sqlite3）校验 .apkg 产物
+node scripts/test-export.mjs                  # 会调用 python3（zipfile+sqlite3）校验 .apkg 产物（含 meta protobuf 字节）
+node scripts/test-perf.mjs                    # 1 万词 / 500 关规模：统计·分组·抽题正确性 + 耗时金丝雀
+node scripts/test-xlsx.mjs                    # 极简 .xlsx 读取器（ZIP STORED/DEFLATE、共享字符串、日期）
 
 # 数据准备（可选，需本地具备 gcide-0.51/）
 node scripts/split-gcide.mjs
@@ -42,7 +44,7 @@ node scripts/gen-examples.mjs --data data/words.json --sample 8
 
 ## 版本号约定
 - **两处必须同步递增**：`sw.js` 的 `VERSION`（缓存键）与 `js/app.js` 的 `APP_VERSION`（顶栏显示）
-- 当前：`APP v0.4.12` / `SW v1.7.13`
+- 当前：`APP v0.5.0` / `SW v1.8.0`
 
 ## 测试工程要点（写新测试时照抄）
 - 每个测试是独立 `.mjs`，自建浏览器桩（localStorage/document/window/location/requestAnimationFrame/HashChangeEvent）

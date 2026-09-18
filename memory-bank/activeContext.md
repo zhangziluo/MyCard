@@ -1,33 +1,41 @@
 # Active Context — 当前焦点
 
-> 更新时间：2026-09-16 ｜ HEAD `d9adbcf` ｜ APP `v0.4.12` / SW `v1.7.13` ｜ 远端 `origin/main` 已同步
+> 更新时间：2026-09-18 ｜ APP `v0.5.0` / SW `v1.8.0` ｜ v0.4.13 ~ v0.5.0 已实现并通过 **1690 条校验**（待提交）
 
 ## 当前状态
-**没有进行中的功能**。最近一轮（浅色模式弹窗修复）已完成、校验通过并推送，工作区干净（仅剩 `.gitignore` 覆盖的本地文件）。
+**v0.4.13（导出扩展）→ v0.5.0（导入增强）连续多轮功能均已实现、校验全绿**，工作区改动待提交/推送。上一轮已推送的是 v0.4.12。
 
 ## 最近完成（倒序）
-1. **v0.4.12 修复**：浅色模式下弹窗仍是深色 → 根因是 `.modal` 背景写死深色渐变；改为 `--modal-a/--modal-b` 变量，并把 `--tag-tx`、`--soft-danger-tx` 一并变量化；`verify-assets` 加防回归断言
-2. **v0.4.11 导出**：卡组菜单 ⋮ 支持导出**标准 txt（TSV）** 与 **Anki `.apkg`**（内置 sql.js 生成 collection.anki2 + 自写最小 ZIP 写出器）；
-3. **v0.4.10 明暗模式**：浅色/深色/跟随系统三档 + 顶栏快捷键 + 防闪屏内联脚本 + CSS 变量化重构（50+ 处硬编码中性色收敛）
-4. **v0.4.9 清理**：启动时按 `source` 清理旧版遗留的内置考试词库（考研等 10 本）
-5. **v0.4.8 大版本**：IndexedDB 存储迁移、难度判定与关卡编排、7 种题型、首页在线查词、CSV/JSON 导入（含预览/字段映射/目标牌组）
-6. **仓库整理**：README 全量同步；`gcide-0.51/` 与考试词库移出版本控制（含一次历史重写 `backup-before-rewrite` 备份分支仍在本地）
+1. **v0.5.0 导入增强**：新增 **`.xlsx`**（`js/xlsx.js` 零依赖：自写 ZIP 读取 + 最小 XML 扫描 → 同一套预览/字段映射）、**多文件批量**（选择器/拖拽多选 → 每文件各建一卡组 + 批量汇总）、**导入历史 / 回滚**（`js/import-history.js`：撤销 = 删新建卡组 / 只移除追加的新增卡片，cardIds 存 IDB）
+2. **v0.4.19 非文字前景随主色**：CSS 8 处非文字 `var(--accent)` → `var(--accent-tx)`（焦点环 / 输入与高亮边框 / `.q-blank` 下划线 / 原生 `accent-color`），浅色系主色下同样醒目
+3. **v0.4.18 卡片管理分页**：`CARDS_PER_PAGE = 100` + `cards-page`，万级卡组不再一次性塞入上万 DOM 节点；并做仓库瘦身（删 `backup-before-rewrite` 与 Cline 检查点 refs + gc → `.git` 49M → 2.4M）
+4. **v0.4.17 大卡组性能**：`deckStats` 单遍遍历、`levelStates(deck, levels)` 复用分组、抽题 O(n) 快路径（万级 150 题 ~400ms → ~10ms）；新增 `test-perf.mjs`
+5. **v0.4.16 复习进度迁移**：`.apkg` `cards` 表按进度写调度（`cardToAnkiSched`）+ **JSON 完整导出/导入**（无损往返，含多释义/分组）
+6. **v0.4.15 对比度求解 + `--accent-tx`**：WCAG 相对亮度二分（任意自定义色两底色都 ≥4.5:1）+ 深色底提亮一档
+7. **v0.4.14 主题对比度**：`--tag-tx` 随 accent 派生（深/浅二档）
+8. **v0.4.13 导出扩展**：新增 CSV（RFC 4180）与 Markdown 导出 + `.apkg` 补 `meta` protobuf
+9. **v0.4.12 修复**：浅色模式弹窗仍为深色（`.modal` 渐变变量化）
+10. **v0.4.11 导出**：标准 txt（TSV）与 Anki `.apkg`
+（更早版本见 `progress.md`）
 
 ## 关键决策（近期）
 - 需求若来自其它栈（Vue/React/TS/Dexie/PapaParse），先确认再**适配到纯 JS 栈**（已发生 3 次）
 - 词库与词条的落库策略：新牌组走 `seedBuiltinDeck`（难度分层+错峰编排）；追加到已有牌组走 `addManyCards`（重拆关卡）；均按单词去重
 - 「我的生词」用 `deck.source==='custom'` 识别，不再用 `level:'custom'`
 - 导出 apkg 采用**内置 sql.js**（用户明确选择，接受打破「零依赖」）而非手写 SQLite
+- `.apkg` 的 `meta` 取 **`LEGACY_1(1)` + 保留 `collection.anki2`**（而非 Anki 自身 legacy 导出的 `LEGACY_2(2)` + `collection.anki21`）：两者新版 Anki 都认，但 LEGACY_1 与 schema v11 自洽且**不破坏 <2.1.50 老版 Anki**；protobuf 仅 `field1=varint`，故自写 2 字节编码 `08 01`，不引 protobuf 库
+- 主题「强调文字色」由 JS 按 accent 派生（`--tag-tx-dark`/`--tag-tx-light`）写 `<html>`，CSS 按 `data-theme` 二选一 → 切色/切模式解耦（`applyMode` 不必知道 accent）；算法 = **保持色相 / 饱和度 + 用 WCAG 相对亮度对 HSL 亮度二分**（目标 4.5:1，任意自定义色均成立，v0.4.15 起替换固定混色）；`--accent-tx` 是 `--tag-tx` 的别名，统一所有「accent 作文字色」的入口；`--soft-danger-tx` 属危险语义色**刻意不跟随** accent
+- 复习进度迁移走两条路：**`.apkg`（→Anki，日粒度近似 due）** 与 **JSON（↔Mycard，无损往返）**；txt/CSV/Markdown 刻意保持纯「词表」。导入侧进度校验统一走 `store.pickScheduling`（state 白名单 / easeFactor 1.3–3.0 / 数值钳制），非法值回退新卡
+- 大卡组性能约定（v0.4.17）：渲染前**只算一次 `deckLevels` 并复用**（`levelStates(deck, levels)`）；统计一律**单遍遍历**；抽题在「词数 ≥ 题数且无优先池」时走 **O(n) 部分洗牌快路径**（与逐次「最少用量」分布等价），避免 O(题数×词数)
 - 考试词库**不入库**（用户确认），本地保留仅供测试
 
 ## 下一步候选（未排期，需用户确认）
-- [ ] 导出格式扩展：CSV（带表头）、Markdown、以及「Anki 新版 `meta` protobuf」以兼容更严格的新版 Anki
-- [ ] 导入增强：Excel `.xlsx`、多文件批量导入、导入历史/回滚
-- [ ] 学习数据：导出/导入**复习进度**（目前导出不含复习状态）
+- [ ] `.xlsx` 增强：多工作表选择、公式求值、合并单元格（当前仅取第一个 sheet）
+- [ ] 复习进度进一步保真：apkg 的 learning 步进 / `revlog` 逐次历史（当前为「日粒度近似」）
 - [ ] 「我的生词」与在线查词的批量管理（去重合并、按标签整理）
 - [ ] 可访问性：键盘焦点环、`aria-*` 补全、`prefers-reduced-motion`
-- [ ] 性能：超大卡组（>1 万）首屏渲染与关卡统计的耗时优化
+- [ ] 带优先池的抽题：词数 ≥ 题数时非优先槽位也走部分洗牌快路径（方案已记入 progress，当前万级 ~110ms 暂无感）
 
 ## 待决问题
-- 浅色模式的**主色调对比度**：标签/强调文字目前用固定深色（`--tag-tx`）而非跟随 accent，若用户选浅色系 accent（如 青碧/翠绿）观感会略不统一——是否引入「按 accent 自动加深」算法？
 - `memory-bank/` 已随仓库纳入版本控制（每次功能收尾时同步更新本目录）
+- （已解决）非文字前景（`.q-blank` 底边 / 焦点环 / 输入边框 / 原生 `accent-color`）已于 v0.4.19 统一改走 `--accent-tx`

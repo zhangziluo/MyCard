@@ -1,9 +1,11 @@
 #!/usr/bin/env node
 // ============================================================================
-// test-export.mjs — 卡组导出（标准 txt / Anki .apkg）测试
+// test-export.mjs — 卡组导出（标准 txt / CSV / Markdown / Anki .apkg）测试
 //   运行: node scripts/test-export.mjs
-// 覆盖：txt 格式与转义 / ZIP 写出器 / CRC32 / Anki schema 与 models·decks·dconf /
-//       collection.anki2 生成（sql.js）→ 用 Python zipfile+sqlite3 独立校验产物
+// 覆盖：txt 格式与转义 / CSV RFC4180 转义与表头 / Markdown 表格与转义 /
+//       Anki meta protobuf（PackageMetadata 版本号）/ ZIP 写出器 / CRC32 /
+//       Anki schema 与 models·decks·dconf / collection.anki2 生成（sql.js）
+//       → 用 Python zipfile+sqlite3 独立校验产物（含 meta 字节）
 // ============================================================================
 
 import { readFileSync, writeFileSync, mkdtempSync } from 'node:fs';
@@ -91,6 +93,58 @@ console.log('\n[标准 txt（TSV）]');
   ok(noHeader.length === 3 && noHeader[0].startsWith('abandon'), 'header:false 不输出列名');
 }
 
+console.log('\n[CSV（带表头）]');
+{
+  ok(ex.csvCell('ab') === 'ab', '普通字段不加引号');
+  ok(ex.csvCell('') === '', '空字段为裸空');
+  ok(ex.csvCell('a,b') === '"a,b"', '含逗号 → 双引号包裹');
+  ok(ex.csvCell('a"b') === '"a""b"', '内部引号加倍为 ""');
+  ok(ex.csvCell('a\nb') === '"a\nb"', '含换行 → 双引号包裹（保留换行）');
+  ok(ex.csvCell(null) === '', 'null 视为空');
+  ok(
+    ex.cardToCsvRow(live.cards[0]).join('|') === 'abandon|v. 放弃|He abandoned the plan.|他放弃了这个计划。|/əˈbændən/|"考研,core"',
+    '一行 6 列且含逗号的标签被引号包裹',
+    ex.cardToCsvRow(live.cards[0])
+  );
+
+  const csv = ex.deckToCsv(live);
+  ok(csv.charCodeAt(0) === 0xfeff, '带 UTF-8 BOM（Excel 识别）');
+  const lines = csv.slice(1).replace(/\r\n$/, '').split('\r\n');
+  ok(lines.length === 4, '表头 + 3 张有效卡', lines.length);
+  ok(lines[0] === ex.TXT_COLUMNS.join(','), '首行为列名（逗号分隔）');
+  ok(lines[1] === 'abandon,v. 放弃,He abandoned the plan.,他放弃了这个计划。,/əˈbændən/,"考研,core"', '首卡整行正确', lines[1]);
+  ok(lines[2] === 'book,n. 书,I read a book.,我读了一本书。,,basic', '空音标保留空列', lines[2]);
+  ok(lines[3] === '"with\ttab\nnewline",含制表符与换行,,,,', '含制表符/换行的单元格被引号包裹且不破坏分行', JSON.stringify(lines[3]));
+  const noHeader = ex.deckToCsv(live, { header: false }).slice(1);
+  ok(noHeader.startsWith('abandon,'), 'header:false 不输出列名');
+}
+
+console.log('\n[Markdown（表格）]');
+{
+  ok(ex.mdCell('a|b') === 'a\\|b', '竖线转义为 \\|');
+  ok(ex.mdCell('a\\b') === 'a\\\\b', '反斜杠转义');
+  ok(ex.mdCell('a\tb') === 'a b', '制表符转空格');
+  ok(ex.mdCell('a\nb') === 'a<br>b', '换行转 <br>');
+  ok(ex.mdCell('  a  ') === 'a', '去首尾空白');
+
+  const md = ex.deckToMarkdown(live);
+  const lines = md.replace(/\n$/, '').split('\n');
+  ok(lines[0] === '# 导出测试·四级', '首行为 # 卡组名标题', lines[0]);
+  ok(lines[1] === '', '标题后空行');
+  ok(lines[2] === '| front | back | example | exampleZh | phonetic | tags |', '表头行', lines[2]);
+  ok(lines[3] === '| --- | --- | --- | --- | --- | --- |', '分隔行', lines[3]);
+  ok(
+    lines[4] === '| abandon | v. 放弃 | He abandoned the plan. | 他放弃了这个计划。 | /əˈbændən/ | 考研,core |',
+    '首卡数据行',
+    lines[4]
+  );
+  ok(lines[6] === '| with tab<br>newline | 含制表符与换行 |  |  |  |  |', '含制表符/换行的卡片被清洗为单行', lines[6]);
+  ok(lines.length === 7, '标题 + 空行 + 表头 + 分隔 + 3 张有效卡', lines.length);
+  ok(!md.includes('没有正面的行'), '无正面卡片被跳过');
+  ok(ex.deckToMarkdown(live, { title: false }).split('\n')[0] === '| front | back | example | exampleZh | phonetic | tags |', 'title:false 直接以表头开始');
+  ok(ex.deckToMarkdown(live, { header: false }).split('\n')[2].startsWith('| abandon |'), 'header:false 不输出表头/分隔行');
+}
+
 console.log('\n[CRC32 与 ZIP 写出器]');
 {
   const crc = ex.crc32(new TextEncoder().encode('123456789'));
@@ -107,6 +161,21 @@ console.log('\n[CRC32 与 ZIP 写出器]');
   const text = new TextDecoder('latin1').decode(zip);
   ok(text.includes('collection.anki2') && text.includes('media'), 'ZIP 内含两个条目名');
   ok(dv.getUint16(zip.length - 14, true) === 2, 'EOCD 记录 2 个条目');
+}
+
+console.log('\n[Anki meta protobuf（PackageMetadata）]');
+{
+  ok(
+    ex.ANKI_META_VERSION.LEGACY_1 === 1 && ex.ANKI_META_VERSION.LEGACY_2 === 2 && ex.ANKI_META_VERSION.LATEST === 3,
+    '版本枚举与 Anki proto 一致（LEGACY_1=1 / LEGACY_2=2 / LATEST=3）'
+  );
+  const b1 = ex.encodePackageMetadata(ex.ANKI_META_VERSION.LEGACY_1);
+  ok(b1 instanceof Uint8Array && b1.length === 2 && b1[0] === 0x08 && b1[1] === 1, 'PackageMetadata{version=1} = 08 01', [...b1]);
+  ok(String([...ex.encodePackageMetadata()]) === '8,1', '默认版本即 LEGACY_1', [...ex.encodePackageMetadata()]);
+  const b300 = ex.encodePackageMetadata(300);
+  ok(b300.length === 3 && b300[0] === 0x08 && b300[1] === 0xac && b300[2] === 0x02, 'varint 多字节编码（300 → 08 AC 02）', [...b300]);
+  const b0 = ex.encodePackageMetadata(0);
+  ok(b0.length === 2 && b0[1] === 0, 'version=0 也有编码（Anki 会判 UNKNOWN 报错，故不采用）', [...b0]);
 }
 
 console.log('\n[Anki schema / 模板 JSON]');
@@ -167,6 +236,74 @@ console.log('\n[下载触发]');
   document.createElement = savedCreateEl;
 }
 
+console.log('\n[Anki 调度映射（复习进度）]');
+{
+  const NOW = 1700000000000;
+  const DAY = ex.ANKI_DAY_MS;
+  ok(DAY === 86400000, 'ANKI_DAY_MS = 86400000');
+
+  const n = ex.cardToAnkiSched({ state: 'new' }, 3, NOW, 0);
+  ok(n.type === 0 && n.queue === 0 && n.due === 3, '新卡：type/queue=0、due=队列位置', n);
+  ok(n.ivl === 0 && n.factor === 2500 && n.reps === 0, '新卡：ivl=0 / factor=2500 / reps=0', n);
+
+  const l = ex.cardToAnkiSched({ state: 'learning', easeFactor: 2.3 }, 5, NOW, 0);
+  ok(l.type === 1 && l.queue === 1 && l.due === 0, '学习卡：type/queue=1、due=今天', l);
+  ok(l.ivl === 0 && l.factor === 2300 && l.reps === 0, '学习卡：ivl=0 / factor=ease×1000', l);
+
+  const r = ex.cardToAnkiSched(
+    { state: 'review', lastReview: NOW, repetitions: 4, interval: 7, easeFactor: 2.6, due: NOW + 7 * DAY },
+    1,
+    NOW,
+    0
+  );
+  ok(r.type === 2 && r.queue === 2, '复习卡：type/queue=2', r);
+  ok(r.ivl === 7, '复习卡：ivl = 间隔天数', r.ivl);
+  ok(r.factor === 2600, '复习卡：factor = easeFactor × 1000', r.factor);
+  ok(r.reps === 4, '复习卡：reps = 连续答对次数', r.reps);
+  ok(r.due === 7, '复习卡：due = 今天 + 剩余天数', r.due);
+
+  ok(
+    ex.cardToAnkiSched({ state: 'review', lastReview: NOW, interval: 3, easeFactor: 2.5, due: NOW - 5 * DAY }, 1, NOW, 0).due === 0,
+    '逾期卡：due 不小于今天'
+  );
+  ok(ex.cardToAnkiSched({ state: 'review', lastReview: NOW, interval: 1, easeFactor: 9, due: NOW }, 1, NOW, 0).factor === 3000, 'easeFactor 上限钳制到 3000');
+  ok(ex.cardToAnkiSched({ state: 'review', lastReview: NOW, interval: 1, easeFactor: 0.1, due: NOW }, 1, NOW, 0).factor === 1300, 'easeFactor 下限钳制到 1300');
+  ok(ex.cardToAnkiSched({ state: 'review', lastReview: NOW, interval: 0.2, easeFactor: 2.5, due: NOW }, 1, NOW, 0).ivl === 1, '不足 1 天的间隔按 1 天');
+  ok(ex.cardToAnkiSched({ state: 'learning' }, 1, NOW, 1).due === 1, 'todayNumber 参与 due 计算');
+  ok(ex.cardToAnkiSched({ state: 'review', lastReview: null }, 2, NOW, 0).type === 0, '无 lastReview 的 review 态按新卡处理');
+}
+
+console.log('\n[JSON 导出（含复习进度）]');
+{
+  const obj = JSON.parse(ex.deckToJson(live));
+  ok(obj.formatVersion === 1, 'formatVersion = 1');
+  ok(obj.name === '导出测试·四级', '包含卡组名', obj.name);
+  ok(obj.cards.length === 3, '只导出有正面的卡（3 张）', obj.cards.length);
+  const c0 = obj.cards[0];
+  ok(c0.front === 'abandon' && c0.exampleZh === '他放弃了这个计划。', '内容字段完整');
+  ok(
+    ['state', 'repetitions', 'interval', 'easeFactor', 'due', 'lastReview'].every((k) => k in c0),
+    '含全部复习进度字段',
+    Object.keys(c0)
+  );
+  ok(c0.state === 'new' && c0.easeFactor === 2.5 && c0.repetitions === 0, '新卡默认进度');
+  ok(ex.deckToJson(live, { pretty: false }).indexOf('\n') === -1, 'pretty:false 输出单行');
+
+  const dj = store.createDeck({ name: 'JSON 进度' });
+  const card = store.addCard(dj.id, { front: 'x', back: 'y' });
+  store.updateCard(dj.id, card.id, {
+    state: 'review',
+    repetitions: 5,
+    interval: 15,
+    easeFactor: 2.7,
+    due: 9999999999999,
+    lastReview: 1700000000000
+  });
+  const jc = JSON.parse(ex.deckToJson(store.getDeck(dj.id))).cards[0];
+  ok(jc.state === 'review' && jc.repetitions === 5 && jc.interval === 15 && jc.easeFactor === 2.7, '复习进度被导出', jc);
+  ok(jc.due === 9999999999999 && jc.lastReview === 1700000000000, 'due / lastReview 被导出', [jc.due, jc.lastReview]);
+}
+
 console.log('\n[.apkg 生成（内置 sql.js）+ Python 独立校验]');
 {
   const require = createRequire(import.meta.url);
@@ -178,6 +315,9 @@ console.log('\n[.apkg 生成（内置 sql.js）+ Python 独立校验]');
 
   const bytes = await ex.deckToApkg(live);
   ok(bytes instanceof Uint8Array && bytes.length > 2000, '生成 .apkg 字节', bytes.length);
+  const zipText = new TextDecoder('latin1').decode(bytes);
+  ok(zipText.includes('collection.anki2') && zipText.includes('meta'), 'ZIP 含 collection.anki2 与 meta 条目名');
+  ok(zipText.includes('\x08\x01'), 'ZIP 内含 PackageMetadata{version=1} 字节（08 01）');
 
   const dir = mkdtempSync(join(tmpdir(), 'mycard-apkg-'));
   const apkgPath = join(dir, 'deck.apkg');
@@ -189,6 +329,7 @@ p = sys.argv[1]
 z = zipfile.ZipFile(p)
 print('NAMES=' + ','.join(sorted(z.namelist())))
 print('MEDIA=' + z.read('media').decode('utf-8'))
+print('META_HEX=' + z.read('meta').hex())
 d = tempfile.mkdtemp()
 f = os.path.join(d, 'collection.anki2')
 open(f, 'wb').write(z.read('collection.anki2'))
@@ -231,8 +372,9 @@ print('INTEGRITY=' + str(con.execute('PRAGMA integrity_check').fetchone()[0]))
     if (i > 0) v[line.slice(0, i).trim()] = line.slice(i + 1).trim();
   }
 
-  ok(v.NAMES === 'collection.anki2,media', 'ZIP 内仅 collection.anki2 与 media', v.NAMES);
+  ok(v.NAMES === 'collection.anki2,media,meta', 'ZIP 内为 collection.anki2 / media / meta', v.NAMES);
   ok(v.MEDIA === '{}', 'media 为 {}');
+  ok(v.META_HEX === '0801', 'meta = PackageMetadata{version=LEGACY_1} 的 protobuf 字节 08 01', v.META_HEX);
   ok(v.TABLES === 'cards,col,graves,notes,revlog', 'SQLite 表结构正确', v.TABLES);
   ok(v.COL_ROWS === '1', 'col 恰 1 行');
   ok(v.VER === '11', 'col.ver = 11（Anki 2.1 schema）', v.VER);
@@ -250,6 +392,56 @@ print('INTEGRITY=' + str(con.execute('PRAGMA integrity_check').fetchone()[0]))
   ok(v.CSUM_POS === 'true', 'csum 已计算（SHA-1 前 8 位）');
   ok(v.CARD === '1,0,0,0,2500,0', 'card：did=1 / ord=0 / 新卡 / factor=2500 / reps=0', v.CARD);
   ok(v.INTEGRITY === 'ok', 'SQLite PRAGMA integrity_check = ok', v.INTEGRITY);
+
+  /* 复习进度随 .apkg 迁移（独立卡组：1 张复习卡 + 1 张新卡） */
+  const NOW2 = 1700000000000;
+  const DAY2 = ex.ANKI_DAY_MS;
+  const dS = store.createDeck({ name: '进度导出' });
+  const revCard = store.addCard(dS.id, { front: 'rev', back: '已复习' });
+  store.addCard(dS.id, { front: 'fresh', back: '新卡' });
+  store.updateCard(dS.id, revCard.id, {
+    state: 'review',
+    repetitions: 4,
+    interval: 7,
+    easeFactor: 2.6,
+    due: NOW2 + 7 * DAY2,
+    lastReview: NOW2
+  });
+  const bytes2 = await ex.deckToApkg(store.getDeck(dS.id), { now: NOW2 });
+  const apkgPath2 = join(mkdtempSync(join(tmpdir(), 'mycard-sched-')), 'sched.apkg');
+  writeFileSync(apkgPath2, bytes2);
+
+  const py2 = [
+    'import os, sqlite3, sys, tempfile, zipfile',
+    'z = zipfile.ZipFile(sys.argv[1])',
+    'd = tempfile.mkdtemp()',
+    "f = os.path.join(d, 'collection.anki2')",
+    "open(f, 'wb').write(z.read('collection.anki2'))",
+    'con = sqlite3.connect(f)',
+    "q = 'SELECT n.sfld, c.type, c.queue, c.due, c.ivl, c.factor, c.reps FROM cards c JOIN notes n ON n.id = c.nid ORDER BY c.id'",
+    'for r in con.execute(q):',
+    "    print('ROW=%s|%d|%d|%d|%d|%d|%d' % r)"
+  ].join('\n');
+  let out2 = '';
+  try {
+    out2 = execFileSync('python3', ['-c', py2, apkgPath2], { encoding: 'utf8' });
+  } catch (e) {
+    ok(false, 'python3 复习进度校验执行失败：' + (e && e.message));
+  }
+  const rows = {};
+  for (const line of out2.trim().split('\n')) {
+    if (!line.startsWith('ROW=')) continue;
+    const [sfld, type, queue, due, ivl, factor, reps] = line.slice(4).split('|');
+    rows[sfld] = { type: +type, queue: +queue, due: +due, ivl: +ivl, factor: +factor, reps: +reps };
+  }
+  ok(!!rows.rev && !!rows.fresh, 'notes 含 rev / fresh 两张卡', Object.keys(rows));
+  const R = rows.rev || {};
+  ok(R.type === 2 && R.queue === 2, 'apkg 复习卡 type/queue = 2', R);
+  ok(R.ivl === 7 && R.factor === 2600 && R.reps === 4, 'apkg 复习卡 ivl=7 / factor=2600 / reps=4', R);
+  ok(R.due === 7, 'apkg 复习卡 due = 7（今天 0 + 剩余 7 天）', R.due);
+  const F = rows.fresh || {};
+  ok(F.type === 0 && F.queue === 0 && F.factor === 2500 && F.reps === 0, 'apkg 新卡仍为 type/queue=0 / factor=2500', F);
+  ok(F.due === 2, 'apkg 新卡 due = 队列位置 2', F.due);
 }
 
 console.log(`\n导出结果: ${pass} 通过, ${fail} 失败`);

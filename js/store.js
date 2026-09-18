@@ -35,6 +35,29 @@ function defaultDb() {
 
 /* ------------------------------ 数据规范化 ------------------------------ */
 
+/**
+ * 提取并校验「复习进度」字段（缺省 / 非法 → 新卡）。
+ * normalizeCard（落库）与导入路径（seedBuiltinDeck / addManyCards）共用，
+ * 使 JSON 导出的复习状态在导入时得以保留。
+ */
+export function pickScheduling(src) {
+  const s = src || {};
+  const num = (v) => (typeof v === 'number' && isFinite(v) ? v : null);
+  const reps = num(s.repetitions);
+  const interval = num(s.interval);
+  const ease = num(s.easeFactor);
+  const due = num(s.due);
+  const last = num(s.lastReview);
+  return {
+    state: ['new', 'learning', 'review'].includes(s.state) ? s.state : 'new',
+    repetitions: reps != null && reps > 0 ? Math.floor(reps) : 0,
+    interval: interval != null && interval > 0 ? interval : 0,
+    easeFactor: ease != null ? Math.max(1.3, Math.min(3.0, ease)) : 2.5,
+    due: due != null && due > 0 ? due : 0,
+    lastReview: last != null && last > 0 ? last : null
+  };
+}
+
 function normalizeCard(c) {
   const now = Date.now();
   return {
@@ -49,12 +72,7 @@ function normalizeCard(c) {
     extraBacks: Array.isArray(c.extraBacks) ? c.extraBacks.map(String) : [],
     createdAt: c.createdAt || now,
     level: Number.isInteger(c.level) && c.level >= 0 ? c.level : 0,
-    state: ['new', 'learning', 'review'].includes(c.state) ? c.state : 'new',
-    repetitions: c.repetitions || 0,
-    interval: c.interval || 0,
-    easeFactor: typeof c.easeFactor === 'number' && isFinite(c.easeFactor) ? c.easeFactor : 2.5,
-    due: c.due || 0,
-    lastReview: c.lastReview ?? null,
+    ...pickScheduling(c),
     src: typeof c.src === 'string' && c.src ? c.src : null, // 来源（online_lookup / batch_import / …）
     addedAt: c.addedAt || null // 加入时间（查词/导入时间）
   };
@@ -581,12 +599,7 @@ export function addManyCards(deckId, items) {
     groups: Array.isArray(f.groups) ? f.groups.map(String) : [],
     extraBacks: Array.isArray(f.extraBacks) ? f.extraBacks.map(String) : [],
     createdAt: Date.now(),
-    state: 'new',
-    repetitions: 0,
-    interval: 0,
-    easeFactor: 2.5,
-    due: 0,
-    lastReview: null,
+    ...pickScheduling(f), // 复习进度随导入保留（缺省 = 新卡）
     src: typeof f.src === 'string' && f.src ? f.src : null,
     addedAt: f.addedAt || null
   }));
@@ -621,6 +634,24 @@ export function updateCard(deckId, cardId, patch) {
   persist();
   queueCard(deckId, card);
   return card;
+}
+
+/**
+ * 批量删除卡片（单次 persist + 单次排队；用于「导入回滚」）。
+ * @param {string} deckId
+ * @param {string[]} cardIds
+ */
+export function deleteCards(deckId, cardIds) {
+  const deck = getDeck(deckId);
+  if (!deck || !Array.isArray(cardIds) || !cardIds.length) return deck || null;
+  const dead = new Set(cardIds.map(String));
+  const removed = deck.cards.filter((c) => dead.has(String(c.id)));
+  if (!removed.length) return deck;
+  deck.cards = deck.cards.filter((c) => !dead.has(String(c.id)));
+  persist();
+  if (idbReady) for (const c of removed) queueDeleteCard(c.id);
+  queueDeck(deck);
+  return deck;
 }
 
 export function deleteCard(deckId, cardId) {
@@ -733,6 +764,9 @@ export function seedBuiltinDeck(payload, { demo = true, source = null, meta = nu
 
   const items = words.map((w) => {
     const wordKey = String(w.front ?? w.word ?? '');
+    // 词条自带的分组 / 多释义优先（JSON 完整导出会带上），否则回退到易混词表
+    const groupsFromDefs = Array.isArray(gm[wordKey]) ? gm[wordKey].map(String) : [];
+    const extraFromDefs = Array.isArray(extraDefs[wordKey]) ? extraDefs[wordKey].map(String) : [];
     return {
       id: uid(),
       front: wordKey,
@@ -741,15 +775,10 @@ export function seedBuiltinDeck(payload, { demo = true, source = null, meta = nu
       exampleZh: w.exampleZh ?? '',
       phonetic: String(w.phonetic ?? ''),
       tags: Array.isArray(w.tags) ? w.tags.map(String) : [],
-      groups: Array.isArray(gm[wordKey]) ? gm[wordKey].map(String) : [],
-      extraBacks: Array.isArray(extraDefs[wordKey]) ? extraDefs[wordKey].map(String) : [],
+      groups: Array.isArray(w.groups) && w.groups.length ? w.groups.map(String) : groupsFromDefs,
+      extraBacks: Array.isArray(w.extraBacks) && w.extraBacks.length ? w.extraBacks.map(String) : extraFromDefs,
       createdAt: Date.now(),
-      state: 'new',
-      repetitions: 0,
-      interval: 0,
-      easeFactor: 2.5,
-      due: 0,
-      lastReview: null
+      ...pickScheduling(w) // 复习进度随导入保留（缺省 = 新卡）
     };
   });
 

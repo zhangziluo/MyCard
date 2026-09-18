@@ -165,6 +165,7 @@ const root = fakeEl();
 decks.renderHome(root);
 ok(root.innerHTML.includes('我的卡组'), '首页可渲染（标题）');
 ok(root.innerHTML.includes('冒烟测试组'), '首页展示卡组名');
+ok(root.innerHTML.includes('data-action="import-history"'), '首页含「导入历史」入口');
 ok(root.innerHTML.includes('关卡 0/3'), '首页展示关卡进度 0/3');
 ok(root.innerHTML.includes('filter-tag'), '首页包含标签筛选');
 ok(root.innerHTML.includes('内置词库') === false, '首页不再有「内置词库」区块（考试词库已移除）');
@@ -181,7 +182,7 @@ ok(root.innerHTML.includes('import-builtin') === false, '不再有按需「导�
   ok(root.innerHTML.includes('aw-token-list') === false, '初始状态预览区为空（未渲染候选）');
   ok(root.innerHTML.includes('data-action="import-file"'), '首页提供「导入词库」按钮（CSV / JSON）');
   ok(root.innerHTML.includes('data-dropzone'), '首页提供拖拽区（data-dropzone）');
-  ok(root.innerHTML.includes('拖入 CSV / JSON 文件'), '拖拽区含提示文案');
+  ok(root.innerHTML.includes('拖入 CSV / TSV / JSON / XLSX 文件'), '拖拽区含提示文案');
 }
 
 // ---- 卡组详情 ----
@@ -215,6 +216,40 @@ ok(root.innerHTML.includes('第 15 关') && !root.innerHTML.includes('第 16 关
   ok(root.innerHTML.includes('第 2/2 页'), 'URL ?page=2 → 显示第 2 页');
   ok(root.innerHTML.includes('第 16 关') && root.innerHTML.includes('第 20 关'), '第 2 页含第 16–20 关');
   ok(!root.innerHTML.includes('第 1 关<'), '第 2 页不再渲染第 1 关');
+  globalThis.location.hash = prevHash;
+}
+
+// ---- 卡片管理分页（400 张 / 每页 100）----
+console.log('\n[卡片管理 · 分页（400 张 / 每页 100）]');
+{
+  const prevHash = globalThis.location.hash;
+  ok(decks.CARDS_PER_PAGE === 100, 'CARDS_PER_PAGE = 100');
+  globalThis.location.hash = '#/deck/' + big.id + '/cards';
+  decks.renderCards(root, big.id);
+  ok(root.innerHTML.includes('卡片管理'), '渲染卡片管理页');
+  ok(root.innerHTML.includes('第 1/4 页'), '400 张 → 第 1/4 页');
+  ok(root.innerHTML.includes('第 1–100 张 / 共 400 张'), '第 1 页区间文案');
+  ok((root.innerHTML.match(/class="card-row glass"/g) || []).length === 100, '第 1 页只渲染 100 行（非全部 400）');
+
+  globalThis.location.hash = '#/deck/' + big.id + '/cards?page=3';
+  decks.renderCards(root, big.id);
+  ok(root.innerHTML.includes('第 3/4 页'), 'URL ?page=3 → 第 3/4 页');
+  ok(root.innerHTML.includes('第 201–300 张 / 共 400 张'), '第 3 页区间文案');
+  ok((root.innerHTML.match(/class="card-row glass"/g) || []).length === 100, '第 3 页渲染 100 行');
+
+  globalThis.location.hash = '#/deck/' + big.id + '/cards?page=4';
+  decks.renderCards(root, big.id);
+  ok(root.innerHTML.includes('第 4/4 页'), '末页页号正确');
+  ok((root.innerHTML.match(/class="card-row glass"/g) || []).length === 100, '末页渲染 100 行');
+
+  globalThis.location.hash = '#/deck/' + big.id + '/cards?page=99';
+  decks.renderCards(root, big.id);
+  ok(root.innerHTML.includes('第 4/4 页'), '越界页号被夹取到最后一页');
+
+  // 小卡组不出分页条
+  globalThis.location.hash = '#/deck/' + demo.id + '/cards';
+  decks.renderCards(root, demo.id);
+  ok(!root.innerHTML.includes('cards-page'), '≤100 张不渲染卡片分页条');
   globalThis.location.hash = prevHash;
 }
 
@@ -418,7 +453,7 @@ console.log('\n[设置页 · 外观（明暗模式）]');
   ok(globalThis.localStorage.getItem('mycard-mode') === 'light', '再切一次 → 回到浅色');
 }
 
-console.log('\n[卡组菜单 · 导出 txt / apkg]');
+console.log('\n[卡组菜单 · 导出 txt / csv / md / json / apkg]');
 {
   globalThis.location.hash = '#/home';
   (winListeners['hashchange'] || []).forEach((fn) => fn({ type: 'hashchange' }));
@@ -426,9 +461,17 @@ console.log('\n[卡组菜单 · 导出 txt / apkg]');
   const modal = fakeBody.children.filter((c) => c && c.className === 'modal-overlay').pop();
   const html = modal ? String(modal.innerHTML) : '';
   ok(html.includes('export-txt'), '卡组菜单含「导出为 txt 词表」');
+  ok(html.includes('export-csv'), '卡组菜单含「导出为 CSV（带表头）」');
+  ok(html.includes('export-md'), '卡组菜单含「导出为 Markdown」');
+  ok(html.includes('export-json'), '卡组菜单含「导出为 JSON（含复习进度）」');
   ok(html.includes('export-apkg'), '卡组菜单含「导出为 Anki 卡包（.apkg）」');
   ok(html.includes('data-action="export-txt"') && html.includes(`data-id="${demo.id}"`), '导出按钮带卡组 id');
+  ok(html.includes('data-action="export-csv"') && html.includes(`data-id="${demo.id}"`), 'CSV 按钮带卡组 id');
+  ok(html.includes('data-action="export-md"') && html.includes(`data-id="${demo.id}"`), 'Markdown 按钮带卡组 id');
+  ok(html.includes('data-action="export-json"') && html.includes(`data-id="${demo.id}"`), 'JSON 按钮带卡组 id');
   ok(html.includes('导出为 txt 词表') && html.includes('Anki'), '导出文案正确');
+  ok(html.includes('导出为 CSV（带表头）') && html.includes('导出为 Markdown'), 'CSV / Markdown 文案正确');
+  ok(html.includes('导出为 JSON（含复习进度）'), 'JSON 导出文案正确');
 }
 
 console.log(`\n冒烟结果: ${pass} 通过, ${fail} 失败`);

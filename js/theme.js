@@ -4,6 +4,10 @@
 // 主色调：把选中的颜色换算成一组 CSS 变量写在 <html> 上，覆盖 style.css 里
 // :root 的默认值；CSS 中所有强调色都引用 var(--accent) / rgba(var(--accent-rgb), a)，
 // 因此换色后按钮、进度条、徽标、氛围光等会全局跟随。
+// 另按底色派生「强调文字色」：--tag-tx-dark / --tag-tx-light。做法是保持主色色相与
+// 饱和度，深色底先统一「提亮一档」（HSL 亮度 +TEXT_LIGHTEN_STEP），浅色底按需加深；
+// 两者最后都用 WCAG 相对亮度对 HSL 亮度二分，保证与底色对比度 ≥ 4.5:1（任意自定义色都成立）；
+// CSS 里 --tag-tx 与 --accent-tx 在深/浅模式下二选一，标签/强调文字因此始终跟随主色且可读。
 //
 // 明暗模式：在 <html> 上写 data-theme="dark|light"，由 CSS 的
 // :root[data-theme="light"] 覆盖背景 / 文字 / 玻璃层等语义变量。
@@ -110,6 +114,79 @@ export function shiftHue(hex, deg = 24) {
   return rgbToHex(hslToRgb({ h: hsl.h + deg, s: hsl.s, l: hsl.l }));
 }
 
+/* -------------------- 强调文字色：按 WCAG 对比度自动加深 / 提亮 -------------------- */
+
+/** 强调文字（--tag-tx / --accent-tx）的目标对比度：WCAG AA 普通文本 */
+export const TEXT_CONTRAST = 4.5;
+/** 派生文字色时的参考底色（与 css/style.css 的 --bg 深/浅两套一致） */
+export const TEXT_BG = { dark: '#070910', light: '#f4f5fa' };
+
+/** sRGB 通道线性化（WCAG 2.x） */
+function linearizeChannel(c) {
+  const s = Math.max(0, Math.min(255, c)) / 255;
+  return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
+}
+
+/** 相对亮度（WCAG 2.x；0=黑，1=白） */
+export function relativeLuminance(hex) {
+  const { r, g, b } = hexToRgb(hex);
+  return 0.2126 * linearizeChannel(r) + 0.7152 * linearizeChannel(g) + 0.0722 * linearizeChannel(b);
+}
+
+/** 两色对比度（WCAG；1 ~ 21） */
+export function contrastRatio(a, b) {
+  const la = relativeLuminance(a);
+  const lb = relativeLuminance(b);
+  return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05);
+}
+
+/**
+ * 保持色相 / 饱和度，仅对 HSL 亮度做二分，使结果与 bg 的对比度 ≥ target。
+ *   - direction='darken'：浅色底用（向下调暗）
+ *   - direction='lighten'：深色底用（向上调亮）
+ * 原色已达标则原样返回；二分 20 次足够收敛到阈值附近。
+ * @returns {string} hex
+ */
+export function ensureTextContrast(hex, bg, target = TEXT_CONTRAST, direction = 'darken') {
+  const base = normalizeHex(hex) || DEFAULT_ACCENT;
+  if (contrastRatio(base, bg) >= target) return base;
+  const { h, s, l } = rgbToHsl(hexToRgb(base));
+  const lighten = direction === 'lighten';
+  let lo = lighten ? l : 0; // lighten：lo 不达标；darken：lo=0（黑）达标
+  let hi = lighten ? 1 : l; // lighten：hi=1（白）达标；darken：hi 不达标
+  for (let i = 0; i < 20; i++) {
+    const mid = (lo + hi) / 2;
+    const ok = contrastRatio(rgbToHex(hslToRgb({ h, s, l: mid })), bg) >= target;
+    if (lighten) {
+      if (ok) hi = mid;
+      else lo = mid;
+    } else if (ok) lo = mid;
+    else hi = mid;
+  }
+  return rgbToHex(hslToRgb({ h, s, l: lighten ? hi : lo }));
+}
+
+/** 深色底统一「提亮一档」的 HSL 亮度增量（深色底不直接用原始主色，观感更亮更清爽） */
+export const TEXT_LIGHTEN_STEP = 0.12;
+
+/** 保持色相 / 饱和度，把 HSL 亮度提高一个增量（上限 1，保证只会变亮不会变暗） */
+export function lightenHex(hex, step = TEXT_LIGHTEN_STEP) {
+  const base = normalizeHex(hex) || DEFAULT_ACCENT;
+  const { h, s, l } = rgbToHsl(hexToRgb(base));
+  const next = Math.min(1, l + Math.max(0, Number(step) || 0));
+  return rgbToHex(hslToRgb({ h, s, l: next }));
+}
+
+/** 深色底上的强调文字色：统一提亮一档，再保证对比度 ≥ 4.5:1（供 --tag-tx-dark / --accent-tx） */
+export function textOnDark(hex) {
+  return ensureTextContrast(lightenHex(hex), TEXT_BG.dark, TEXT_CONTRAST, 'lighten');
+}
+
+/** 浅色底上的强调文字色：保持色相，加深到对比度达标（供 --tag-tx-light / --accent-tx） */
+export function textOnLight(hex) {
+  return ensureTextContrast(hex, TEXT_BG.light, TEXT_CONTRAST, 'darken');
+}
+
 /** 由主色推导全部主题 CSS 变量 */
 export function accentVars(hex) {
   const main = normalizeHex(hex) || DEFAULT_ACCENT;
@@ -120,7 +197,10 @@ export function accentVars(hex) {
     '--accent-2': rgbToHex(rgb2),
     '--accent-soft': `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.16)`,
     '--accent-rgb': `${rgb.r}, ${rgb.g}, ${rgb.b}`,
-    '--accent-2-rgb': `${rgb2.r}, ${rgb2.g}, ${rgb2.b}`
+    '--accent-2-rgb': `${rgb2.r}, ${rgb2.g}, ${rgb2.b}`,
+    // 标签 / 强调文字随主色派生：深色底提亮、浅色底加深（CSS 按 data-theme 二选一）
+    '--tag-tx-dark': textOnDark(main),
+    '--tag-tx-light': textOnLight(main)
   };
 }
 

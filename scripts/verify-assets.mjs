@@ -141,6 +141,39 @@ console.log('\n[本地文件导入词库（js/import-file.js）]');
   must(sw.includes("'./js/import-file.js'"), 'sw.js PRECACHE 含 ./js/import-file.js');
   const impSrc = readFileSync(rel('js/import-file.js'), 'utf8');
   must(impSrc.includes('export function parseCsv') && impSrc.includes('export function parseImportJson'), '实现 CSV / JSON 两种解析');
+  must(impSrc.includes('export function pickSchedFields'), 'JSON 词条透传复习进度字段（pickSchedFields）');
+  // xlsx（零依赖读取器）
+  must(existsSync(rel('js/xlsx.js')), 'js/xlsx.js 存在（零依赖 .xlsx 读取器）');
+  must(sw.includes("'./js/xlsx.js'"), 'sw.js PRECACHE 含 ./js/xlsx.js');
+  const xlsxSrc = readFileSync(rel('js/xlsx.js'), 'utf8');
+  must(
+    xlsxSrc.includes('export async function unzip') && xlsxSrc.includes('deflate-raw') && xlsxSrc.includes('STORED'),
+    'ZIP 读取器：STORED + DEFLATE(deflate-raw)'
+  );
+  must(
+    xlsxSrc.includes('export async function parseXlsxRows') && xlsxSrc.includes('sharedStrings') && xlsxSrc.includes('export function parseSheet'),
+    'xlsx 解析：共享字符串 + 工作表 + 单元格类型'
+  );
+  must(impSrc.includes("from './xlsx.js'") && impSrc.includes('parseXlsxRows'), 'import-file 接入 xlsx 解析');
+  must(impSrc.includes('export function isXlsxFile') && impSrc.includes('export function rowsPreview'), 'xlsx 判定 + 二维表预览');
+  must(impSrc.includes('export function readFileAsArrayBuffer'), 'xlsx 走二进制读取（readFileAsArrayBuffer）');
+  must(impSrc.includes('.xlsx') && impSrc.includes('spreadsheetml.sheet'), 'ACCEPT 含 .xlsx 扩展名与 MIME');
+  // 多文件批量导入 + 导入历史 / 回滚
+  must(existsSync(rel('js/import-history.js')), 'js/import-history.js 存在（导入历史 / 回滚）');
+  must(sw.includes("'./js/import-history.js'"), 'sw.js PRECACHE 含 ./js/import-history.js');
+  const histSrc = readFileSync(rel('js/import-history.js'), 'utf8');
+  must(
+    histSrc.includes('export async function recordImport') && histSrc.includes('export async function undoImport'),
+    '历史记录 + 撤销（recordImport / undoImport）'
+  );
+  must(histSrc.includes('import-rollback:') && histSrc.includes('STORE_META'), '追加导入的回滚明细存 IndexedDB meta');
+  must(
+    impSrc.includes('export async function runBatchImport') && impSrc.includes('export function openBatchImport'),
+    '多文件批量导入（每个文件各建一个卡组）'
+  );
+  must(/input\.multiple = !!multiple/.test(impSrc), '文件选择器支持多选（multiple）');
+  must(readFileSync(rel('js/store.js'), 'utf8').includes('export function deleteCards'), 'store.deleteCards（批量删除，供回滚）');
+  must(readFileSync(rel('js/decks.js'), 'utf8').includes('importHistoryButtonHtml'), '首页渲染「导入历史」入口');
   must(impSrc.includes('data-action="import-file"') && impSrc.includes('input.type = \'file\''), '首页入口 + file input');
   must(impSrc.includes('seedBuiltinDeck'), '复用存储层 seedBuiltinDeck 入库');
   must(impSrc.includes('FileReader') || impSrc.includes('file.text()'), '读取本地文件');
@@ -180,6 +213,23 @@ console.log('\n[浅色 / 深色模式（js/theme.js + css/style.css + index.html
   must(themeSrc.includes("'light'") && themeSrc.includes("'dark'") && themeSrc.includes("'system'"), '三档：浅色 / 深色 / 跟随系统');
   must(themeSrc.includes('prefers-color-scheme: dark'), '跟随系统用 prefers-color-scheme');
   must(themeSrc.includes('theme-color'), '同步 <meta name="theme-color">');
+  must(
+    /export function textOnDark/.test(themeSrc) && /export function textOnLight/.test(themeSrc),
+    'theme.js 按底色派生强调文字色（textOnDark / textOnLight）'
+  );
+  must(
+    /export function relativeLuminance/.test(themeSrc) &&
+      /export function contrastRatio/.test(themeSrc) &&
+      /export function ensureTextContrast/.test(themeSrc),
+    'theme.js 用 WCAG 相对亮度 / 对比度二分求解（relativeLuminance / contrastRatio / ensureTextContrast）'
+  );
+  must(themeSrc.includes('TEXT_CONTRAST = 4.5'), '强调文字目标对比度 4.5:1（WCAG AA）');
+  must(
+    /export function lightenHex/.test(themeSrc) && themeSrc.includes('TEXT_LIGHTEN_STEP = 0.12'),
+    '深色底统一「提亮一档」（lightenHex / TEXT_LIGHTEN_STEP）'
+  );
+  must(!/export function mixHex/.test(themeSrc), '已移除固定混色 mixHex');
+  must(themeSrc.includes("'--tag-tx-dark'") && themeSrc.includes("'--tag-tx-light'"), 'accentVars 输出 --tag-tx-dark / --tag-tx-light');
 
   must(/data-action="toggle-mode"/.test(appSrc), '顶栏渲染明暗快捷切换按钮');
   must(/on\('set-mode'/.test(appSrc) && /on\('toggle-mode'/.test(appSrc), 'app.js 注册 set-mode / toggle-mode');
@@ -201,6 +251,29 @@ console.log('\n[浅色 / 深色模式（js/theme.js + css/style.css + index.html
   for (const v of ['--bg', '--bg2', '--bg3', '--tx', '--tx2', '--tx3', '--glass-bg', '--glass-bg-strong', '--glass-brd', '--shadow', '--ovl-1', '--field-bg', '--panel-top', '--appbar-solid', '--teal-tx', '--modal-a', '--modal-b', '--tag-tx', '--soft-danger-tx']) {
     must(lightBlock.includes(v + ':'), `浅色主题覆盖 ${v}`);
   }
+  must(css.includes('--tag-tx-dark:') && css.includes('--tag-tx-light:'), ':root 定义 --tag-tx-dark / --tag-tx-light（默认色兜底，JS 覆盖）');
+  must(/--tag-tx:\s*var\(--tag-tx-dark\)/.test(css), '深色模式 --tag-tx 取 --tag-tx-dark');
+  must(/--tag-tx:\s*var\(--tag-tx-light\)/.test(lightBlock), '浅色模式 --tag-tx 取 --tag-tx-light（随主色加深）');
+  must(/--accent-tx:\s*var\(--tag-tx\)/.test(css), '--accent-tx 与 --tag-tx 同源（别名，浅色块自动跟随）');
+  must(
+    !/(^|[^-a-z])color:\s*var\(--accent\)\s*;/.test(cssNoDefs),
+    '强调文字已统一走 --accent-tx（规则中不再有 color: var(--accent)）'
+  );
+  must(
+    (cssNoDefs.match(/color:\s*var\(--accent-tx\)/g) || []).length >= 8,
+    '--accent-tx 已用于 ≥8 处文字/图标前景色',
+    (cssNoDefs.match(/color:\s*var\(--accent-tx\)/g) || []).length
+  );
+  // 非文字前景（焦点环 / 输入与高亮边框 / 原生 accent-color）同样随主色派生
+  must(
+    !/(outline|border[a-z-]*|accent-color):[^;]*var\(--accent\)/.test(cssNoDefs),
+    '焦点环 / 边框 / accent-color 不再直接用 --accent'
+  );
+  must(
+    (cssNoDefs.match(/(outline|border[a-z-]*|accent-color):[^;]*var\(--accent-tx\)/g) || []).length >= 8,
+    '--accent-tx 已用于 ≥8 处非文字前景（焦点环 / 边框 / 原生控件）',
+    (cssNoDefs.match(/(outline|border[a-z-]*|accent-color):[^;]*var\(--accent-tx\)/g) || []).length
+  );
   must(css.includes('.seg-btn') && css.includes('.segmented'), '设置页分段按钮样式');
   // 弹窗与暗底专用文字必须走变量（浅色下才能整体翻转）
   must(/\.modal \{[^}]*var\(--modal-a\)/.test(cssNoDefs), '弹窗背景使用 --modal-a/--modal-b 变量');
@@ -219,23 +292,59 @@ console.log('\n[浅色 / 深色模式（js/theme.js + css/style.css + index.html
   must(css.split('{').length === css.split('}').length, 'CSS 花括号平衡');
 }
 
-console.log('\n[导出 txt / Anki apkg（js/export.js + vendor/sql.js）]');
+console.log('\n[导出 txt / CSV / Markdown / JSON / Anki apkg（js/export.js + vendor/sql.js）]');
 {
   const expSrc = readFileSync(rel('js/export.js'), 'utf8');
   const decksSrc = readFileSync(rel('js/decks.js'), 'utf8');
+  const storeSrc = readFileSync(rel('js/store.js'), 'utf8');
   must(existsSync(rel('js/export.js')), 'js/export.js 存在');
   must(sw.includes("'./js/export.js'"), 'sw.js PRECACHE 含 ./js/export.js');
   must(existsSync(rel('vendor/sql.js/sql-wasm.js')) && existsSync(rel('vendor/sql.js/sql-wasm.wasm')), 'vendor/sql.js 已内置（js + wasm）');
   must(existsSync(rel('vendor/sql.js/package.json')), 'vendor/sql.js/package.json 声明 CommonJS（供 Node 测试加载）');
   must(sw.includes("'./vendor/sql.js/sql-wasm.wasm'"), 'sw.js 预缓存 sql.js WASM（离线也能导出 apkg）');
   must(/export function deckToTxt/.test(expSrc) && /export async function deckToApkg/.test(expSrc), '提供 deckToTxt / deckToApkg');
+  must(/export function deckToCsv/.test(expSrc) && /export function deckToMarkdown/.test(expSrc), '提供 deckToCsv / deckToMarkdown');
+  must(/export function csvCell/.test(expSrc) && /export function mdCell/.test(expSrc), 'CSV / Markdown 单元格转义函数');
   must(/export function exportDeckTxt/.test(expSrc) && /export async function exportDeckApkg/.test(expSrc), '提供导出入口函数');
+  must(/export function exportDeckCsv/.test(expSrc) && /export function exportDeckMarkdown/.test(expSrc), '提供 CSV / Markdown 导出入口');
+  must(/export function deckToJson/.test(expSrc) && /export function exportDeckJson/.test(expSrc), '提供 JSON 完整导出（deckToJson / exportDeckJson）');
+  must(/export function cardToAnkiSched/.test(expSrc) && /cardToAnkiSched\(c, i \+ 1, now, todayNumber\)/.test(expSrc), 'apkg 按卡片复习进度写入 Anki 调度列（cardToAnkiSched）');
+  must(/on\('export-json'/.test(expSrc), '注册 export-json 动作');
+  must(/export function pickScheduling/.test(storeSrc) && storeSrc.includes('...pickScheduling(f)') && storeSrc.includes('...pickScheduling(w)'), '导入路径保留复习进度（store.pickScheduling）');
   must(/export function crc32/.test(expSrc) && /export function zipStore/.test(expSrc), '内置最小 ZIP 写出器（CRC32 + STORED）');
+  must(/export function encodePackageMetadata/.test(expSrc) && /name: 'meta'/.test(expSrc), 'apkg 写入新版 Anki 要求的 meta（PackageMetadata protobuf）');
+  must(/export const ANKI_META_VERSION/.test(expSrc) && expSrc.includes('PackageMetadata'), 'meta 版本枚举（ANKI_META_VERSION）与说明齐备');
   must(expSrc.includes('collection.anki2') && expSrc.includes('CREATE TABLE col') && expSrc.includes('CREATE TABLE notes'), 'apkg 内为 Anki collection.anki2 + 完整 schema');
   must(expSrc.includes('initSqlJs') && expSrc.includes('sql-wasm.wasm'), '通过 sql.js(WASM) 生成 SQLite');
   must(expSrc.includes('createObjectURL') && expSrc.includes('downloadBlob'), '用 Blob + createObjectURL 触发下载');
-  must(/data-action="export-txt"/.test(decksSrc) && /data-action="export-apkg"/.test(decksSrc), '卡组菜单含两个导出入口');
+  must(
+    /data-action="export-txt"/.test(decksSrc) &&
+      /data-action="export-csv"/.test(decksSrc) &&
+      /data-action="export-md"/.test(decksSrc) &&
+      /data-action="export-json"/.test(decksSrc) &&
+      /data-action="export-apkg"/.test(decksSrc),
+    '卡组菜单含 txt / csv / md / json / apkg 五个导出入口'
+  );
   must(/from '\.\/export\.js'|import '\.\/export\.js'/.test(decksSrc), 'decks.js 加载 export.js（注册导出动作）');
+}
+
+console.log('\n[大卡组性能（单遍统计 / 复用 levels / 抽题快路径）]');
+{
+  const lvSrc = readFileSync(rel('js/levels.js'), 'utf8');
+  const engineSrc = readFileSync(rel('js/test-engine.js'), 'utf8');
+  const decksSrc2 = readFileSync(rel('js/decks.js'), 'utf8');
+  must(
+    /export function deckStats/.test(lvSrc) && /for \(const c of \(deck && deck\.cards\) \|\| \[\]\)/.test(lvSrc),
+    'deckStats 单次遍历（不再两次 filter）'
+  );
+  must(/export function levelStates\(deck, levels = deckLevels\(deck\)\)/.test(lvSrc), 'levelStates 支持复用已算好的 levels');
+  must(/levelStates\(deck, levels\)/.test(decksSrc2), 'decks.js 渲染时复用 levels（避免重复整卡组遍历）');
+  must(/部分 Fisher-Yates/.test(engineSrc) && /words >= n/.test(engineSrc), '抽题「词数 ≥ 题数」走 O(n) 快路径');
+  must(!/Math\.min\(\.\.\.gapOk/.test(engineSrc), 'pickLeastUsed 已合并为单趟扫描（去掉 spread 全量 Math.min）');
+  must(/export const CARDS_PER_PAGE = 100/.test(decksSrc2), '卡片管理分页常量 CARDS_PER_PAGE = 100');
+  must(/data-action="cards-page"/.test(decksSrc2) && /on\('cards-page'/.test(decksSrc2), '卡片分页条 + cards-page 动作');
+  must(/all\.slice\(page \* CARDS_PER_PAGE/.test(decksSrc2), '卡片管理只渲染当前页（不再一次性塞入全部）');
+  must(existsSync(rel('scripts/test-perf.mjs')), '存在 scripts/test-perf.mjs（万级性能金丝雀）');
 }
 
 console.log(failed ? `\n共 ${failed} 项校验失败` : '\n全部资源校验通过 ✔');

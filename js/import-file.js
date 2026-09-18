@@ -1,5 +1,5 @@
 // ============================================================================
-// import-file.js — 从本地文件导入词库（CSV / JSON）
+// import-file.js — 从本地文件导入词库（CSV / TSV / JSON / XLSX）
 //
 // 设计：
 //   - 零依赖（不引入 papaparse / Dexie / 构建工具），纯 ES Module + FileReader
@@ -12,14 +12,18 @@
 //   1) JSON：词库文件格式 {name?, description?, tags?, levelSize?, words:[...]}
 //            或纯单词数组 [{front|word, back|meaning, example, exampleZh, phonetic, tags}]
 //   2) CSV/TSV：可带表头（中英文均可），列顺序不限；无表头时按 front,back,example,... 位置解析
+//   3) XLSX：Excel 工作簿（取第一个工作表），零依赖解析（见 xlsx.js），走同一套字段映射
 //
 // 导出：解析 / 预览 / 校验等纯函数（便于单测）+ 打开预览 / 导入 + 首页按钮与拖拽区
 // ============================================================================
 
 import * as store from './store.js';
 import { on, toast, navigate, esc, openModal, readForm } from './ui.js';
+import { parseXlsxRows } from './xlsx.js';
+import { recordImport, undoImport } from './import-history.js';
 
-export const ACCEPT = '.json,.csv,.tsv,.txt,application/json,text/csv,text/plain,text/tab-separated-values';
+export const ACCEPT =
+  '.json,.csv,.tsv,.txt,.xlsx,application/json,text/csv,text/plain,text/tab-separated-values,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 export const MAX_WORDS = 50000;
 export const DEFAULT_DECK_NAME = '导入词库';
 
@@ -162,6 +166,29 @@ export function rowsToWords(rows, { hasHeader = null } = {}) {
 
 /* ------------------------------ JSON 解析 ------------------------------ */
 
+/**
+ * 从词条对象提取「复习进度」字段（JSON 完整导出会带上；兼容 reps / ivl / ef / last_review 简写）。
+ * 只做透传，具体校验/钳制由 store.pickScheduling 负责。
+ */
+export function pickSchedFields(w) {
+  const out = {};
+  const take = (key, ...aliases) => {
+    for (const a of [key, ...aliases]) {
+      if (w[a] !== undefined && w[a] !== null) {
+        out[key] = w[a];
+        return;
+      }
+    }
+  };
+  take('state');
+  take('repetitions', 'reps');
+  take('interval', 'ivl');
+  take('easeFactor', 'ef');
+  take('due');
+  take('lastReview', 'last_review');
+  return out;
+}
+
 /** 单词对象数组 → 规范化词条（兼容 front/word/term、back/meaning/definition 等写法） */
 export function normalizeWordObjects(list) {
   return (list || [])
@@ -181,6 +208,9 @@ export function normalizeWordObjects(list) {
       if (ph) out.phonetic = String(ph);
       if (Array.isArray(w.tags) && w.tags.length) out.tags = w.tags.map(String);
       else if (typeof w.tags === 'string' && w.tags.trim()) out.tags = w.tags.split(/[,，;；|/、\s]+/).filter(Boolean);
+      if (Array.isArray(w.extraBacks) && w.extraBacks.length) out.extraBacks = w.extraBacks.map(String);
+      if (Array.isArray(w.groups) && w.groups.length) out.groups = w.groups.map(String);
+      Object.assign(out, pickSchedFields(w)); // 复习进度随导入保留（由 store 校验）
       return out;
     })
     .filter(Boolean);
@@ -272,6 +302,24 @@ export function parseByFilename(filename, text) {
 
 /* ------------------------------ 读取文件 / 导入 ------------------------------ */
 
+/** 读取为 ArrayBuffer（xlsx 需要二进制） */
+export function readFileAsArrayBuffer(file) {
+  return new Promise((resolve, reject) => {
+    if (file && typeof file.arrayBuffer === 'function') {
+      file.arrayBuffer().then(resolve, reject);
+      return;
+    }
+    if (typeof FileReader === 'undefined') {
+      reject(new Error('当前环境不支持读取本地文件'));
+      return;
+    }
+    const fr = new FileReader();
+    fr.onload = () => resolve(fr.result);
+    fr.onerror = () => reject((fr.error && fr.error.message) || new Error('文件读取失败'));
+    fr.readAsArrayBuffer(file);
+  });
+}
+
 export function readFileAsText(file) {
   return new Promise((resolve, reject) => {
     if (file && typeof file.text === 'function') {
@@ -290,13 +338,30 @@ export function readFileAsText(file) {
 }
 
 /**
+ * 文件 → payload（xlsx 走二进制解析 + 默认映射；其余按文件名/内容选解析器）。
+ * 供 importDeckFromFile 使用（不带自定义映射的「整份文件导入」路径）。
+ */
+export async function payloadFromFile(file) {
+  if (isXlsxFile(file.name)) {
+    const rows = await parseXlsxRows(await readFileAsArrayBuffer(file));
+    const body = rows.length && isHeaderRow(rows[0]) ? rows.slice(1) : rows;
+    return {
+      name: deckNameFromFile(file.name),
+      description: '',
+      tags: ['导入'],
+      words: applyMapping(body, defaultMapping(rowsPreview(rows)))
+    };
+  }
+  return parseByFilename(file.name, await readFileAsText(file));
+}
+
+/**
  * 导入本地文件为新建卡组（source=null → 每次都新建，不做来源去重）。
  * @returns {{ deck:object, name:string, words:number, duplicates:number, truncated:boolean }}
  */
 export async function importDeckFromFile(file, { source = null } = {}) {
   if (!file) throw new Error('没有选择文件');
-  const text = await readFileAsText(file);
-  const parsed = validatePayload(parseByFilename(file.name, text));
+  const parsed = validatePayload(await payloadFromFile(file));
   const meta = { name: parsed.name, description: parsed.description, tags: parsed.tags, levelSize: parsed.levelSize, lang: parsed.lang || 'en' };
   const deck = store.seedBuiltinDeck(parsed, { demo: false, source, meta });
   if (!deck) throw new Error('导入失败：没有可写入的词条');
@@ -332,6 +397,26 @@ export function csvPreview(text, { limit = PREVIEW_ROWS } = {}) {
     cols,
     totalRows: body.length
   };
+}
+
+/**
+ * 二维字符串表 → 预览数据（xlsx 解析结果复用；与 csvPreview 同构，可走同一套字段映射/导入）
+ * @param {string[][]} rows
+ * @returns {{ kind:'xlsx', delimiter:null, header:string[]|null, rows:string[][], cols:number, totalRows:number }}
+ */
+export function rowsPreview(rows, { limit = PREVIEW_ROWS } = {}) {
+  const all = (Array.isArray(rows) ? rows : []).map((r) =>
+    Array.isArray(r) ? r.map((v) => String(v == null ? '' : v)) : []
+  );
+  const headerRow = all.length && isHeaderRow(all[0]) ? all[0] : null;
+  const body = headerRow ? all.slice(1) : all;
+  const cols = all.reduce((m, r) => Math.max(m, r.length), 0);
+  return { kind: 'xlsx', delimiter: null, header: headerRow, rows: body.slice(0, limit), cols, totalRows: body.length };
+}
+
+/** 预览是否「逐列映射」型（CSV / xlsx 共用同一套字段映射与导入逻辑） */
+export function isTabular(preview) {
+  return !!preview && (preview.kind === 'csv' || preview.kind === 'xlsx');
 }
 
 /** JSON 文本 → 预览数据（前 limit 条，两列：单词 / 释义） */
@@ -376,7 +461,15 @@ export function previewMetaHtml(preview, filename = '') {
   const bits = [];
   if (preview.kind === 'csv') bits.push(`分隔符：${delimiterLabel(preview.delimiter)}`);
   bits.push(`共 ${preview.totalRows} 行 × ${preview.cols} 列`);
-  bits.push(preview.kind === 'json' ? 'JSON 词库' : preview.header ? '已识别表头（首行为列名）' : '未识别表头（列名用「列 1…」）');
+  bits.push(
+    preview.kind === 'json'
+      ? 'JSON 词库'
+      : preview.kind === 'xlsx'
+        ? 'Excel 工作表（取第一个 sheet）'
+        : preview.header
+          ? '已识别表头（首行为列名）'
+          : '未识别表头（列名用「列 1…」）'
+  );
   const shown = Math.min(PREVIEW_ROWS, preview.totalRows);
   return (
     `<p class="csv-meta">${esc(filename)}${filename ? ' · ' : ''}${esc(bits.join(' · '))}</p>` +
@@ -535,17 +628,19 @@ export function readPreviewInputs(overlay, preview) {
 
 /* ------------------------------ 首页入口 ------------------------------ */
 
-/** 首页「导入词库」按钮（CSV / JSON） */
+/** 首页「导入词库」按钮（CSV / TSV / JSON / XLSX，可多选批量导入） */
 export function importFileButtonHtml() {
-  return `<button class="icon-btn glass" data-action="import-file" aria-label="导入词库文件（CSV / JSON）" title="导入词库文件（CSV / JSON）"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V3"/><path d="m7 8 5-5 5 5"/><path d="M4 16v2.5A2.5 2.5 0 0 0 6.5 21h11a2.5 2.5 0 0 0 2.5-2.5V16"/></svg></button>`;
+  const tip = '导入词库文件（CSV / TSV / JSON / XLSX，可多选）';
+  return `<button class="icon-btn glass" data-action="import-file" aria-label="${tip}" title="${tip}"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V3"/><path d="m7 8 5-5 5 5"/><path d="M4 16v2.5A2.5 2.5 0 0 0 6.5 21h11a2.5 2.5 0 0 0 2.5-2.5V16"/></svg></button>`;
 }
 
 /** 打开系统文件选择器（动态创建 input，不污染 index.html） */
-export function openFilePicker() {
+export function openFilePicker({ multiple = true } = {}) {
   if (typeof document === 'undefined' || !document.createElement) return null;
   const input = document.createElement('input');
   input.type = 'file';
   input.accept = ACCEPT;
+  input.multiple = !!multiple; // 支持多文件批量导入
   input.style.display = 'none';
   if (document.body && document.body.appendChild) document.body.appendChild(input);
 
@@ -554,10 +649,11 @@ export function openFilePicker() {
   };
 
   input.onchange = () => {
-    const file = input.files && input.files[0];
+    const files = input.files ? Array.from(input.files) : [];
     cleanup();
-    if (!file) return;
-    openImportPreview(file); // 先预览，确认后再导入
+    if (!files.length) return;
+    if (files.length === 1) openImportPreview(files[0]); // 单文件：先预览（可改映射）
+    else openBatchImport(files); // 多文件：每个文件各建一个卡组
   };
 
   input.click();
@@ -573,16 +669,11 @@ export async function openImportPreview(file) {
     toast('没有选择文件', 'warn');
     return null;
   }
-  let text = '';
-  try {
-    text = await readFileAsText(file);
-  } catch (e) {
-    toast(`读取失败：${(e && e.message) || e}`, 'error');
-    return null;
-  }
   let preview = null;
   try {
-    preview = buildPreview(file.name, text);
+    preview = isXlsxFile(file.name)
+      ? rowsPreview(await parseXlsxRows(await readFileAsArrayBuffer(file)))
+      : buildPreview(file.name, await readFileAsText(file));
   } catch (e) {
     toast(`解析失败：${(e && e.message) || e}`, 'error');
     return null;
@@ -598,7 +689,7 @@ export async function openImportPreview(file) {
     body:
       previewMetaHtml(preview, file.name) +
       previewTableHtml(preview) +
-      (preview.kind === 'csv' ? fieldMapHtml(preview) : '') +
+      (isTabular(preview) ? fieldMapHtml(preview) : '') +
       targetDeckHtml(file, {
         decks: store.getDb().decks.map((d) => ({ id: d.id, name: d.name, count: (d.cards || []).length })),
         defaultName: deckNameFromFile(file.name)
@@ -609,7 +700,7 @@ export async function openImportPreview(file) {
         cls: 'btn-primary',
         onClick: () => {
           const inputs = readPreviewInputs(overlay, preview);
-          if (preview.kind === 'csv') {
+          if (isTabular(preview)) {
             const check = validateMapping(inputs.mapping);
             if (!check.ok) {
               toast(check.error, 'warn');
@@ -646,6 +737,8 @@ export async function runMappedImport(file, inputs = {}) {
       deckId: inputs.target && inputs.target !== '__new__' ? inputs.target : '',
       deckName: inputs.deckName || ''
     });
+    const entry = await recordImport([res]);
+    res.historyId = entry.id;
     showImportSuccess(res);
     return res;
   } catch (e) {
@@ -662,36 +755,51 @@ export async function runMappedImport(file, inputs = {}) {
  */
 export async function importMapped(file, { mapping = null, deckId = '', deckName = '', src = 'batch_import' } = {}) {
   if (!file) throw new Error('没有选择文件');
-  const text = await readFileAsText(file);
-  const isJson = /\.json$/i.test(String(file.name || '')) || /^\s*[[{]/.test(text);
   let words = [];
   let duplicates = 0;
-  if (isJson) {
-    const payload = validatePayload(parseByFilename(file.name, text));
-    words = payload.words;
-    duplicates = payload.duplicates;
-    if (!deckName) deckName = payload.name;
-  } else {
-    const map = Array.isArray(mapping) && mapping.length ? mapping : defaultMapping(csvPreview(text));
+  if (isXlsxFile(file.name)) {
+    // xlsx：解析第一个工作表 → 与 CSV 同样按「逐列映射」取数据
+    const rows = await parseXlsxRows(await readFileAsArrayBuffer(file));
+    const map = Array.isArray(mapping) && mapping.length ? mapping : defaultMapping(rowsPreview(rows));
     const check = validateMapping(map);
     if (!check.ok) throw new Error(check.error);
-    const rows = parseCsv(text);
-    // 与预览保持一致：识别到表头时，表头行不计入数据
     const body = rows.length && isHeaderRow(rows[0]) ? rows.slice(1) : rows;
     const deduped = dedupeWords(applyMapping(body, map));
     words = deduped.words.slice(0, MAX_WORDS);
     duplicates = deduped.duplicates;
     if (!words.length) throw new Error('没有解析到有效词条（请检查字段映射）');
+  } else {
+    const text = await readFileAsText(file);
+    const isJson = /\.json$/i.test(String(file.name || '')) || /^\s*[[{]/.test(text);
+    if (isJson) {
+      const payload = validatePayload(parseByFilename(file.name, text));
+      words = payload.words;
+      duplicates = payload.duplicates;
+      if (!deckName) deckName = payload.name;
+    } else {
+      const map = Array.isArray(mapping) && mapping.length ? mapping : defaultMapping(csvPreview(text));
+      const check = validateMapping(map);
+      if (!check.ok) throw new Error(check.error);
+      const rows = parseCsv(text);
+      // 与预览保持一致：识别到表头时，表头行不计入数据
+      const body = rows.length && isHeaderRow(rows[0]) ? rows.slice(1) : rows;
+      const deduped = dedupeWords(applyMapping(body, map));
+      words = deduped.words.slice(0, MAX_WORDS);
+      duplicates = deduped.duplicates;
+      if (!words.length) throw new Error('没有解析到有效词条（请检查字段映射）');
+    }
   }
   return commitWords(words, { deckId, deckName, src, duplicates, file });
 }
 
 /** 写入目标牌组（已有牌组 → 追加去重；否则新建） */
 function commitWords(words, { deckId, deckName, src, duplicates, file }) {
+  const fileName = (file && file.name) || '';
   if (deckId) {
     const deck = store.getDeck(deckId);
     if (!deck) throw new Error('目标牌组不存在');
     const existing = new Set(deck.cards.map((c) => String(c.front || '').toLowerCase()));
+    const before = new Set(deck.cards.map((c) => c.id));
     const fresh = [];
     let skipped = 0;
     for (const w of words) {
@@ -705,7 +813,20 @@ function commitWords(words, { deckId, deckName, src, duplicates, file }) {
     }
     if (fresh.length) store.addManyCards(deck.id, fresh); // 单事务整批写入 + 重新拆分关卡
     const after = store.getDeck(deck.id);
-    return { deck: after, deckId: deck.id, name: after.name, added: fresh.length, skipped, duplicates, existing: true };
+    // 追加导入：记录实际新增的卡片 id（供「导入回滚」精确撤销）
+    const addedCardIds = after.cards.filter((c) => !before.has(c.id)).map((c) => c.id);
+    return {
+      deck: after,
+      deckId: deck.id,
+      name: after.name,
+      added: fresh.length,
+      skipped,
+      duplicates,
+      existing: true,
+      mode: 'append',
+      addedCardIds,
+      fileName
+    };
   }
   const name = String(deckName || deckNameFromFile(file && file.name)).trim() || DEFAULT_DECK_NAME;
   const payload = validatePayload({ name, description: '', tags: ['导入'], words });
@@ -715,7 +836,18 @@ function commitWords(words, { deckId, deckName, src, duplicates, file }) {
     meta: { name: payload.name, tags: payload.tags, lang: 'en' }
   });
   if (!deck) throw new Error('导入失败：没有可写入的词条');
-  return { deck, deckId: deck.id, name: deck.name, added: deck.cards.length, skipped: 0, duplicates: payload.duplicates, existing: false };
+  return {
+    deck,
+    deckId: deck.id,
+    name: deck.name,
+    added: deck.cards.length,
+    skipped: 0,
+    duplicates: payload.duplicates,
+    existing: false,
+    mode: 'new',
+    addedCardIds: deck.cards.map((c) => c.id),
+    fileName
+  };
 }
 
 /** 导入成功提示（共导入 X 张卡片到牌组「YYY」） */
@@ -736,38 +868,152 @@ export function importSuccessHtml(res) {
 
 /** 导入完成弹窗：提示 + 「去学习」（跳转到该牌组） */
 export function showImportSuccess(res) {
+  const actions = [
+    {
+      label: '去学习',
+      cls: 'btn-primary',
+      onClick: () => {
+        setTimeout(() => navigate(`#/deck/${res.deckId}`), 120);
+        return true;
+      }
+    }
+  ];
+  if (res.historyId) {
+    actions.push({
+      label: '撤销导入',
+      cls: 'btn-ghost',
+      onClick: async () => {
+        const r = await undoImport(res.historyId);
+        toast(r.ok ? '已撤销本次导入' : `撤销失败：${r.error || '未知错误'}`, r.ok ? undefined : 'error');
+        if (r.ok) navigate('#/home');
+        return true;
+      }
+    });
+  }
+  actions.push({ label: '关闭', cls: 'btn-ghost' });
+  return openModal({ title: '导入完成', body: importSuccessHtml(res), actions });
+}
+
+/* ------------------------------ 多文件批量导入 ------------------------------ */
+
+function fileRowHtml(name, note) {
+  return `<div class="history-item glass"><div class="history-main"><b>${esc(name)}</b><span class="csv-meta">${esc(note)}</span></div></div>`;
+}
+
+/** 批量导入确认弹窗（每个文件 → 各自新建一个卡组） */
+export function openBatchImport(files) {
+  const all = Array.from(files || []).filter(Boolean);
+  const list = all.filter((f) => isSupportedFile(f.name));
+  const bad = all.filter((f) => !isSupportedFile(f.name));
+  if (!list.length) {
+    toast('没有可导入的文件（支持 CSV / TSV / JSON / XLSX）', 'warn');
+    return null;
+  }
   return openModal({
-    title: '导入完成',
-    body: importSuccessHtml(res),
+    title: `批量导入（${list.length} 个文件）`,
+    wide: true,
+    body:
+      '<p class="csv-hint">将<b>每个文件新建为一个卡组</b>，按表头 / 位置自动映射字段（如需逐列调整，请单独导入该文件）。</p>' +
+      `<div class="history-list">${list
+        .map((f) => fileRowHtml(f.name, `${Math.max(0, Math.round((f.size || 0) / 1024))} KB`))
+        .join('')}${bad.map((f) => fileRowHtml(f.name, '已跳过：不支持的文件类型')).join('')}</div>`,
     actions: [
       {
-        label: '去学习',
+        label: '开始导入',
         cls: 'btn-primary',
         onClick: () => {
-          setTimeout(() => navigate(`#/deck/${res.deckId}`), 120);
+          runBatchImport(list);
           return true;
         }
       },
-      { label: '关闭', cls: 'btn-ghost' }
+      { label: '取消', cls: 'btn-ghost' }
     ]
   });
 }
 
+/**
+ * 执行批量导入：每个文件新建一个卡组；记录历史（可整批撤销）。
+ * @returns {Promise<{done:object[], failed:{name:string,error:string}[], historyId:string|null}>}
+ */
+export async function runBatchImport(files) {
+  const list = Array.from(files || []).filter(Boolean);
+  toast(`正在导入 ${list.length} 个文件…`);
+  const done = [];
+  const failed = [];
+  for (const f of list) {
+    try {
+      const res = await importMapped(f, { deckName: deckNameFromFile(f.name) });
+      done.push(res);
+    } catch (e) {
+      failed.push({ name: f.name, error: (e && e.message) || String(e) });
+    }
+  }
+  const historyId = done.length ? (await recordImport(done)).id : null;
+  showBatchSuccess(done, failed, historyId);
+  return { done, failed, historyId };
+}
+
+/** 批量导入结果 HTML */
+export function batchSuccessHtml(done, failed) {
+  const ok = (done || [])
+    .map((r) => fileRowHtml(r.name, `导入 ${r.added} 张${r.duplicates ? ` · 跳过文件内重复 ${r.duplicates} 张` : ''}`))
+    .join('');
+  const bad = (failed || []).map((f) => fileRowHtml(f.name, `失败：${f.error}`)).join('');
+  return (
+    `<p class="import-ok">成功导入 <b>${(done || []).length}</b> 个卡组` +
+    `${(failed || []).length ? `，<b>${failed.length}</b> 个失败` : ''}。</p>` +
+    `<div class="history-list">${ok}${bad}</div>`
+  );
+}
+
+/** 批量导入完成弹窗（含「撤销整批导入」） */
+export function showBatchSuccess(done, failed, historyId) {
+  const actions = [
+    {
+      label: '去首页',
+      cls: 'btn-primary',
+      onClick: () => {
+        setTimeout(() => navigate('#/home'), 120);
+        return true;
+      }
+    }
+  ];
+  if (historyId) {
+    actions.push({
+      label: '撤销整批导入',
+      cls: 'btn-ghost',
+      onClick: async () => {
+        const r = await undoImport(historyId);
+        toast(r.ok ? `已撤销整批导入（${r.undone} 个卡组）` : `撤销失败：${r.error || '未知错误'}`, r.ok ? undefined : 'error');
+        if (r.ok) navigate('#/home');
+        return true;
+      }
+    });
+  }
+  actions.push({ label: '关闭', cls: 'btn-ghost' });
+  return openModal({ title: '批量导入完成', wide: true, body: batchSuccessHtml(done, failed), actions });
+}
+
 /* ------------------------------ 拖拽区域 ------------------------------ */
 
-/** 文件名是否为支持的类型（CSV / TSV / JSON / TXT） */
+/** 文件名是否为 .xlsx（Excel 工作簿，走二进制解析） */
+export function isXlsxFile(name) {
+  return /\.xlsx$/i.test(String(name || ''));
+}
+
+/** 文件名是否为支持的类型（CSV / TSV / JSON / TXT / XLSX） */
 export function isSupportedFile(name) {
-  return /\.(csv|tsv|json|txt)$/i.test(String(name || ''));
+  return /\.(csv|tsv|json|txt|xlsx)$/i.test(String(name || ''));
 }
 
 /** 首页拖拽区（拖入即预览；点击等同「导入」按钮） */
 export function dropzoneHtml() {
   return `<div class="dropzone" data-dropzone="file-import" data-action="import-file" role="button" tabindex="0"
-    aria-label="拖入 CSV / JSON 文件导入词库">
+    aria-label="拖入 CSV / TSV / JSON / XLSX 文件导入词库（支持多个）">
     <span class="dropzone-icon"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor"
       stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4"/><path d="m7 9 5-5 5 5"/>
       <path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg></span>
-    <span class="dropzone-text"><b>拖入 CSV / JSON 文件</b> 即可预览并导入为新卡组<em>（也可点击这里选择文件）</em></span>
+    <span class="dropzone-text"><b>拖入 CSV / TSV / JSON / XLSX 文件</b> 即可预览并导入为新卡组<em>（可拖入多个文件批量导入，也可点击这里选择）</em></span>
   </div>`;
 }
 
@@ -795,16 +1041,18 @@ export function bindDropzone(root) {
       if (e && e.preventDefault) e.preventDefault();
       setDrag(false);
       const files = e && e.dataTransfer ? e.dataTransfer.files : null;
-      const file = files && files.length ? files[0] : null;
-      if (!file) {
+      const list2 = files ? Array.from(files) : [];
+      if (!list2.length) {
         toast('没有读取到文件，请重试', 'warn');
         return;
       }
-      if (!isSupportedFile(file.name)) {
-        toast('仅支持 CSV / TSV / JSON / TXT 文件', 'warn');
+      const valid = list2.filter((f) => isSupportedFile(f.name));
+      if (!valid.length) {
+        toast('仅支持 CSV / TSV / JSON / TXT / XLSX 文件', 'warn');
         return;
       }
-      openImportPreview(file);
+      if (valid.length === 1) openImportPreview(valid[0]);
+      else openBatchImport(valid); // 拖入多个文件 → 批量导入
     });
     bound += 1;
   });

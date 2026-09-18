@@ -118,8 +118,7 @@ export function reviewedAll(cards) {
  *   unlocked 已解锁（首关，或上一关已通关）
  *   locked   未解锁
  */
-export function levelStates(deck) {
-  const levels = deckLevels(deck);
+export function levelStates(deck, levels = deckLevels(deck)) {
   const passedMap = deck.passedLevels || {};
   const states = {};
   let prevPassed = false;
@@ -170,10 +169,18 @@ export function learnedInLevel(deck, levelIndex) {
 
 /* ------------------------------- 卡组级统计 ------------------------------- */
 
+/** 卡组统计（单次遍历，万级卡组也只是一趟 O(n)） */
 export function deckStats(deck, now = Date.now()) {
-  const total = deck.cards ? deck.cards.length : 0;
-  const learned = deck.cards ? deck.cards.filter((c) => c.lastReview != null).length : 0;
-  const due = deck.cards ? deck.cards.filter((c) => c.lastReview != null && c.due <= now).length : 0;
+  let total = 0;
+  let learned = 0;
+  let due = 0;
+  for (const c of (deck && deck.cards) || []) {
+    total++;
+    if (c.lastReview != null) {
+      learned++;
+      if (c.due <= now) due++;
+    }
+  }
   return { total, learned, due, newCount: total - learned };
 }
 

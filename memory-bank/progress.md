@@ -1,6 +1,6 @@
 # Progress — 完成度与遗留
 
-> 更新时间：2026-09-16 ｜ APP `v0.4.12` / SW `v1.7.13` ｜ **1355 条校验全绿**
+> 更新时间：2026-09-18 ｜ APP `v0.5.0` / SW `v1.8.0` ｜ **1690 条校验全绿**
 
 ## 已交付（按版本）
 
@@ -33,21 +33,61 @@
 
 **v0.4.12** 修复浅色模式弹窗仍为深色（`.modal` 渐变变量化）＋同类暗底文字变量化
 
-## 测试资产（20 个 test-*.mjs + `smoke-dom` + `verify-assets` = 22 个脚本 / 1355 条断言）
+**v0.4.13** 导出格式扩展：新增 **CSV（带表头，RFC 4180 转义）** 与 **Markdown（表格）**；`.apkg` 补新版 Anki（≥2.1.50）要求的 **`meta`（`PackageMetadata` protobuf，`version = LEGACY_1`，2 字节 `08 01`）**，老版 Anki 忽略该条目仍读 `collection.anki2`；卡组菜单扩至 4 个导出入口
+
+**v0.4.14** 主题对比度：`--tag-tx`（标签 / 强调文字）改为**随 accent 派生**——`theme.js` 输出 `--tag-tx-dark`/`--tag-tx-light`，CSS 按 `data-theme` 二选一；修掉「浅色系 accent（青碧/翠绿）下标签文字仍是蓝色」的不一致
+
+**v0.4.15** 对比度求解 + `--accent-tx` 统一：
+- 派生算法由**固定混色**改为 **WCAG 相对亮度二分**（`relativeLuminance`/`contrastRatio`/`ensureTextContrast`，保持色相与饱和度、只调 HSL 亮度），**任意自定义色**（亮黄 / 极浅 / 近黑 / 灰）在两种底色下都严格 ≥ 4.5:1；移除 `mixHex`
+- **深色底统一「提亮一档」**：`textOnDark` 先用 `lightenHex` 把 HSL 亮度 +`TEXT_LIGHTEN_STEP(0.12)`（只会变亮、不会超过白），再走对比度求解 → 深色底不再直接用原始主色（观感更亮更接近原主色系）
+- 新增 `--accent-tx`（`var(--tag-tx)` 别名）统一「accent 作文字色」的入口，迁移 9 处 `color: var(--accent)`（`.pill-live`/`.empty-icon`/`.q-blank`/`.fill-hint b`/`.multi-badge`/`.opt-mark-pick`/`.dropzone-icon`/`.import-ok b`/`.seg-btn.is-active`）；当时边框 / `accent-color` 仍用原始 accent（**v0.4.19 起已一并改为 `--accent-tx`**）
+
+**v0.4.16** 导出/导入携带**复习进度**（范围 = apkg + JSON）：
+- `.apkg`：新增 `cardToAnkiSched`，`cards` 表按进度写调度（`state→type/queue`、`interval→ivl`、`easeFactor→factor`、`repetitions→reps`、`due→今天+相对天数`），Anki 导入后可直接续学；`revlog` 仍空（无逐次历史可迁移）
+- 新增 **JSON 完整导出** `deckToJson` / `exportDeckJson`（卡组菜单第 5 个入口）：含内容 + 进度 + 卡组元信息，结构与导入侧兼容，**可无损往返**
+- 导入侧新增 `store.pickScheduling`（统一校验/钳制进度：state 白名单、easeFactor 1.3–3.0、数值钳制）与 `import-file.pickSchedFields`（透传 + 兼容 `reps/ivl/ef/last_review` 简写）；`seedBuiltinDeck` / `addManyCards` 保留进度，并支持 `extraBacks`/`groups` 随 JSON 往返
+- txt/CSV/Markdown 仍为纯「词表」（不含调度）
+
+**v0.4.17** 大卡组性能（万级，实测 = 生成 `scripts/test-perf.mjs` 金丝雀）：
+- `levels.js`：`deckStats` 改**单遍遍历**；`levelStates(deck, levels = deckLevels(deck))` 支持**复用**已算好的分组
+- `decks.js`：首页/详情渲染复用同一份 `levels`（`levelStates` 不再重复整卡组遍历）；`hw.hardCount` 由 hero 里 2 次读 localStorage 改为 1 次
+- `test-engine.js`：`pickLeastUsed` 由「filter → min → filter」三段合并为**单趟扫描**；**新增 O(n) 快路径**——「词数 ≥ 题数 且无优先池」时用部分 Fisher-Yates 取 n 个不同词（分布等价），**万级 150 题由 ~400ms 降到 ~10ms**；`byId` 懒建
+- 实测（1 万词 / 500 关）：`deckStats` ~6ms、`deckLevels` ~3ms、`levelStates` 复用后 ~0.5ms、`samplePlan(150)` **~10ms**（带优先池 ~110ms）
+
+**v0.4.18** 卡片管理分页（万级 DOM 规模）：
+- `decks.js` 新增 `CARDS_PER_PAGE = 100` 与 `cardsPagerHtml`；`renderCards` 只渲染当前页（URL `#/deck/{id}/cards?page=2`），越界页号夹取；新增 `cards-page` 动作
+- 万级卡组「卡片管理」不再一次性写入上万 DOM 节点（此前是真正的卡顿源）
+- 顺带（仓库瘦身）：删除 `backup-before-rewrite` 分支 + **Cline 检查点 refs**（`refs/cline/checkpoints/*` 共 29 条，是重写前 4 个 gcide 大文件的真正持有者）→ `git reflog expire --expire=now --all` + `git gc --prune=now` 后 **`.git` 49M → 2.4M**（`git fsck --strict` 干净）
+
+**v0.4.19** 非文字前景也跟随主色：
+- `css/style.css` 把 8 处非文字 `var(--accent)` 改为 `var(--accent-tx)`——焦点环（`*:focus-visible` 的 `outline`）、输入/填空/查词聚焦边框（`border-color`）、`.q-blank` 下划线（`border-bottom`）、拖拽高亮边框（`.dropzone.is-drag`）、原生 `accent-color`（`.test-range` / `.weight-toggle input`）
+- 因此浅色系主色（青碧/翠绿）下这些元素也足够醒目，与文字/图标口径一致（零 JS 改动，复用现成派生色）
+- 仍保留原始 `--accent` 的：按钮渐变填充、`.opt-picked .opt-key`（主色底 + 白字）、`.about-list li::before` 装饰圆点
+
+**v0.5.0** 导入增强（Excel / 多文件批量 / 历史回滚）：
+- **`.xlsx`**：新增 `js/xlsx.js`（**零依赖**：自写 ZIP 读取 `unzip`（STORED + DEFLATE 经 `DecompressionStream('deflate-raw')`）+ 最小 XML 扫描 `parseXlsxRows`/`parseSheet`；共享/内联字符串、数值/布尔/日期、跳列补空；workbook+rels 定位首个 sheet，回退 sheet1.xml）；`import-file.js` 走二进制读取 + 「预览表格 + 同套字段映射」；ACCEPT/isSupportedFile 加 `.xlsx`
+- **多文件批量**：选择器 `multiple`、拖拽区收多文件 → 「每个文件各建一个卡组」（自动映射），完成弹批量汇总；新增 `openBatchImport`/`runBatchImport`/`batchSuccessHtml`
+- **导入历史 / 回滚**：新增 `js/import-history.js`——`recordImport` 记摘要（localStorage，最近 20 条），追加导入的 `cardIds` 存 **IndexedDB `meta`**（`import-rollback:{id}`，最近 5 次）；`undoImport` 撤销（new → `deleteDeck`；append → `store.deleteCards` 只删本次新增）；首页「导入历史」入口 + 「导入完成 / 批量完成」弹窗内直接「撤销」
+- 配套：`store.deleteCards(deckId, ids)`；`commitWords` 返回 `mode`/`addedCardIds`/`fileName`
+
+## 测试资产（22 个 test-*.mjs + `smoke-dom` + `verify-assets` = 24 个脚本 / 1690 条断言）
 | 分类 | 脚本 |
 | --- | --- |
 | 核心纯函数 | `test-core`(43) `test-difficulty`(39) `test-arrange`(22) `test-pagination`(25) `test-resplit-levels`(26) |
 | 学习与题型 | `test-confusables`(82) `test-hardwords`(26) `test-level-retry`(73) `test-fill`(85) `test-listen`(21) `test-deck-test`(81) `test-eng-eng`(34) `test-multi-sense`(39) `test-review-complete`(11) `test-review-interaction`(12) |
-| 存储与主题 | `test-idb-store`(42) `test-theme`(60) |
-| 新功能 | `test-add-words`(82) `test-import-file`(200) `test-export`(65) |
-| DOM / 资源 | `smoke-dom`(124) `verify-assets`(163) |
+| 存储与主题 | `test-idb-store`(42) `test-theme`(150) |
+| 新功能 | `test-add-words`(82) `test-import-file`(246) `test-export`(133) `test-xlsx`(33) |
+| DOM / 资源 | `smoke-dom`(145) `verify-assets`(214) |
+| 性能金丝雀 | `test-perf`(26，1 万词 / 500 关：统计/分组/抽题 + 耗时) |
 
 ## 已知问题 / 技术债
-- **apkg 为旧版结构**（无新版 `meta` protobuf）：Anki 2.1.x 可导入；更严格的新版若报错需补 `meta`
-- **导出不含复习进度**：txt/apkg 只导内容，学习状态（repetitions/interval/due）不随之迁移
-- **大卡组性能**：万级卡片时首页关卡统计与整卡组测试抽题存在可优化空间（未实测到卡顿，仅静态分析）
-- **浅色对比度**：固定色 `--tag-tx`/`--soft-danger-tx` 不随 accent 变化（见 activeContext 待决问题）
-- **本地备份分支** `backup-before-rewrite` 仍指向重写前历史（含 56MB gcide），确认无误后可 `git branch -D` + `git gc` 回收
+- **带优先池的抽题**：优先池非空时仍走 O(题数×词数) 全量扫描（万级 ~110ms，暂无感）。方案已记录：词数 ≥ 题数时，非优先槽位同样用**部分 Fisher-Yates** 取「尚未出现的词」，优先槽位从 `prio` 取 → O(n)
+- **注意**：`refs/cline/checkpoints/*` 已被清理（v0.4.18）；Cline 扩展在后续会话中可能**重建**同类检查点并再次持有大对象——若 `.git` 再度膨胀，用同样方式（`for-each-ref refs/cline` → `update-ref -d` → `gc --prune=now`）回收即可
+
+## 刻意决定 / 已知限制（非技术债）
+- **apkg 复习进度为「近似迁移」**：`due` 用「今天 + 相对天数」（Anki review 本就是日粒度），learning 的分钟级步进不映射、`revlog` 为空——因 Mycard 不存逐次复习历史 / 无 learning 步进子模型，**明确不做**（需先改存储模型）
+- **`--soft-danger-tx` 刻意固定**：它是「危险/错误」语义色，**不应**跟随 accent（浅色 `#c6283b` / 深色 `#ff9ba6`）
+- **原始 `--accent` 仅用于「填充/品牌底」**：按钮渐变、`.opt-picked .opt-key`（主色底 + 白字）、`.about-list li::before` 装饰圆点；**前景类**（文字 / 图标 / 焦点环 / 边框 / 原生 `accent-color`）一律走 `--accent-tx`（v0.4.19 起）
 
 ## 明确的非目标（不做）
 云同步/账号、社交排行、服务端、构建工具、TypeScript、前端框架、ORM（Dexie）

@@ -1,15 +1,29 @@
 // ============================================================================
-// export.js — 把卡组导出为「标准 txt（TSV）」与「Anki 卡包 .apkg」
+// export.js — 把卡组导出为「标准 txt（TSV）」「CSV（带表头）」「Markdown」
+//             「JSON（完整，含复习进度）」与「Anki 卡包 .apkg」
 //
 // 设计：
 //   - txt：UTF-8(带 BOM) 制表符分隔，一卡一行：
 //          正面 \t 背面 \t 例句 \t 例句翻译 \t 音标 \t 标签(逗号)
-//   - apkg：Anki 2.1 兼容的旧版卡包结构（ZIP 内含 collection.anki2 + media）。
+//   - csv：UTF-8(带 BOM) 逗号分隔（RFC 4180：含 , " 换行的字段用双引号包裹、
+//          内部 " 加倍），首行为列名，行尾 CRLF（Excel / 表格工具友好）
+//   - md：Markdown 表格（首行 # 卡组名 + 表头 + |---|---| 分隔行），
+//          单元格内 | 转义为 \|、换行转 <br>
+//   - apkg：Anki 2.1 兼容的旧版卡包结构（ZIP 内含 collection.anki2 + media + meta）。
 //           SQLite 由内置的 sql.js（vendor/sql.js，WASM）生成：col/notes/cards/
 //           revlog/graves + Basic 笔记模板；ZIP 由本文件内的最小写出器负责。
+//           `meta` 为新版 Anki（≥2.1.50）要求的 PackageMetadata protobuf：
+//           version = LEGACY_1(1)，与 collection.anki2 + schema v11 自洽；
+//           新版 Anki 读到 meta 不再报错，老版 Anki 忽略该条目仍读 collection.anki2。
+//   - json：内容 + 复习进度 + 卡组元信息（与导入侧 parseImportJson 结构兼容，
+//           可「导出 → 导入」无损往返；见 deckToJson）
+//   - 复习进度：txt/csv/md 为「词表」不含调度；apkg 的 cards 表按 cardToAnkiSched
+//           映射 state/repetitions/interval/easeFactor/due（Anki 侧可直接续学）
 //   - 浏览器里首次导出时才懒加载 sql.js（不阻塞启动、离线可用）。
 //
-// 导出 API：downloadBlob / deckToTxt / deckToApkg / exportDeckTxt / exportDeckApkg
+// 导出 API：downloadBlob / deckToTxt / deckToCsv / deckToMarkdown / deckToJson /
+//           deckToApkg / cardToAnkiSched /
+//           exportDeckTxt / exportDeckCsv / exportDeckMarkdown / exportDeckJson / exportDeckApkg
 // ============================================================================
 
 import * as store from './store.js';
@@ -61,6 +75,18 @@ export function safeFileName(name, fallback = 'mycard') {
 
 /* ------------------------------ txt（TSV） ------------------------------ */
 
+/** 卡片 → 6 个原始字段（顺序见 TXT_COLUMNS；txt / CSV / Markdown 共用） */
+export function cardFields(card) {
+  return [
+    card.front,
+    card.back,
+    card.example,
+    card.exampleZh,
+    card.phonetic,
+    (card.tags || []).join(',')
+  ];
+}
+
 /** 单元格清洗：去制表符 / 换行（避免破坏 TSV 一行一卡） */
 export function tsvCell(v) {
   return String(v == null ? '' : v)
@@ -70,14 +96,7 @@ export function tsvCell(v) {
 
 /** 卡片 → txt 行字段（顺序见 TXT_COLUMNS） */
 export function cardToTxtRow(card) {
-  return [
-    tsvCell(card.front),
-    tsvCell(card.back),
-    tsvCell(card.example),
-    tsvCell(card.exampleZh),
-    tsvCell(card.phonetic),
-    tsvCell((card.tags || []).join(','))
-  ];
+  return cardFields(card).map(tsvCell);
 }
 
 /**
@@ -94,6 +113,119 @@ export function deckToTxt(deck, { header = true } = {}) {
     rows.push(row.join('\t'));
   }
   return '\uFEFF' + rows.join('\r\n') + '\r\n';
+}
+
+/* ------------------------------ CSV（RFC 4180，带表头） ------------------------------ */
+
+/** CSV 单元格转义：含 , " 换行时用双引号包裹，内部 " 加倍为 "" */
+export function csvCell(v) {
+  const s = String(v == null ? '' : v);
+  return /[",\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+}
+
+/** 卡片 → CSV 行字段（顺序见 TXT_COLUMNS） */
+export function cardToCsvRow(card) {
+  return cardFields(card).map(csvCell);
+}
+
+/**
+ * 卡组 → CSV（UTF-8 + BOM，逗号分隔，CRLF 行尾；无正面的卡片不输出）
+ * @param {object} deck
+ * @param {{ header?: boolean }} opts header=true 时输出首行列名
+ */
+export function deckToCsv(deck, { header = true } = {}) {
+  const rows = [];
+  if (header) rows.push(TXT_COLUMNS.join(','));
+  for (const c of (deck && deck.cards) || []) {
+    const row = cardToCsvRow(c);
+    if (!row[0]) continue; // 没有正面（单词）的卡片不导出
+    rows.push(row.join(','));
+  }
+  return '\uFEFF' + rows.join('\r\n') + '\r\n';
+}
+
+/* ------------------------------ Markdown（表格） ------------------------------ */
+
+/** Markdown 单元格转义：| 转义为 \|、换行转 <br>、制表符转空格、去首尾空白 */
+export function mdCell(v) {
+  return String(v == null ? '' : v)
+    .replace(/\\/g, '\\\\')
+    .replace(/\|/g, '\\|')
+    .replace(/\t+/g, ' ')
+    .replace(/\r?\n+/g, '<br>')
+    .trim();
+}
+
+/** 卡片 → Markdown 行字段（顺序见 TXT_COLUMNS） */
+export function cardToMdRow(card) {
+  return cardFields(card).map(mdCell);
+}
+
+/**
+ * 卡组 → Markdown（# 卡组名 + 表格；无正面的卡片不输出）
+ * @param {object} deck
+ * @param {{ header?: boolean, title?: boolean }} opts header=表头行；title=首行标题
+ */
+export function deckToMarkdown(deck, { header = true, title = true } = {}) {
+  const lines = [];
+  if (title) {
+    const name = String((deck && deck.name) || 'Mycard')
+      .replace(/[\r\n\t]+/g, ' ')
+      .trim();
+    lines.push('# ' + (name || 'Mycard'), '');
+  }
+  if (header) {
+    lines.push('| ' + TXT_COLUMNS.join(' | ') + ' |');
+    lines.push('| ' + TXT_COLUMNS.map(() => '---').join(' | ') + ' |');
+  }
+  for (const c of (deck && deck.cards) || []) {
+    const row = cardToMdRow(c);
+    if (!row[0]) continue; // 没有正面（单词）的卡片不导出
+    lines.push('| ' + row.join(' | ') + ' |');
+  }
+  return lines.join('\n') + '\n';
+}
+
+/* ------------------------------ JSON（完整导出，含复习进度） ------------------------------ */
+
+/**
+ * 卡组 → JSON 文本（内容 + 复习进度 + 卡组元信息）。
+ * 结构与导入侧 `parseImportJson` 兼容（`{ name, description, tags, levelSize, cards:[…] }`），
+ * 因此可「导出 → 导入」无损往返：复习状态、多释义、易混分组一并保留。
+ * @param {object} deck
+ * @param {{ pretty?: boolean }} opts pretty=true 输出缩进
+ */
+export function deckToJson(deck, { pretty = true } = {}) {
+  const d = deck || {};
+  const cards = (d.cards || [])
+    .filter((c) => String(c.front || '').trim())
+    .map((c, i) => ({
+      front: c.front,
+      back: c.back ?? '',
+      example: c.example ?? '',
+      exampleZh: c.exampleZh ?? '',
+      phonetic: c.phonetic ?? '',
+      tags: Array.isArray(c.tags) ? c.tags : [],
+      extraBacks: Array.isArray(c.extraBacks) ? c.extraBacks : [],
+      groups: Array.isArray(c.groups) ? c.groups : [],
+      level: Number.isInteger(c.level) && c.level >= 0 ? c.level : i,
+      // 复习进度（导入时由 store.pickScheduling 校验；缺省 = 新卡）
+      state: c.state || 'new',
+      repetitions: Number(c.repetitions) || 0,
+      interval: Number(c.interval) || 0,
+      easeFactor: Number.isFinite(c.easeFactor) ? c.easeFactor : 2.5,
+      due: Number(c.due) || 0,
+      lastReview: c.lastReview ?? null
+    }));
+  const payload = {
+    formatVersion: 1,
+    name: d.name || 'Mycard',
+    description: d.description || '',
+    tags: Array.isArray(d.tags) ? d.tags : [],
+    levelSize: Number.isInteger(d.cardsPerLevel) ? d.cardsPerLevel : null,
+    cards
+  };
+  return JSON.stringify(payload, null, pretty ? 2 : 0);
 }
 
 /* ------------------------------ ZIP（STORED 无压缩） ------------------------------ */
@@ -303,6 +435,34 @@ export function ankiCreationTime(now = Date.now()) {
   return Math.floor(d.getTime() / 1000);
 }
 
+/**
+ * Anki 卡包 `meta`（PackageMetadata protobuf）的 version 枚举。
+ * 见 Anki proto/anki/import_export.proto：
+ *   LEGACY_1(1)=collection.anki2 ｜ LEGACY_2(2)=collection.anki21 ｜
+ *   LATEST(3)=collection.anki21b + zstd + MediaEntry 媒体映射
+ * 本项目保持 collection.anki2 + schema v11，故用 LEGACY_1；version=0(UNKNOWN)
+ * 会被新版 Anki 判为「包太新」而拒绝，因此不能省略/置 0。
+ */
+export const ANKI_META_VERSION = { LEGACY_1: 1, LEGACY_2: 2, LATEST: 3 };
+
+/**
+ * 把 PackageMetadata{ version } 编码为 protobuf 字节。
+ * 该消息仅一个字段：version = 1（varint，wire type 0）。
+ * @param {number} version 见 ANKI_META_VERSION
+ * @returns {Uint8Array}
+ */
+export function encodePackageMetadata(version = ANKI_META_VERSION.LEGACY_1) {
+  const v = Math.max(0, Math.floor(Number(version) || 0));
+  const out = [0x08]; // tag = (field 1 << 3) | wire-type 0
+  let n = v;
+  while (n >= 0x80) {
+    out.push((n & 0x7f) | 0x80);
+    n = Math.floor(n / 128);
+  }
+  out.push(n & 0x7f);
+  return new Uint8Array(out);
+}
+
 /** Basic 笔记模板（models JSON） */
 export function basicModel(mid, deckId, now) {
   return {
@@ -403,14 +563,53 @@ export function colConfJson(mid, deckId) {
   };
 }
 
+/* ------------------------------ Anki 调度映射（复习进度） ------------------------------ */
+
+export const ANKI_DAY_MS = 86400000;
+
+/**
+ * 卡片 → Anki `cards` 表的调度列（type/queue/due/ivl/factor/reps）。
+ * 把 Mycard 的 state / repetitions / interval(天) / easeFactor / due(毫秒时间戳)
+ * 映射为 Anki 2.1 调度字段；`due` 用「相对集合创建日的天数」近似（Anki 本身即日粒度）。
+ * @param {object} card        卡片
+ * @param {number} position    新卡在队列中的位置（1 起）
+ * @param {number} now         当前时间戳（毫秒）
+ * @param {number} todayNumber 今天相对 crt 的日数（通常为 0，见 buildCollection）
+ */
+export function cardToAnkiSched(card, position, now = Date.now(), todayNumber = 0) {
+  const c = card || {};
+  const ef = Number.isFinite(c.easeFactor) ? c.easeFactor : 2.5;
+  const factor = Math.max(1300, Math.min(3000, Math.round(ef * 1000)));
+  if (c.state === 'review' && c.lastReview != null) {
+    const ivl = Math.max(1, Math.round(Number(c.interval) || 0)); // Anki 复习间隔为整天
+    const daysUntil = Math.max(0, Math.round((Number(c.due) - now) / ANKI_DAY_MS) || 0);
+    return {
+      type: 2, // review
+      queue: 2, // review（到期）
+      due: todayNumber + daysUntil,
+      ivl,
+      factor,
+      reps: Math.max(0, Math.round(Number(c.repetitions) || 0))
+    };
+  }
+  if (c.state === 'learning') {
+    return { type: 1, queue: 1, due: todayNumber, ivl: 0, factor, reps: 0 };
+  }
+  // 新卡：沿用 Anki 惯例（due = 队列位置、factor = 2500）
+  return { type: 0, queue: 0, due: position, ivl: 0, factor: 2500, reps: 0 };
+}
+
 /* ------------------------------ 生成 collection.anki2 / .apkg ------------------------------ */
 
-/** 用 sql.js 生成 collection.anki2 字节（Anki 2.1 可导入） */
+/** 用 sql.js 生成 collection.anki2 字节（Anki 2.1 可导入，含复习进度） */
 export async function buildCollection(deck, { SQL, deckName, now = Date.now() } = {}) {
   if (!SQL || typeof SQL.Database !== 'function') throw new Error('sql.js 未就绪');
   const cards = ((deck && deck.cards) || []).filter((c) => String(c.front || '').trim());
   const name = safeFileName(deckName || (deck && deck.name) || 'Mycard', 'Mycard');
   const secs = Math.floor(now / 1000);
+  const crt = ankiCreationTime(now); // 秒（含「凌晨 4 点」日切）
+  // 今天相对 crt 的日数（Anki 的 due 是日序号；新建集合通常为 0）
+  const todayNumber = Math.max(0, Math.floor((now - crt * 1000) / ANKI_DAY_MS));
   const mid = 1650000000000 + (now % 100000000);
   const deckId = 1;
 
@@ -418,7 +617,7 @@ export async function buildCollection(deck, { SQL, deckName, now = Date.now() } 
   db.run(ANKI_SCHEMA);
   db.run('INSERT INTO col VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)', [
     1,
-    ankiCreationTime(now),
+    crt,
     secs,
     secs,
     11, // schema version（Anki 2.1）
@@ -456,25 +655,26 @@ export async function buildCollection(deck, { SQL, deckName, now = Date.now() } 
       0,
       ''
     ]);
+    const sched = cardToAnkiSched(c, i + 1, now, todayNumber);
     db.run('INSERT INTO cards VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)', [
       cardId,
       noteId,
       deckId,
-      0,
-      secs,
-      0,
-      0, // type：新卡
-      0, // queue：新卡
-      i + 1, // due：新卡顺序
-      0,
-      2500,
-      0,
-      0,
-      0,
-      0,
-      0,
-      0,
-      ''
+      0, // ord
+      secs, // mod
+      0, // usn
+      sched.type, // type：0 新卡 / 1 学习 / 2 复习
+      sched.queue, // queue：0 新 / 1 学习 / 2 复习
+      sched.due, // due：新卡=队列位置；学习=今天；复习=今天 + 剩余天数
+      sched.ivl, // ivl：复习间隔（天）
+      sched.factor, // factor：easeFactor × 1000
+      sched.reps, // reps：成功回忆次数
+      0, // lapses
+      0, // left
+      0, // odue
+      0, // odid
+      0, // flags
+      '' // data
     ]);
   }
   db.run('COMMIT');
@@ -524,49 +724,72 @@ export function __setSqlJs(SQL) {
   return sqlJsPromise;
 }
 
-/** 卡组 → .apkg 字节（ZIP：collection.anki2 + media） */
+/** 卡组 → .apkg 字节（ZIP：collection.anki2 + media + meta） */
 export async function deckToApkg(deck, opts = {}) {
   const SQL = opts.SQL || (await ensureSqlJs(opts));
   const collection = await buildCollection(deck, { ...opts, SQL });
   return zipStore([
     { name: 'collection.anki2', data: collection },
-    { name: 'media', data: '{}' }
+    { name: 'media', data: '{}' },
+    // 新版 Anki（≥2.1.50）读取的 PackageMetadata protobuf；LEGACY_1 与
+    // collection.anki2 + schema v11 自洽，老版本 Anki 会忽略此条目
+    { name: 'meta', data: encodePackageMetadata(opts.metaVersion || ANKI_META_VERSION.LEGACY_1) }
   ]);
 }
 
 /* ------------------------------ 导出入口 ------------------------------ */
 
-/** 导出卡组为 txt 并触发下载 */
-export function exportDeckTxt(deckId) {
+/** 导出前校验：卡组不存在 / 无卡片时提示并返回 null */
+function resolveExportDeck(deckId) {
   const deck = store.getDeck(deckId);
   if (!deck) {
     toast('卡组不存在', 'error');
     return null;
   }
-  const n = (deck.cards || []).length;
-  if (!n) {
+  if (!(deck.cards || []).length) {
     toast('这个卡组还没有卡片', 'warn');
     return null;
   }
-  const text = deckToTxt(deck);
-  const filename = safeFileName(deck.name, 'mycard') + '.txt';
-  const res = downloadBlob(filename, text, 'text/tab-separated-values;charset=utf-8');
+  return deck;
+}
+
+/** 文本类导出（txt / csv / md）共用：生成内容 → 下载 → 提示 */
+function exportDeckText(deckId, build, ext, mime) {
+  const deck = resolveExportDeck(deckId);
+  if (!deck) return null;
+  const n = (deck.cards || []).length;
+  const text = build(deck);
+  const filename = safeFileName(deck.name, 'mycard') + ext;
+  const res = downloadBlob(filename, text, mime);
   toast(`已导出 ${n} 张卡片 → ${filename}`, 'good');
   return { filename, text, size: res ? res.size : text.length };
 }
 
+/** 导出卡组为 txt（TSV）并触发下载 */
+export function exportDeckTxt(deckId) {
+  return exportDeckText(deckId, deckToTxt, '.txt', 'text/tab-separated-values;charset=utf-8');
+}
+
+/** 导出卡组为 CSV（带表头）并触发下载 */
+export function exportDeckCsv(deckId) {
+  return exportDeckText(deckId, deckToCsv, '.csv', 'text/csv;charset=utf-8');
+}
+
+/** 导出卡组为 Markdown（表格）并触发下载 */
+export function exportDeckMarkdown(deckId) {
+  return exportDeckText(deckId, deckToMarkdown, '.md', 'text/markdown;charset=utf-8');
+}
+
+/** 导出卡组为 JSON（含复习进度，可无损回导）并触发下载 */
+export function exportDeckJson(deckId) {
+  return exportDeckText(deckId, deckToJson, '.json', 'application/json;charset=utf-8');
+}
+
 /** 导出卡组为 Anki 卡包（.apkg）并触发下载 */
 export async function exportDeckApkg(deckId) {
-  const deck = store.getDeck(deckId);
-  if (!deck) {
-    toast('卡组不存在', 'error');
-    return null;
-  }
+  const deck = resolveExportDeck(deckId);
+  if (!deck) return null;
   const n = (deck.cards || []).length;
-  if (!n) {
-    toast('这个卡组还没有卡片', 'warn');
-    return null;
-  }
   toast(`正在打包「${deck.name}」（${n} 张）…`);
   try {
     const bytes = await deckToApkg(deck);
@@ -583,6 +806,18 @@ export async function exportDeckApkg(deckId) {
 
 on('export-txt', (el) => {
   exportDeckTxt(el.dataset && el.dataset.id);
+});
+
+on('export-csv', (el) => {
+  exportDeckCsv(el.dataset && el.dataset.id);
+});
+
+on('export-md', (el) => {
+  exportDeckMarkdown(el.dataset && el.dataset.id);
+});
+
+on('export-json', (el) => {
+  exportDeckJson(el.dataset && el.dataset.id);
 });
 
 on('export-apkg', (el) => {

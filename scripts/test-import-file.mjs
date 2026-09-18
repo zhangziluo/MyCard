@@ -61,6 +61,11 @@ globalThis.FileReader = class FakeFileReader {
 function makeFile(name, text) {
   return { name, size: text.length, __text: text };
 }
+/** 二进制文件桩（xlsx 走 file.arrayBuffer()） */
+function makeBinFile(name, bytes) {
+  const buf = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+  return { name, size: bytes.length, arrayBuffer: async () => buf };
+}
 /** 等一个宏任务（预览是异步读取 → 打开弹窗） */
 const tick = () => new Promise((r) => setTimeout(r, 0));
 /** body 中当前打开的弹窗数量 */
@@ -69,6 +74,41 @@ const modalCount = () => body.children.filter((c) => c && c.className === 'modal
 installFakeIndexedDB();
 const store = await import('../js/store.js');
 const imp = await import('../js/import-file.js');
+const ex = await import('../js/export.js'); // 复用 ZIP 写出器拼测试用 .xlsx
+
+/**
+ * 用「共享字符串 + STORED ZIP」拼一个最小 xlsx（不含 workbook.xml，走 sheet1.xml 回退）。
+ * @param {string[][]} rows
+ */
+function xlsxBytes(rows) {
+  const idx = new Map();
+  const items = [];
+  const si = (v) => {
+    const s = String(v);
+    if (!idx.has(s)) {
+      idx.set(s, items.length);
+      items.push(`<si><t>${s.replace(/&/g, '&amp;').replace(/</g, '&lt;')}</t></si>`);
+    }
+    return idx.get(s);
+  };
+  const colName = (i) => {
+    let s = '';
+    let n = i + 1;
+    while (n > 0) {
+      const m = (n - 1) % 26;
+      s = String.fromCharCode(65 + m) + s;
+      n = Math.floor((n - 1) / 26);
+    }
+    return s;
+  };
+  const sheetRows = rows
+    .map((r, ri) => `<row r="${ri + 1}">${r.map((v, ci) => `<c r="${colName(ci)}${ri + 1}" t="s"><v>${si(v)}</v></c>`).join('')}</row>`)
+    .join('');
+  return ex.zipStore([
+    { name: 'xl/sharedStrings.xml', data: `<?xml version="1.0"?><sst>${items.join('')}</sst>` },
+    { name: 'xl/worksheets/sheet1.xml', data: `<?xml version="1.0"?><worksheet><sheetData>${sheetRows}</sheetData></worksheet>` }
+  ]);
+}
 
 let pass = 0;
 let fail = 0;
@@ -497,7 +537,7 @@ console.log('\n[拖拽导入]');
   const html = imp.dropzoneHtml();
   ok(html.includes('data-dropzone'), '拖拽区带 data-dropzone 标记');
   ok(html.includes('data-action="import-file"'), '拖拽区可点击（复用 import-file action）');
-  ok(html.includes('拖入 CSV / JSON 文件'), '拖拽区含提示文案');
+  ok(html.includes('拖入 CSV / TSV / JSON / XLSX 文件'), '拖拽区含提示文案');
 
   const handlers = {};
   const classes = new Set();
@@ -540,6 +580,166 @@ console.log('\n[拖拽导入]');
   ok(String(overlay.innerHTML).includes('<th>单词</th>'), '中文表头被识别为列名');
 
   ok(imp.bindDropzone({}) === 0, '无拖拽区时安全返回 0');
+}
+
+console.log('\n[导入 JSON：复习进度还原]');
+{
+  const json = JSON.stringify({
+    formatVersion: 1,
+    name: '进度词库',
+    description: '带复习进度',
+    tags: ['进度'],
+    cards: [
+      { front: 'alpha', back: '甲', extraBacks: ['甲2'], state: 'review', repetitions: 6, interval: 21, easeFactor: 2.8, due: 1800000000000, lastReview: 1700000000000 },
+      { front: 'beta', back: '乙', state: 'learning', repetitions: 0, interval: 0.0069, easeFactor: 2.3, due: 1700000600000, lastReview: 1700000000000 },
+      { front: 'gamma', back: '丙' }
+    ]
+  });
+  const res = await imp.importDeckFromFile(makeFile('进度词库.json', json));
+  const deck = store.getDeck(res.deck.id);
+  const by = (f) => deck.cards.find((c) => c.front === f);
+  ok(deck.cards.length === 3, '导入 3 张', deck.cards.length);
+
+  const a = by('alpha');
+  ok(a.state === 'review' && a.repetitions === 6 && a.interval === 21 && a.easeFactor === 2.8, '复习卡进度还原', a);
+  ok(a.due === 1800000000000 && a.lastReview === 1700000000000, 'due / lastReview 还原', [a.due, a.lastReview]);
+  ok(a.extraBacks.join(',') === '甲2', '多释义一并还原', a.extraBacks);
+
+  const b = by('beta');
+  ok(b.state === 'learning' && b.easeFactor === 2.3 && b.lastReview === 1700000000000, '学习卡状态还原', b);
+
+  const g = by('gamma');
+  ok(g.state === 'new' && g.repetitions === 0 && g.interval === 0 && g.easeFactor === 2.5 && g.lastReview === null, '无进度的词条保持新卡', g);
+}
+
+console.log('\n[导入 JSON：进度字段简写与非法值]');
+{
+  const alias = JSON.stringify({
+    name: '别名',
+    cards: [{ front: 'delta', back: '丁', state: 'review', reps: 3, ivl: 5, ef: 2.2, due: 1900000000000, last_review: 1750000000000 }]
+  });
+  const r2 = await imp.importDeckFromFile(makeFile('别名.json', alias));
+  const d2 = store.getDeck(r2.deck.id).cards[0];
+  ok(d2.repetitions === 3 && d2.interval === 5 && d2.easeFactor === 2.2, 'reps / ivl / ef 简写被识别', d2);
+  ok(d2.due === 1900000000000 && d2.lastReview === 1750000000000, 'last_review 简写被识别', [d2.due, d2.lastReview]);
+
+  const bad = JSON.stringify({
+    name: '脏数据',
+    cards: [{ front: 'epsilon', back: '戊', state: 'nope', repetitions: 'x', interval: -3, easeFactor: 'bad', due: -1, lastReview: 'oops' }]
+  });
+  const r3 = await imp.importDeckFromFile(makeFile('脏数据.json', bad));
+  const d3 = store.getDeck(r3.deck.id).cards[0];
+  ok(d3.state === 'new' && d3.easeFactor === 2.5 && d3.lastReview === null, '非法进度回退新卡默认', d3);
+  ok(d3.repetitions === 0 && d3.interval === 0 && d3.due === 0, '非法数值被钳制为 0', d3);
+  ok(!!d3.id && d3.front === 'epsilon', '卡片仍正常写入', d3.front);
+}
+
+console.log('\n[导入 XLSX：Excel 工作簿（第一个工作表）]');
+{
+  const bytes = xlsxBytes([
+    ['单词', '释义', '音标'],
+    ['apple', '苹果', 'ˈæpl'],
+    ['book', '书', 'bʊk'],
+    ['apple', '重复', 'x']
+  ]);
+  ok(imp.isXlsxFile('a.xlsx') === true && imp.isXlsxFile('a.csv') === false, 'isXlsxFile 判定');
+  ok(imp.isSupportedFile('a.xlsx') === true && imp.ACCEPT.includes('.xlsx'), 'isSupportedFile / ACCEPT 含 xlsx');
+
+  const xl = await import('../js/xlsx.js');
+  const rows = await xl.parseXlsxRows(bytes);
+  ok(rows.length === 4 && rows[1].join('|') === 'apple|苹果|ˈæpl', 'xlsx 解析出全部行', rows.length);
+
+  const pv = imp.rowsPreview(rows);
+  ok(pv.kind === 'xlsx' && pv.header.join('|') === '单词|释义|音标', '预览识别中文表头', pv.header);
+  ok(pv.totalRows === 3 && pv.cols === 3, '预览行列统计（表头不计入）', [pv.totalRows, pv.cols]);
+  ok(imp.isTabular(pv) === true, 'xlsx 走逐列映射');
+  ok(imp.defaultMapping(pv).join(',') === 'front,back,phonetic', '按中文表头自动对号', imp.defaultMapping(pv));
+  ok(imp.previewMetaHtml(pv, 'x.xlsx').includes('Excel 工作表'), '预览元信息标注 Excel 工作表');
+  ok(imp.fieldMapHtml(pv).includes('正面'), 'xlsx 也渲染字段映射下拉');
+
+  const res = await imp.importDeckFromFile(makeBinFile('我的 Excel 词表.xlsx', bytes));
+  ok(res.name === '我的 Excel 词表' && res.words === 2 && res.duplicates === 1, '端到端导入（apple 重复 → 去重后 2 词）', res);
+  const deck = store.getDeck(res.deck.id);
+  ok(deck.cards.find((c) => c.front === 'apple').back === '苹果', 'xlsx 数据写入正确');
+  ok(deck.cards.find((c) => c.front === 'book').phonetic === 'bʊk', '音标列写入正确');
+
+  const mapped = await imp.importMapped(makeBinFile('映射.xlsx', bytes), {
+    mapping: ['back', 'front', 'ignore'],
+    deckName: '反着映射'
+  });
+  ok(mapped.name === '反着映射' && mapped.added === 3, 'importMapped 支持自定义映射', mapped);
+  ok(store.getDeck(mapped.deckId).cards.find((c) => c.front === '苹果').back === 'apple', '按自定义映射取列');
+
+  body.children.length = 0;
+  await imp.openImportPreview(makeBinFile('预览.xlsx', bytes));
+  await tick();
+  const overlay = body.children.filter((c) => c && c.className === 'modal-overlay').pop();
+  const html = overlay ? String(overlay.innerHTML) : '';
+  ok(html.includes('导入预览') && html.includes('Excel 工作表'), '预览弹窗打开并标注 Excel');
+  ok(html.includes('单词') && html.includes('苹果'), '预览表格含数据');
+  ok(html.includes('field-map'), '预览含字段映射区');
+  body.children.length = 0;
+}
+
+console.log('\n[多文件批量导入 + 导入历史 / 回滚]');
+{
+  const hist = await import('../js/import-history.js');
+  await hist.clearHistory();
+
+  // 文件选择器支持多选
+  const picker = imp.openFilePicker();
+  ok(picker && picker.multiple === true && picker.type === 'file', '文件选择器支持多选', picker && picker.multiple);
+
+  // 批量：两个文件 → 两个新卡组
+  const before = store.getDb().decks.length;
+  const batch = await imp.runBatchImport([
+    makeFile('批量A.csv', 'word,meaning\nalpha,甲\nbeta,乙\n'),
+    makeFile('批量B.csv', 'word,meaning\ngamma,丙\n')
+  ]);
+  ok(batch.done.length === 2 && batch.failed.length === 0, '两个文件各建一个卡组', batch.failed);
+  ok(store.getDb().decks.length === before + 2, '卡组数 +2', store.getDb().decks.length);
+  ok(
+    batch.done.every((r) => r.mode === 'new' && r.addedCardIds.length === r.added),
+    '每项记录 mode 与新增卡片 id'
+  );
+  const list1 = hist.listImports();
+  ok(list1.length === 1 && list1[0].files.length === 2 && list1[0].total === 3, '写入 1 条历史（2 文件 / 3 张）', list1[0]);
+
+  // 撤销整批 → 两个新建卡组都消失
+  const ids = batch.done.map((r) => r.deckId);
+  const u1 = await hist.undoImport(batch.historyId);
+  ok(u1.ok && u1.undone === 2, '撤销整批导入', u1);
+  ok(ids.every((id) => !store.getDeck(id)), '新建的卡组已删除');
+  ok(hist.listImports().length === 0, '历史条目已移除');
+
+  // 不支持的扩展名 → 全部跳过
+  ok(imp.openBatchImport([makeFile('a.docx', 'x')]) === null, '无支持文件 → 不打开批量弹窗');
+
+  // 追加导入 → 精确回滚（只删本次新增的卡）
+  const host = store.createDeck({ name: '宿主卡组' });
+  store.addManyCards(host.id, [{ front: 'keep', back: '保留' }]);
+  const res = await imp.importMapped(makeFile('追加.csv', 'word,meaning\nnew1,新1\nnew2,新2\n'), { deckId: host.id });
+  ok(res.mode === 'append' && res.addedCardIds.length === 2 && res.existing === true, '追加导入记录新增 id', res);
+  const entry = await hist.recordImport([res]);
+  const undoIds = await hist.undoableIds();
+  ok(undoIds.has(entry.id), '追加导入在回滚窗口内', [...undoIds]);
+  const u2 = await hist.undoImport(entry.id);
+  ok(u2.ok && u2.undone === 1, '撤销追加导入', u2);
+  const after = store.getDeck(host.id);
+  ok(after.cards.length === 1 && after.cards[0].front === 'keep', '只移除新增卡片，原有卡片保留', after.cards.map((c) => c.front));
+
+  // 历史 UI
+  ok(hist.historyTimeLabel(Date.now()).startsWith('今天'), '今天导入的时间文案');
+  const item = hist.historyItemHtml(
+    { id: 'x', ts: Date.now(), total: 5, files: [{ deckName: '甲组', mode: 'append' }] },
+    { undoable: true }
+  );
+  ok(item.includes('甲组') && item.includes('追加') && item.includes('data-action="import-undo"'), '历史条目 HTML（含撤销按钮）');
+  ok(hist.historyListHtml([], new Set()).includes('还没有导入记录'), '空历史文案');
+  ok(hist.importHistoryButtonHtml().includes('data-action="import-history"'), '首页历史入口按钮');
+
+  await hist.clearHistory();
+  ok(hist.listImports().length === 0, 'clearHistory 清空历史');
 }
 
 console.log(`\n文件导入结果: ${pass} 通过, ${fail} 失败`);

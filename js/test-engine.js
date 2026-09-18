@@ -85,8 +85,29 @@ export function buildCardSequence(cards, n, priorityIds = new Set(), random = Ma
   const words = cards.length;
   if (!words || n <= 0) return [];
   const minGap = Math.max(1, Math.floor(n / words));
-  const byId = new Map(cards.map((c) => [c.id, c]));
-  const prio = [...(priorityIds || [])].map((id) => byId.get(id)).filter(Boolean);
+  // 仅在有优先池时才建 id→card 映射（常规路径省掉一次 O(词数) 遍历）
+  const prioIds = priorityIds ? [...priorityIds] : [];
+  let prio = [];
+  if (prioIds.length) {
+    const byId = new Map(cards.map((c) => [c.id, c]));
+    prio = prioIds.map((id) => byId.get(id)).filter(Boolean);
+  }
+
+  // 快路径：词数 ≥ 题数 且无优先池 —— 此时「最少用量 + 冷却」退化为「取 n 个互不相同的词」，
+  // 用部分 Fisher-Yates 直接取（分布等价，随机调用次数一致），复杂度 O(n)。
+  // 万级卡组 + 150 题走此路径，避免 O(题数×词数) 的全量扫描。
+  if (!prio.length && words >= n) {
+    const idx = cards.map((_, i) => i);
+    const fastSeq = [];
+    for (let i = 0; i < n; i++) {
+      const j = i + Math.floor(random() * (words - i));
+      const tmp = idx[i];
+      idx[i] = idx[j];
+      idx[j] = tmp;
+      fastSeq.push(cards[idx[i]].id);
+    }
+    return fastSeq;
+  }
 
   // 优先槽位数量（能覆盖全部词时优先保证覆盖）
   const coverAll = words < n;
@@ -102,19 +123,31 @@ export function buildCardSequence(cards, n, priorityIds = new Set(), random = Ma
   const lastUse = new Map();
   const used = new Map();
   const seq = [];
+  // 单趟扫描：一次同时得到「冷却已过的最小用量候选」与「冷却中最久未用者」
+  // （等价于原「filter → min → filter」三段，但只遍历 pool 一遍；cands 顺序与原实现一致）
   const pickLeastUsed = (pool) => {
-    const gapOk = pool.filter((c) => {
+    let minCount = Infinity;
+    let cands = null;
+    let earliest = null;
+    let earliestLast = Infinity;
+    for (const c of pool) {
       const last = lastUse.get(c.id);
-      return last === undefined || seq.length - last >= minGap;
-    });
-    if (!gapOk.length) {
-      // 全部处于冷却期（词数过少）：取最早使用过的
-      const sorted = [...pool].sort((a, b) => (lastUse.get(a.id) ?? -1) - (lastUse.get(b.id) ?? -1));
-      return sorted[0];
+      if (last === undefined || seq.length - last >= minGap) {
+        const count = used.get(c.id) || 0; // 用量最少者优先 → 分布均匀
+        if (count < minCount) {
+          minCount = count;
+          cands = [c];
+        } else if (count === minCount) {
+          cands.push(c);
+        }
+      } else if (last < earliestLast) {
+        earliestLast = last;
+        earliest = c;
+      }
     }
-    const minCount = Math.min(...gapOk.map((c) => used.get(c.id) || 0)); // 用量最少者优先 → 分布均匀
-    const cands = gapOk.filter((c) => (used.get(c.id) || 0) === minCount);
-    return cands[Math.floor(random() * cands.length)];
+    if (cands && cands.length) return cands[Math.floor(random() * cands.length)];
+    // 全部处于冷却期（词数过少）：取最早使用过的
+    return earliest || pool[0];
   };
 
   for (let i = 0; i < n; i++) {

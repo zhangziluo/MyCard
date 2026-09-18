@@ -12,6 +12,7 @@
   - 自动按关卡分组、**顺序解锁**（通关当前关卡才能进入下一关）；通关条件：该关所有卡片完成翻转记忆 **＋** 测试题正确率 **≥ 80%**
   - 小卡组（< 30 张）不拆分，作为单关卡
   - **关卡分页**：关卡数 > **15** 时按页展示（每页 15 关，分页条显示「第 2/45 页」，URL 支持 `#/deck/{id}?page=2`）
+  - **卡片管理分页（v0.4.18）**：卡片数 > **100** 时按页渲染（每页 100 张，URL 支持 `#/deck/{id}/cards?page=2`）——万级卡组不再一次性写入上万 DOM 节点
 - **难度判定（v0.4）**：词频（`data/frequency.json`，COCA 2 万高频词表 → 17634 条）＋ 词长 ＋ 音节数 ＋ 熟悉度 ＋ 语种特性（英文不规则拼写 / 日语汉字音读训读 / 古文生僻字占比）
 - **关卡编排（v0.4）**：**平缓进阶**（前几关高频短词打基础，后续混入低频长难词）＋ **错峰排列**（同易混组词汇间隔 ≥2 关）＋ **动态调序**（错题池 / 困难词自动提升到当前关卡；卡组页提供「按难度重排关卡」）
 - **卡组管理**：新建 / 编辑 / 删除 / 暂停 / 标签筛选 / 卡片增删改
@@ -23,17 +24,23 @@
     - **英英选择 `eng_eng`**（*建议考研及以上水平使用（需较强英文阅读理解能力）*）：子模式 A「看单词选英文释义」/ 子模式 B「看英文释义猜单词」随机出现，释义取自 GCIDE
     - **多义多选 `multi_sense`**（*建议考研及以上水平使用*）：勾选该词**全部释义**后提交判分，**全对才算对**，漏选 / 多选 / 错选均算错；释义优先取卡组内中文释义（`back` ＋ 多释义），缺失时回退 GCIDE 英文释义
 - **整卡组可配置测试**：题数 **20~150** 可调（快速 20 / 标准 50 / 挑战 150 ＋ 滑块，步长 10），题型按权重分配、词数不足时循环覆盖，错题进优先池，支持中途退出续做
-- **导出词表 / Anki 卡包（v0.4.11）**：卡组菜单（⋮）提供两种导出，纯前端下载（离线可用）
-  - **标准 txt（TSV）**：UTF-8 带 BOM、制表符分隔、一卡一行，列序 `正面 / 背面 / 例句 / 例句翻译 / 音标 / 标签(逗号)`，首行为列名；单元格内的制表符与换行会被清洗为空格，无正面的卡片不导出
-  - **Anki 卡包 `.apkg`**：ZIP（`collection.anki2` + `media`）内为 **Anki 2.1 schema 的 SQLite**（内置 `vendor/sql.js` WASM 生成），含 `col/notes/cards/revlog/graves` 与 **Basic 笔记模板**；卡组名沿用应用里的名称，正面含音标、背面含其余释义与例句/翻译，标签转为 Anki 标签；可直接在 Anki「文件 → 导入」打开
+- **导出词表 / Anki 卡包（v0.4.11，v0.4.13 扩至四种格式，v0.4.16 起带复习进度）**：卡组菜单（⋮）提供五种导出，纯前端下载（离线可用）；列序统一为 `正面 / 背面 / 例句 / 例句翻译 / 音标 / 标签(逗号)`，无正面的卡片不导出
+  - **标准 txt（TSV）**：UTF-8 带 BOM、制表符分隔、一卡一行，首行为列名；单元格内的制表符与换行会被清洗为空格（保证「一卡一行」）
+  - **CSV（带表头）**：UTF-8 带 BOM、逗号分隔、CRLF 行尾，首行为列名；按 **RFC 4180** 转义 —— 含 `,` / `"` / 换行的字段用双引号包裹、内部 `"` 加倍（因此多行释义在 Excel / 表格工具里也不会串行）
+  - **Markdown**：`# 卡组名` 标题 ＋ 标准 Markdown 表格（表头 ＋ `|---|---|` 分隔行）；单元格内 `|` 转义为 `\|`、换行转 `<br>`、制表符转空格（可直接贴进笔记 / GitHub）
+  - **JSON（含复习进度）**：`{formatVersion, name, description, tags, levelSize, cards:[…]}`，每张卡含内容 ＋ `state / repetitions / interval / easeFactor / due / lastReview`；结构与**导入侧完全兼容**，可「导出 → 导入」**无损往返**（复习状态、多释义、易混分组一并保留），用于整库备份 / 换设备迁移
+  - **Anki 卡包 `.apkg`**：ZIP（`collection.anki2` + `media` + **`meta`**）内为 **Anki 2.1 schema 的 SQLite**（内置 `vendor/sql.js` WASM 生成），含 `col/notes/cards/revlog/graves` 与 **Basic 笔记模板**；卡组名沿用应用里的名称，正面含音标、背面含其余释义与例句/翻译，标签转为 Anki 标签；**`cards` 表按卡片复习进度写入调度**（`state→type/queue`、`interval→ivl`、`easeFactor→factor`、`repetitions→reps`、`due→相对天数`），导入 Anki 后可直接续学；`meta` 为新版 Anki（≥2.1.50）要求的 **`PackageMetadata` protobuf**（`version = LEGACY_1`，与 `collection.anki2` + schema v11 自洽），**新版 Anki 不再因缺 `meta` 报错，老版 Anki 忽略该条目仍读 `collection.anki2`**；可直接在 Anki「文件 → 导入」打开（注：`revlog` 仍为空——逐次复习历史不迁移，只迁移聚合状态）
 - **明暗模式（v0.4.10）**：**浅色 / 深色 / 跟随系统** 三档，设置页顶部「外观」区块切换，顶栏右侧一键快捷切换（浅色 ⇄ 深色）；切换即时生效并保存在本机（`localStorage['mycard-mode']`）；跟随系统时监听 `prefers-color-scheme` 自动跟随，`<meta name="theme-color">` 与原生控件（`color-scheme`）一并跟随；`index.html` 首屏前内联读取模式写 `<html data-theme>`，**不会先闪一下深色**
-- **主题色（v0.4.1）**：设置页可切换主色调（8 个预设 ＋ 自定义取色），按钮 / 进度条 / 徽标 / 氛围光全局跟随（浅色 / 深色下均可用）
+- **主题色（v0.4.1，v0.4.14/15 补对比度，v0.4.19 覆盖非文字前景）**：设置页可切换主色调（8 个预设 ＋ 自定义取色），按钮 / 进度条 / 徽标 / 氛围光全局跟随（浅色 / 深色下均可用）；**所有「accent 作前景色」的地方都随主色派生**——文字 / 图标 / **焦点环 / 输入与高亮边框 / 原生 `accent-color`** 统一走 `--accent-tx`：保持主色色相与饱和度，**深色底统一提亮一档**（HSL 亮度 +0.12）、浅色底按需加深，再用 **WCAG 相对亮度对 HSL 亮度二分**保证与底色对比度 ≥ 4.5:1，**任意主色（含亮黄、极浅、近黑、灰）都成立（WCAG AA）**；`theme.js` 写入 `--tag-tx-dark`/`--tag-tx-light`，CSS 按 `data-theme` 二选一，故切色 / 切模式互不耦合
 - **首页添加单词 / 词表（v0.6）**：首页顶部只有一个输入框，自动判断三种输入并统一走「查词 → 预览 → 加入『我的生词』」
   - **单个单词**：在线查词典（按字符范围自动判断语种：英 / 德 / 法 / 希腊语走 [Free Dictionary API](https://dictionaryapi.dev/)，日语走 [Jisho](https://jisho.org/api)），预览音标 ＋ 多条释义后一键加入
   - **词表（每行一个，≤1000 词）**：批量查词，进度条显示「已处理 23/100」，请求间隔 ≥ 100ms，未查到的词集中列出
   - **大段文本**：自动分词去重（默认勾选前 50 个）→ 勾选需要的词 → 查词 → 加入
   - **落库**：统一写入懒创建的「我的生词」卡组（`deck.source='custom'`），按单词去重、不覆盖已有词；首义存 `back`、其余义存 `extraBacks`（因此新词天然支持「多义多选」题型），并记录 `src` / `addedAt`；查询结果缓存进 IndexedDB `lookup` store（key = `${lang}_${word}`），重复查询不再联网，失败自动重试一次
-- **本地文件导入词库（v0.6.1）**：首页「我的卡组」右上角 **导入** 按钮 / 下方**拖拽区**（拖入文件即可，含拖入高亮），选择本地 **CSV / TSV / JSON** 文件（零第三方依赖，自带解析器）
+- **本地文件导入词库（v0.6.1；v0.5.0 增 Excel / 多文件 / 历史回滚）**：首页「我的卡组」右上角 **导入** 按钮 / 下方**拖拽区**（拖入文件即可，含拖入高亮），选择本地 **CSV / TSV / JSON / XLSX** 文件（零第三方依赖，自带解析器）
+  - **Excel `.xlsx`**：自写「ZIP 读取 + 最小 XML 扫描」（`js/xlsx.js`，支持 STORED/DEFLATE、共享/内联字符串、数值/布尔/日期），取**第一个工作表** → 走同一套「预览 + 字段映射」；不支持公式求值 / 合并单元格 / 多 sheet 选择（明确限制）
+  - **多文件批量导入**：导入按钮可**多选**、拖拽区可**拖入多个**文件 → **每个文件各建一个卡组**（按表头/位置自动映射），完成后弹「批量导入完成」汇总
+  - **导入历史 / 回滚（v0.5.0）**：每次导入都记入**导入历史**（首页历史图标进入）：可**撤销**——新建的卡组直接删除；追加进已有卡组的则**只移除本次新增的卡片**（`cardIds` 存 IndexedDB，保留最近 5 次可精确回滚）；「导入完成」弹窗也直接提供「撤销导入」
   - **先预览再导入**：读取文件后弹出**宽版预览弹窗**，显示**前 10 行**数据的表格（自动识别分隔符并显示「分隔符：逗号/Tab/分号」、行列统计、表头识别结果）；首行符合表头特征时用作列名，否则表头显示 **「列 1 / 列 2 …」**（深色主题 / 手机端横向滚动 + 粘性表头）
   - **字段映射（v0.6.2）**：表格下方按列给出下拉映射 —— **正面（单词）·必选 / 背面（释义）·必选 / 例句 / 例句翻译 / 音标 / 标签（逗号分隔）/ 忽略**；默认**第一列 = 正面、第二列 = 背面、其余忽略**（识别到表头时按中英文表头别名自动对号）；点「确认导入」时校验「正面/背面各恰一列」，不合法会提示并**保持弹窗**便于修改；表头行不会被当成卡片
   - **目标牌组（v0.6.2）**：可选**已有牌组**（下拉列出「名称（N 张）」，导入即**追加**并重新拆分关卡，牌组内已存在的单词自动跳过）或**新建牌组**（填名称 → 按难度分层＋错峰自动编排关卡）
@@ -43,7 +50,7 @@
   - 整份文件解析后**一次事务批量写入**本地库，按单词去重并报告跳过数；新建牌组时 `source=null` 故可重复导入（各自新建卡组）
 - **数据存储（v0.4）**：卡片正文与学习进度存 **IndexedDB**（库 `mycard` v2，stores：`decks` / `cards` / `meta` / `lookup`），localStorage 只保留设置与卡组清单（key `mycard-meta`）；旧版 `mycard-v1` 整库会在首次启动时**自动迁移**到 IndexedDB 并删除旧键，从而支持万词级词库
 - **内置词库**：仅内置「英语高频词（示范）」约 60 词（`data/words.json` ＋ 易混分组 `data/confusables.json`），首次打开**自动导入**并按难度编排 3 关；应用不再内置其它词库，需要时可用首页「导入」按钮导入自己的 CSV / JSON 词表（见上一条）。旧版本曾内置的 10 本考试词库（考研 / 四级 / 六级 / 托福 / 雅思 / 专四 / 专八 / SAT / 初中 / 高中）已下线，浏览器里**遗留的历史卡组会在启动时自动清理**（按 `source` 精确匹配，仅删这些内置卡组，不影响你自建的卡组与「我的生词」）
-- **PWA**：`manifest.json` ＋ `sw.js`；**代码 / 数据走网络优先**（在线总是最新，离线回退缓存），图片走缓存优先；新版本 SW 接管后自动刷新一次，通常**一次刷新即可看到新功能**；顶栏显示当前版本号（当前 `v0.4.12`），设置页另提供「强制刷新到最新版（清理离线缓存）」应对极端缓存情况
+- **PWA**：`manifest.json` ＋ `sw.js`；**代码 / 数据走网络优先**（在线总是最新，离线回退缓存），图片走缓存优先；新版本 SW 接管后自动刷新一次，通常**一次刷新即可看到新功能**；顶栏显示当前版本号（当前 `v0.5.0`），设置页另提供「强制刷新到最新版（清理离线缓存）」应对极端缓存情况
 - **界面**：移动端优先、深色主题、毛玻璃（glassmorphism）卡片；**桌面端自适应** —— `#app` 按 640 / 960 / 1280 / 1600px 断点逐级放宽（600 → 760 → 1080 → 1280 → 1440px），卡组用 `auto-fill` 网格随宽度平铺 2–5 列，宽屏下关卡列表两列平铺
 
 ## 目录结构
@@ -69,13 +76,15 @@
 │   ├── levelstats.js       # 关卡挑战统计（重刷次数 / 最佳成绩，sessionStorage）
 │   ├── hardwords.js        # 困难词标记（翻转「不认识」记录，localStorage）
 │   ├── ui.js               # 通用 UI：Action 委托 / toast / modal / 导航
-│   ├── decks.js            # 卡组列表 / 详情（关卡分页）/ 卡片管理 / 表单
+│   ├── decks.js            # 卡组列表 / 详情（关卡分页）/ 卡片管理（分页）/ 表单
 │   ├── review.js           # 翻转记忆模式（按关卡 / 整卡组循环 / 会话续学）
 │   ├── test-config.js      # 测试配置（题数 20~150、档位、题型权重、可选题型、通关阈值）
 │   ├── test-engine.js      # 测试引擎（抽题 / 循环 / 题型分配 / 优先池 / 进度）
 │   ├── test.js             # 测试题模式（7 种题型 + 整卡组可配置测试）
 │   ├── add-words.js        # 首页添加单词/词表：语种检测 / 分词 / 在线查词 / 缓存 / 预览
-│   └── import-file.js      # 本地文件导入：CSV/TSV/JSON 解析（零依赖）+ 前 10 行预览弹窗 + 字段映射 + 拖拽区
+│   ├── import-file.js      # 本地文件导入：CSV/TSV/JSON/XLSX 解析（零依赖）+ 预览 + 字段映射 + 多文件批量 + 拖拽区
+│   ├── import-history.js   # 导入历史与回滚（撤销导入：删新建卡组 / 移除追加卡片）
+│   └── xlsx.js             # 极简 .xlsx 读取器（自写 ZIP 读取 + 最小 XML 扫描）
 ├── vendor/
 │   └── sql.js/             # 内置 sql.js（MIT）：WASM 版 SQLite，用于导出 .apkg（含 package.json 声明 CommonJS）
 ├── data/
@@ -98,7 +107,7 @@
     ├── test-resplit-levels.mjs # 修改每关词数后重新分组（26 项断言）
     ├── test-review-complete.mjs # 翻转完成页「进入测试」可跳转（11 项断言）
     ├── test-review-interaction.mjs # 翻转记忆键盘 / 手势交互链路（12 项断言）
-    ├── test-theme.mjs      # 明暗模式 + 主题色（60 项断言）
+    ├── test-theme.mjs      # 明暗模式 + 主题色 + 强调文字对比度（150 项断言）
     ├── test-confusables.mjs# 干扰项 + 三种题型（82 项断言）
     ├── test-hardwords.mjs  # 整卡组翻转循环 / 困难词标记（26 项断言）
     ├── test-level-retry.mjs# 关卡重新挑战 / 直接测试（73 项断言）
@@ -109,10 +118,12 @@
     ├── test-multi-sense.mjs# 多义多选题型（39 项断言）
     ├── test-idb-store.mjs  # 存储层（迁移 / 写穿 / 重载水合 / 重排 / 旧内置词库清理，42 项断言）
     ├── test-add-words.mjs  # 首页添加单词 / 词表（82 项断言）
-    ├── test-import-file.mjs# 本地文件导入（解析/表头映射/预览/字段映射/目标牌组/追加/大词表，200 项断言）
-    ├── test-export.mjs     # 导出 txt/Anki apkg（ZIP+CRC32、Anki schema、Python sqlite3 校验产物，65 项断言）
-    ├── smoke-dom.mjs       # 无头 DOM 冒烟（模块 + 各界面渲染 + 明暗切换 + 导出入口，124 项断言）
-    └── verify-assets.mjs   # 资源完整性校验（156 项）
+    ├── test-import-file.mjs# 本地文件导入（解析/表头映射/预览/字段映射/目标牌组/追加/大词表/进度还原/XLSX/批量/历史回滚，246 项断言）
+    ├── test-xlsx.mjs       # 极简 .xlsx 读取器（ZIP STORED/DEFLATE、共享字符串、日期、端到端，33 项断言）
+    ├── test-export.mjs     # 导出 txt/CSV/Markdown/JSON/Anki apkg（RFC4180、meta protobuf、Anki 调度、ZIP+CRC32、Python sqlite3 校验产物，133 项断言）
+    ├── smoke-dom.mjs       # 无头 DOM 冒烟（各界面渲染 + 分页 + 明暗切换 + 导出/导入入口，145 项断言）
+    ├── test-perf.mjs       # 大卡组（1 万词 / 500 关）规模：统计/分组/抽题正确性 + 耗时金丝雀（26 项）
+    └── verify-assets.mjs   # 资源完整性校验（214 项）
 ```
 
 ## 本地运行
@@ -137,7 +148,7 @@ node scripts/test-pagination.mjs      # 关卡分页（> 15 关 → 第 2/X 页�
 node scripts/test-resplit-levels.mjs  # 修改每关词数后旧关卡自动重新分组（26 项）
 node scripts/test-review-complete.mjs # 翻转完成页「进入测试 · 冲刺通关」可跳转（11 项）
 node scripts/test-review-interaction.mjs # 翻转记忆键盘 / 手势交互链路（12 项）
-node scripts/test-theme.mjs           # 明暗模式（浅色/深色/跟随系统）+ 主题色（60 项）
+node scripts/test-theme.mjs           # 明暗模式（浅色/深色/跟随系统）+ 主题色 + 强调文字对比度（150 项）
 node scripts/test-confusables.mjs     # 干扰项 + 三种题型（释义/同组/兜底/单词池/挖空，82 项）
 node scripts/test-hardwords.mjs       # 整卡组翻转循环 / 困难词标记（26 项）
 node scripts/test-level-retry.mjs     # 关卡重新挑战 / 直接测试 / 题型微调（73 项）
@@ -148,14 +159,16 @@ node scripts/test-eng-eng.mjs         # 英英选择题型（子模式 A/B、选
 node scripts/test-multi-sense.mjs     # 多义多选题型（中文优先→GCIDE 回退、多选判分，39 项）
 node scripts/test-idb-store.mjs       # 存储层（迁移 / 写穿 / 重载水合 / 重排 / 旧内置词库清理，42 项）
 node scripts/test-add-words.mjs       # 首页添加单词/词表（语种/分词/查词/缓存/限速/去重落库，82 项）
-node scripts/test-import-file.mjs     # 本地文件导入（解析/预览/字段映射/目标牌组/追加/大词表端到端，200 项）
-node scripts/test-export.mjs          # 导出 txt / Anki apkg（ZIP·CRC32·Anki schema，Python sqlite3 校验，65 项）
-node scripts/smoke-dom.mjs            # 无头 DOM 冒烟（模块 + 各界面渲染 + 明暗切换 + 导出入口，124 项）
-node scripts/verify-assets.mjs        # PWA 资源完整性 + 字段映射 / 明暗模式 / 导出校验（156 项）
+node scripts/test-import-file.mjs     # 本地文件导入（解析/预览/字段映射/目标牌组/追加/大词表/进度还原/XLSX/批量/历史回滚，246 项）
+node scripts/test-xlsx.mjs            # 极简 .xlsx 读取器（ZIP STORED/DEFLATE、共享字符串、日期、端到端，33 项）
+node scripts/test-export.mjs          # 导出 txt / CSV / Markdown / JSON / Anki apkg（RFC4180·meta protobuf·Anki 调度·ZIP·CRC32，Python sqlite3 校验，133 项）
+node scripts/smoke-dom.mjs            # 无头 DOM 冒烟（各界面渲染 + 分页 + 明暗切换 + 导出/导入入口，145 项）
+node scripts/test-perf.mjs            # 大卡组（1 万词）规模：单遍统计 / 复用关卡分组 / 抽题快路径 + 耗时（26 项）
+node scripts/verify-assets.mjs        # PWA 资源完整性 + 字段映射 / 明暗模式 / 导出 / 导入增强 / 性能校验（214 项）
 node --check js/*.js                  # 语法检查
 ```
 
-当前合计 **1348 条校验**（各套件输出的 `✓`）**全部通过、0 失败**（含纯函数单测、无头 DOM 冒烟、IndexedDB 存储、大词表导入与 Anki 卡包产物校验）。
+当前合计 **1690 条校验**（各套件输出的 `✓`）**全部通过、0 失败**（含纯函数单测、无头 DOM 冒烟、IndexedDB 存储、大词表导入、Anki 卡包产物与万级性能金丝雀）。
 
 ## 部署：Cloudflare Pages
 

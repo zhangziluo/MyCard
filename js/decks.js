@@ -10,6 +10,7 @@ import * as te from './test-engine.js';
 import { clearTestSession } from './test.js';
 import { addWordsPanelHtml } from './add-words.js';
 import { importFileButtonHtml, dropzoneHtml, bindDropzone } from './import-file.js';
+import { importHistoryButtonHtml } from './import-history.js'; // 注册「导入历史 / 撤销」入口
 import './export.js'; // 注册卡组菜单的「导出 txt / apkg」动作
 import { esc, on, navigate, openModal, closeModal, readForm, toast, confirmDialog, parseTags } from './ui.js';
 
@@ -51,7 +52,7 @@ function tagBadges(tags, cls = '') {
 function levelProgressSummary(deck) {
   const levels = lv.deckLevels(deck);
   if (!levels.length) return { levels: 0, passed: 0 };
-  const states = lv.levelStates(deck);
+  const states = lv.levelStates(deck, levels); // 复用已算好的关卡分组，避免重复整卡组遍历
   const passed = levels.filter((l) => states[l.index] === 'passed').length;
   return { levels: levels.length, passed };
 }
@@ -125,6 +126,7 @@ export function renderHome(root) {
         <h2 class="screen-title">我的卡组</h2>
         <div class="section-tools">
           ${importFileButtonHtml()}
+          ${importHistoryButtonHtml()}
           <button class="icon-btn glass" data-action="nav-settings" aria-label="设置">${icon('gear', 20)}</button>
         </div>
       </div>
@@ -229,8 +231,9 @@ export function renderDeck(root, deckId) {
   }
   const now = Date.now();
   const levels = lv.deckLevels(deck);
-  const states = lv.levelStates(deck);
+  const states = lv.levelStates(deck, levels); // 复用关卡分组（万级卡组只遍历一次）
   const stats = lv.deckStats(deck, now);
+  const hardCount = hw.hardCount(deck.id); // 只读一次 localStorage（hero 里复用了 2 次）
   const per = lv.effectivePerLevel(deck, store.getDb().settings);
 
   const totalLevels = levels.length;
@@ -275,7 +278,7 @@ export function renderDeck(root, deckId) {
           <div><b>${levels.filter((l) => states[l.index] === 'passed').length}/${levels.length}</b><span>通关关卡</span></div>
         </div>
         ${stats.total ? `<div class="hero-actions">
-          <button class="btn btn-primary btn-block hero-flip-btn" data-action="open-all-review" data-id="${esc(deck.id)}">${icon('refresh', 18)} 翻转记忆 · 整卡组循环${hw.hardCount(deck.id) ? `（困难词 ${hw.hardCount(deck.id)}）` : ''}</button>
+          <button class="btn btn-primary btn-block hero-flip-btn" data-action="open-all-review" data-id="${esc(deck.id)}">${icon('refresh', 18)} 翻转记忆 · 整卡组循环${hardCount ? `（困难词 ${hardCount}）` : ''}</button>
           <button class="btn btn-test btn-block" data-action="open-deck-test" data-id="${esc(deck.id)}">${icon('card', 18)} 整卡组测试 · 20~150 题</button>
           <button class="btn btn-ghost btn-block" data-action="rearrange-deck" data-id="${esc(deck.id)}">${icon('refresh', 16)} 按难度重排关卡（错题提前）</button>
         </div>` : ''}
@@ -285,6 +288,23 @@ export function renderDeck(root, deckId) {
     </div>`;
 }
 /* ------------------------------ 卡片管理 ------------------------------ */
+
+/** 卡片管理页每页张数（万级卡组只渲染当前页，避免一次性塞入上万 DOM 节点） */
+export const CARDS_PER_PAGE = 100;
+
+/** 卡片分页条：卡片数 > CARDS_PER_PAGE 时展示「第 2/3 页」 */
+function cardsPagerHtml(deckId, page, totalCards) {
+  const totalPages = Math.max(1, Math.ceil(totalCards / CARDS_PER_PAGE));
+  if (totalPages <= 1) return '';
+  const from = page * CARDS_PER_PAGE + 1;
+  const to = Math.min(totalCards, (page + 1) * CARDS_PER_PAGE);
+  return `
+  <div class="pager glass">
+    <button class="pager-btn" data-action="cards-page" data-id="${esc(deckId)}" data-page="${page}" ${page <= 0 ? 'disabled' : ''}>‹ 上一页</button>
+    <div class="pager-info"><b>第 ${page + 1}/${totalPages} 页</b><span>第 ${from}–${to} 张 / 共 ${totalCards} 张</span></div>
+    <button class="pager-btn" data-action="cards-page" data-id="${esc(deckId)}" data-page="${page + 2}" ${page >= totalPages - 1 ? 'disabled' : ''}>下一页 ›</button>
+  </div>`;
+}
 
 function stateChip(card) {
   if (card.lastReview == null) return '<span class="pill pill-new">新卡</span>';
@@ -318,7 +338,12 @@ export function renderCards(root, deckId) {
     root.innerHTML = `<div class="view"><div class="empty glass"><h3>卡组不存在</h3><a class="btn btn-primary" href="#/home">返回首页</a></div></div>`;
     return;
   }
-  const cards = [...deck.cards].sort((a, b) => (a.level ?? 0) - (b.level ?? 0) || a.createdAt - b.createdAt);
+  const all = [...deck.cards].sort((a, b) => (a.level ?? 0) - (b.level ?? 0) || a.createdAt - b.createdAt);
+  // 万级卡组：只渲染当前页（URL ?page=N，1 基）
+  const totalPages = Math.max(1, Math.ceil(all.length / CARDS_PER_PAGE));
+  const hashPage = pageFromHash();
+  const page = Math.min(totalPages - 1, Math.max(0, hashPage ? hashPage - 1 : 0));
+  const cards = all.slice(page * CARDS_PER_PAGE, (page + 1) * CARDS_PER_PAGE);
   const rows = cards.length
     ? cards.map((c) => cardRowHtml(deck, c)).join('')
     : `<div class="empty glass"><div class="empty-icon">${icon('card', 26)}</div><h3>这个卡组还是空的</h3><p>点击下方按钮添加第一张学习卡片。</p></div>`;
@@ -327,9 +352,10 @@ export function renderCards(root, deckId) {
     <div class="view view-cards">
       <div class="section-head">
         <h2 class="screen-title">卡片管理</h2>
-        <span class="sub-note">${esc(deck.name)} · ${cards.length} 张</span>
+        <span class="sub-note">${esc(deck.name)} · ${all.length} 张${totalPages > 1 ? ` · 第 ${page + 1}/${totalPages} 页` : ''}</span>
       </div>
       <div class="cards-list">${rows}</div>
+      ${cardsPagerHtml(deck.id, page, all.length)}
       <div class="fab-bar">
         <button class="btn btn-primary fab-main" data-action="add-card" data-id="${esc(deck.id)}">${icon('plus', 18)} 添加卡片</button>
       </div>
@@ -515,6 +541,9 @@ function deckMenu(deckId) {
         <button class="menu-item" data-action="deck-pause" data-id="${esc(deck.id)}">${icon(deck.paused ? 'play' : 'pause', 18)} ${deck.paused ? '恢复卡组' : '暂停卡组'}</button>
         <button class="menu-item" data-action="open-cards-from-menu" data-id="${esc(deck.id)}">${icon('cards', 18)} 管理卡片（${deck.cards.length} 张）</button>
         <button class="menu-item" data-action="export-txt" data-id="${esc(deck.id)}">${icon('download', 18)} 导出为 txt 词表</button>
+        <button class="menu-item" data-action="export-csv" data-id="${esc(deck.id)}">${icon('download', 18)} 导出为 CSV（带表头）</button>
+        <button class="menu-item" data-action="export-md" data-id="${esc(deck.id)}">${icon('download', 18)} 导出为 Markdown</button>
+        <button class="menu-item" data-action="export-json" data-id="${esc(deck.id)}">${icon('download', 18)} 导出为 JSON（含复习进度）</button>
         <button class="menu-item" data-action="export-apkg" data-id="${esc(deck.id)}">${icon('download', 18)} 导出为 Anki 卡包（.apkg）</button>
         <button class="menu-item danger-item" data-action="deck-delete" data-id="${esc(deck.id)}">${icon('trash', 18)} 删除卡组</button>
       </div>`
@@ -618,6 +647,13 @@ on('deck-page', (el) => {
   const id = el.dataset.id;
   const page = Math.max(1, Number(el.dataset.page) || 1);
   if (id) navigate(`#/deck/${id}?page=${page}`);
+});
+
+/* 卡片分页（卡片数 > CARDS_PER_PAGE 时，每页 100 张） */
+on('cards-page', (el) => {
+  const id = el.dataset.id;
+  const page = Math.max(1, Number(el.dataset.page) || 1);
+  if (id) navigate(`#/deck/${id}/cards?page=${page}`);
 });
 
 /* 按难度重排关卡：难度分层 + 错峰 + 错题动态提前 */
