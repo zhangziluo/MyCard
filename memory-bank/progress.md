@@ -1,6 +1,6 @@
 # Progress — 完成度与遗留
 
-> 更新时间：2026-09-18 ｜ APP `v0.5.1` / SW `v1.8.1` ｜ **1699 条校验全绿**
+> 更新时间：2026-09-18 ｜ APP `v0.5.2` / SW `v1.8.2` ｜ **1716 条校验全绿**
 
 ## 已交付（按版本）
 
@@ -76,14 +76,21 @@
 - 修复：`js/test.js` 的 `typesForRetry()` 改用 `cfg.QUESTION_TYPES`（**基础 5 种**）；重刷加权逻辑不变
 - 整卡组可配置测试**不受影响**（仍走 `test-engine.samplePlan` 的 `enabled` 配置）
 
-## 测试资产（22 个 test-*.mjs + `smoke-dom` + `verify-assets` = 24 个脚本 / 1699 条断言）
+**v0.5.2** 标准 CSV 模版下载（导入栏）：
+- `js/import-file.js` 新增 `CSV_TEMPLATE_COLUMNS`（中文规范列名 `单词,释义,例句,例句翻译,音标,标签`，均在 `FIELD_ALIASES` 内可自动对号）、
+  `CSV_TEMPLATE_EXAMPLE`（1 行示例：演示音标写法 + 「标签用逗号分隔」需引号）、`csvTemplateText()`（UTF-8 BOM + CRLF）、
+  `downloadCsvTemplate()`（本地 Blob 下载，非浏览器环境安全返回 null）、`csvTemplateButtonHtml()` + `on('download-csv-template')`
+- `js/decks.js`：首页拖拽区下方渲染「没有模版？下载 CSV 模版（…含 1 行示例，导入前请删除）」
+- 决策：**带 1 行示例**（用户要求），并在 UI/README 明确提示「导入前请删除示例行」
+
+## 测试资产（22 个 test-*.mjs + `smoke-dom` + `verify-assets` = 24 个脚本 / 1716 条断言）
 | 分类 | 脚本 |
 | --- | --- |
 | 核心纯函数 | `test-core`(43) `test-difficulty`(39) `test-arrange`(22) `test-pagination`(25) `test-resplit-levels`(26) |
 | 学习与题型 | `test-confusables`(82) `test-hardwords`(26) `test-level-retry`(78) `test-fill`(85) `test-listen`(21) `test-deck-test`(81) `test-eng-eng`(34) `test-multi-sense`(39) `test-review-complete`(11) `test-review-interaction`(12) |
 | 存储与主题 | `test-idb-store`(42) `test-theme`(150) |
-| 新功能 | `test-add-words`(82) `test-import-file`(246) `test-export`(133) `test-xlsx`(33) |
-| DOM / 资源 | `smoke-dom`(145) `verify-assets`(218) |
+| 新功能 | `test-add-words`(82) `test-import-file`(258) `test-export`(133) `test-xlsx`(33) |
+| DOM / 资源 | `smoke-dom`(146) `verify-assets`(222) |
 | 性能金丝雀 | `test-perf`(26，1 万词 / 500 关：统计/分组/抽题 + 耗时) |
 
 ## 已知问题 / 技术债

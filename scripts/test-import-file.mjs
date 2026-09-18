@@ -681,6 +681,48 @@ console.log('\n[导入 XLSX：Excel 工作簿（第一个工作表）]');
   body.children.length = 0;
 }
 
+console.log('\n[标准 CSV 模版（下载）]');
+{
+  ok(
+    imp.CSV_TEMPLATE_COLUMNS.join(',') === '单词,释义,例句,例句翻译,音标,标签',
+    '模版列名（中文规范名）',
+    imp.CSV_TEMPLATE_COLUMNS
+  );
+  const text = imp.csvTemplateText();
+  ok(text.charCodeAt(0) === 0xfeff, '带 UTF-8 BOM（Excel 中文不乱码）');
+  const lines = text.slice(1).replace(/\r\n$/, '').split('\r\n');
+  ok(lines.length === 2, '表头 + 1 行示例', lines.length);
+  ok(lines[0] === '单词,释义,例句,例句翻译,音标,标签', '首行为标准列名', lines[0]);
+  ok(
+    lines[1] === 'apple,苹果,This is an apple.,这是一个苹果。,/ˈæpl/,"水果,基础"',
+    '示例行（标签含逗号 → 被引号包裹）',
+    lines[1]
+  );
+
+  // 往返：模版文本走真实解析 + 表头映射
+  const rows = imp.parseCsv(text);
+  ok(imp.isHeaderRow(rows[0]) === true, '首行被识别为表头');
+  ok(
+    JSON.stringify(imp.mapHeader(rows[0])) ===
+      JSON.stringify({ front: 0, back: 1, example: 2, exampleZh: 3, phonetic: 4, tags: 5 }),
+    '表头自动对号到 front/back/example/exampleZh/phonetic/tags',
+    imp.mapHeader(rows[0])
+  );
+  const words = imp.rowsToWords(rows);
+  ok(words.length === 1 && words[0].front === 'apple' && words[0].back === '苹果', '示例行解析为 1 个词条', words[0]);
+  ok(words[0].phonetic === '/ˈæpl/' && words[0].tags.join('|') === '水果|基础', '音标 / 标签解析正确', words[0]);
+
+  // 下载入口
+  const btn = imp.csvTemplateButtonHtml();
+  ok(btn.includes('data-action="download-csv-template"') && btn.includes('下载 CSV 模版'), '「下载 CSV 模版」按钮');
+  const dl = imp.downloadCsvTemplate();
+  ok(dl.filename === imp.CSV_TEMPLATE_FILENAME && dl.text === text, 'downloadCsvTemplate 返回文件名与内容', dl.filename);
+
+  // 端到端：把模版当文件导入（示例行会成为 1 张卡，印证「导入前请删除示例行」）
+  const res = await imp.importDeckFromFile(makeFile('Mycard-CSV模版.csv', text));
+  ok(res.words === 1 && res.name === 'Mycard-CSV模版', '模版可被直接导入（示例行 = 1 张卡）', res.words);
+}
+
 console.log('\n[多文件批量导入 + 导入历史 / 回滚]');
 {
   const hist = await import('../js/import-history.js');

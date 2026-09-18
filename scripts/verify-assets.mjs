@@ -166,6 +166,17 @@ console.log('\n[本地文件导入词库（js/import-file.js）]');
   must(impSrc.includes("from './xlsx.js'") && impSrc.includes('parseXlsxRows'), 'import-file 接入 xlsx 解析');
   must(impSrc.includes('export function isXlsxFile') && impSrc.includes('export function rowsPreview'), 'xlsx 判定 + 二维表预览');
   must(impSrc.includes('export function readFileAsArrayBuffer'), 'xlsx 走二进制读取（readFileAsArrayBuffer）');
+  // 标准 CSV 模版下载
+  must(
+    impSrc.includes('export function csvTemplateText') && impSrc.includes('export function downloadCsvTemplate'),
+    '标准 CSV 模版（csvTemplateText / downloadCsvTemplate）'
+  );
+  must(
+    impSrc.includes("on('download-csv-template'") && impSrc.includes('data-action="download-csv-template"'),
+    '注册「下载 CSV 模版」动作与入口'
+  );
+  must(impSrc.includes('CSV_TEMPLATE_COLUMNS') && impSrc.includes("'单词'"), '模版列名为中文规范名（可自动对号）');
+  must(readFileSync(rel('js/decks.js'), 'utf8').includes('csvTemplateButtonHtml'), '首页导入栏渲染「下载 CSV 模版」');
   must(impSrc.includes('.xlsx') && impSrc.includes('spreadsheetml.sheet'), 'ACCEPT 含 .xlsx 扩展名与 MIME');
   // 多文件批量导入 + 导入历史 / 回滚
   must(existsSync(rel('js/import-history.js')), 'js/import-history.js 存在（导入历史 / 回滚）');

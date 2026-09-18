@@ -9,7 +9,7 @@ import * as hw from './hardwords.js';
 import * as te from './test-engine.js';
 import { clearTestSession } from './test.js';
 import { addWordsPanelHtml } from './add-words.js';
-import { importFileButtonHtml, dropzoneHtml, bindDropzone } from './import-file.js';
+import { importFileButtonHtml, dropzoneHtml, bindDropzone, csvTemplateButtonHtml } from './import-file.js';
 import { importHistoryButtonHtml } from './import-history.js'; // 注册「导入历史 / 撤销」入口
 import './export.js'; // 注册卡组菜单的「导出 txt / apkg」动作
 import { esc, on, navigate, openModal, closeModal, readForm, toast, confirmDialog, parseTags } from './ui.js';
@@ -131,6 +131,7 @@ export function renderHome(root) {
         </div>
       </div>
       ${dropzoneHtml()}
+      <p class="csv-hint">没有模版？${csvTemplateButtonHtml()}（标准列：单词 / 释义 / 例句 / 例句翻译 / 音标 / 标签；含 1 行示例，导入前请删除）</p>
       ${tags.length ? `<div class="chips scroll-x">${chips}</div>` : ''}
       <div class="deck-grid">${decks.map(deckTileHtml).join('') || empty}</div>
     </div>`;

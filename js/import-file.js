@@ -628,6 +628,74 @@ export function readPreviewInputs(overlay, preview) {
 
 /* ------------------------------ 首页入口 ------------------------------ */
 
+/* ------------------------------ 标准 CSV 模版 ------------------------------ */
+
+/** 标准 CSV 模版的列（均为 FIELD_ALIASES 中的中文规范名，导入时自动对号） */
+export const CSV_TEMPLATE_COLUMNS = ['单词', '释义', '例句', '例句翻译', '音标', '标签'];
+/**
+ * 模版示例行（**导入前请删除**）——演示列含义：
+ * 音标带斜杠、标签用逗号分隔（因此该项在 CSV 中会被引号包裹）。
+ */
+export const CSV_TEMPLATE_EXAMPLE = ['apple', '苹果', 'This is an apple.', '这是一个苹果。', '/ˈæpl/', '水果,基础'];
+/** 模版文件名 */
+export const CSV_TEMPLATE_FILENAME = 'Mycard-CSV模版.csv';
+
+/** CSV 单元格转义（含 , " 换行时用双引号包裹，内部 " 加倍） */
+function csvQuote(v) {
+  const s = String(v == null ? '' : v);
+  return /[",\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+}
+
+/** 标准 CSV 模版文本（UTF-8 BOM + 表头 + 1 行示例；CRLF 行尾，Excel 友好） */
+export function csvTemplateText() {
+  const rows = [CSV_TEMPLATE_COLUMNS, CSV_TEMPLATE_EXAMPLE];
+  return '\uFEFF' + rows.map((r) => r.map(csvQuote).join(',')).join('\r\n') + '\r\n';
+}
+
+/** 触发浏览器下载文本文件；非浏览器环境返回 null（便于测试） */
+function downloadTextFile(filename, text, mime = 'text/csv;charset=utf-8') {
+  if (
+    typeof document === 'undefined' ||
+    typeof Blob === 'undefined' ||
+    typeof URL === 'undefined' ||
+    typeof URL.createObjectURL !== 'function' ||
+    typeof document.createElement !== 'function'
+  ) {
+    return null;
+  }
+  const blob = new Blob([text], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.rel = 'noopener';
+  if (document.body && document.body.appendChild) document.body.appendChild(a);
+  if (typeof a.click === 'function') a.click();
+  if (a.parentNode && a.parentNode.removeChild) a.parentNode.removeChild(a);
+  setTimeout(() => {
+    try {
+      URL.revokeObjectURL(url);
+    } catch (e) {}
+  }, 1500);
+  return { filename, size: blob.size, url };
+}
+
+/** 下载标准 CSV 模版（含表头与 1 行示例） */
+export function downloadCsvTemplate() {
+  const text = csvTemplateText();
+  const res = downloadTextFile(CSV_TEMPLATE_FILENAME, text);
+  toast(
+    res ? `已下载模版 ${CSV_TEMPLATE_FILENAME}（示例行请于导入前删除）` : '当前环境不支持下载，请手动新建 CSV',
+    res ? 'good' : 'warn'
+  );
+  return { filename: CSV_TEMPLATE_FILENAME, text, size: res ? res.size : text.length };
+}
+
+/** 首页「下载 CSV 模版」链接 */
+export function csvTemplateButtonHtml() {
+  return `<button class="btn-link" data-action="download-csv-template" title="下载标准 CSV 模版（表头 + 1 行示例，导入前请删除示例行）">下载 CSV 模版</button>`;
+}
+
 /** 首页「导入词库」按钮（CSV / TSV / JSON / XLSX，可多选批量导入） */
 export function importFileButtonHtml() {
   const tip = '导入词库文件（CSV / TSV / JSON / XLSX，可多选）';
@@ -1061,4 +1129,9 @@ export function bindDropzone(root) {
 
 on('import-file', () => {
   openFilePicker();
+});
+
+/* 下载标准 CSV 模版（首页导入栏） */
+on('download-csv-template', () => {
+  downloadCsvTemplate();
 });

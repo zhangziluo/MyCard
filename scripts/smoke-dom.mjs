@@ -166,6 +166,7 @@ decks.renderHome(root);
 ok(root.innerHTML.includes('我的卡组'), '首页可渲染（标题）');
 ok(root.innerHTML.includes('冒烟测试组'), '首页展示卡组名');
 ok(root.innerHTML.includes('data-action="import-history"'), '首页含「导入历史」入口');
+ok(root.innerHTML.includes('data-action="download-csv-template"'), '首页导入栏含「下载 CSV 模版」');
 ok(root.innerHTML.includes('关卡 0/3'), '首页展示关卡进度 0/3');
 ok(root.innerHTML.includes('filter-tag'), '首页包含标签筛选');
 ok(root.innerHTML.includes('内置词库') === false, '首页不再有「内置词库」区块（考试词库已移除）');
