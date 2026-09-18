@@ -33,7 +33,7 @@
 
 **v0.4.12** 修复浅色模式弹窗仍为深色（`.modal` 渐变变量化）＋同类暗底文字变量化
 
-**v0.4.13** 导出格式扩展：新增 **CSV（带表头，RFC 4180 转义）** 与 **Markdown（表格）**；`.apkg` 补新版 Anki（≥2.1.50）要求的 **`meta`（`PackageMetadata` protobuf，`version = LEGACY_1`，2 字节 `08 01`）**，老版 Anki 忽略该条目仍读 `collection.anki2`；卡组菜单扩至 4 个导出入口
+**v0.4.13** 导出格式扩展：新增 **CSV（带表头，RFC 4180 转义）** 与 **Markdown（表格）**；`.apkg` 补新版 Anki（≥2.1.50）要求的 **`meta`（`PackageMetadata` protobuf，`version = LEGACY_1`，2 字节 `08 01`）**，老版 Anki 忽略该条目仍读 `collection.anki2`；卡组菜单扩至 4 个导出入口（v0.4.16 起为 **5 个**，含 JSON 完整导出）
 
 **v0.4.14** 主题对比度：`--tag-tx`（标签 / 强调文字）改为**随 accent 派生**——`theme.js` 输出 `--tag-tx-dark`/`--tag-tx-light`，CSS 按 `data-theme` 二选一；修掉「浅色系 accent（青碧/翠绿）下标签文字仍是蓝色」的不一致
 

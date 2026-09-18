@@ -6,7 +6,7 @@
 | 语言 | 原生 JavaScript（ES2020+，ES Module），**无 TypeScript** |
 | 框架 | 无（自写 `ui.js` 事件委托 + `innerHTML` 渲染） |
 | 构建 | **无**（静态托管即产物）；`package.json` 仅 `{"type":"module"}` 等元信息 |
-| 依赖 | **零 npm 依赖**；唯一内置第三方：`vendor/sql.js/`（sql.js 1.13.0，MIT，WASM，用于生成 Anki SQLite） |
+| 依赖 | **零 npm 依赖**；唯一内置第三方：`vendor/sql.js/`（sql.js 1.13.0，MIT，WASM，用于生成 Anki SQLite）；`.xlsx` 读取为**自写**（`js/xlsx.js`，非第三方） |
 | 存储 | IndexedDB（`js/idb.js` 自封装）+ localStorage/sessionStorage |
 | 样式 | 单个 `css/style.css`，CSS 变量驱动主题，移动端优先 + 媒体查询自适应 |
 | 离线 | `manifest.json` + `sw.js`：代码/数据**网络优先**、图片缓存优先；`VERSION` 递增即触发换新 |
@@ -52,6 +52,7 @@ node scripts/gen-examples.mjs --data data/words.json --sample 8
 - 断言统一 `ok(cond, msg, extra)` + 末尾 `process.exit(fail ? 1 : 0)`
 - DOM 冒烟用 `scripts/smoke-dom.mjs` 的轻量 fakeEl + `fire(action, dataset)` 走真实事件委托
 - 资源一致性用 `scripts/verify-assets.mjs`（读源码字符串 + 解析 data/*.json）
+- **xlsx 测试**：用 `export.js` 的 `zipStore`（STORED）+ Node `zlib.deflateRawSync` 手工拼**真实 ZIP**（`scripts/test-xlsx.mjs`），既覆盖 STORED 也覆盖 DEFLATE 解压路径
 
 ## 已知坑（务必记住）
 1. **`vendor/sql.js/sql-wasm.js` 是 UMD 构建**：本项目 `package.json` 是 `"type":"module"`，Node 会把 `.js` 当 ESM，UMD 检测失效 → 返回 `{}`。**必须**保留 `vendor/sql.js/package.json`（`"type":"commonjs"`）才能 `createRequire` 加载。浏览器侧则用 `<script>` 注入 + `window.initSqlJs`。
@@ -60,3 +61,5 @@ node scripts/gen-examples.mjs --data data/words.json --sample 8
 4. **`matchMedia` 在 Node 不存在**：`theme.js` 要能降级（`systemPrefersDark()` 无 matchMedia → 视为深色）。
 5. **CSS 新增颜色必须走变量**：否则浅色模式会出现「深底深字」类 bug（v0.4.12 就是 `.modal` 写死深色渐变导致）。
 6. **终端 heredoc 在本机不稳定**：写多行脚本/文本请用编辑器工具或独立文件，避免 `python3 - <<'PY'` 被 shell 破坏。
+7. **解压 `.xlsx` 依赖 `DecompressionStream('deflate-raw')`**：浏览器与 Node ≥18 原生支持；环境不支持时 **STORED** 的 xlsx 仍可解析（压缩条目会抛明确错误）——`js/xlsx.js` 已做降级提示。
+8. **`.git` 体积易被 IDE 检查点撑大**：Cline 扩展会生成 `refs/cline/checkpoints/*`（可能持有重写前的大对象）。若 `.git` 膨胀，回收方式：`git for-each-ref refs/cline` 逐条 `git update-ref -d` → `git reflog expire --expire=now --all` → `git gc --prune=now`（v0.4.18 曾把 49M → 2.4M）。
