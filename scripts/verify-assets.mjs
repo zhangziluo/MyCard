@@ -117,6 +117,15 @@ must(confSrc.includes('建议考研及以上水平使用'), '携带「建议考�
 must(readFileSync(rel('js/engdefs.js'), 'utf8').includes('data/eng-defs.json'), 'engdefs.js 指向 data/eng-defs.json');
 must(css.includes('min-height: 48px'), '选项按钮最小高度 48px（功能一要求）');
 must(css.includes('.multi-badge'), '存在「多选」徽标样式');
+{
+  // 关卡测试固定五种基础题型：typesForRetry 不再取 enabledTypes()（可选题型只在整卡组测试启用）
+  const testSrc = readFileSync(rel('js/test.js'), 'utf8');
+  const fn = /export function typesForRetry[\s\S]*?\n}/.exec(testSrc);
+  must(!!fn, '存在 typesForRetry（关卡测试题型来源）');
+  must(!!fn && fn[0].includes('cfg.QUESTION_TYPES'), 'typesForRetry 只用五种基础题型');
+  must(!!fn && !fn[0].includes('enabledTypes()'), 'typesForRetry 不再引入可选题型（enabledTypes）');
+  must(testSrc.includes('ensureSession') && testSrc.includes('typesForRetry(retries)'), '关卡测试会话（ensureSession）使用 typesForRetry');
+}
 
 console.log('\n[首页「添加单词/词表」（js/add-words.js）]');
 {

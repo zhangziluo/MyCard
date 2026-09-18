@@ -1,6 +1,6 @@
 # Progress — 完成度与遗留
 
-> 更新时间：2026-09-18 ｜ APP `v0.5.0` / SW `v1.8.0` ｜ **1690 条校验全绿**
+> 更新时间：2026-09-18 ｜ APP `v0.5.1` / SW `v1.8.1` ｜ **1699 条校验全绿**
 
 ## 已交付（按版本）
 
@@ -70,14 +70,20 @@
 - **导入历史 / 回滚**：新增 `js/import-history.js`——`recordImport` 记摘要（localStorage，最近 20 条），追加导入的 `cardIds` 存 **IndexedDB `meta`**（`import-rollback:{id}`，最近 5 次）；`undoImport` 撤销（new → `deleteDeck`；append → `store.deleteCards` 只删本次新增）；首页「导入历史」入口 + 「导入完成 / 批量完成」弹窗内直接「撤销」
 - 配套：`store.deleteCards(deckId, ids)`；`commitWords` 返回 `mode`/`addedCardIds`/`fileName`
 
-## 测试资产（22 个 test-*.mjs + `smoke-dom` + `verify-assets` = 24 个脚本 / 1690 条断言）
+**v0.5.1** 关卡测试固定五种基础题型（不含英英 / 多义）：
+- 根因：关卡测试题型来自 `typesForRetry()` → `enabledTypes()`（基础 5 + 配置里开启的可选题型），
+  故在「整卡组测试」里勾选 `eng_eng`/`multi_sense` 后，关卡测试也会混入这两种题型
+- 修复：`js/test.js` 的 `typesForRetry()` 改用 `cfg.QUESTION_TYPES`（**基础 5 种**）；重刷加权逻辑不变
+- 整卡组可配置测试**不受影响**（仍走 `test-engine.samplePlan` 的 `enabled` 配置）
+
+## 测试资产（22 个 test-*.mjs + `smoke-dom` + `verify-assets` = 24 个脚本 / 1699 条断言）
 | 分类 | 脚本 |
 | --- | --- |
 | 核心纯函数 | `test-core`(43) `test-difficulty`(39) `test-arrange`(22) `test-pagination`(25) `test-resplit-levels`(26) |
-| 学习与题型 | `test-confusables`(82) `test-hardwords`(26) `test-level-retry`(73) `test-fill`(85) `test-listen`(21) `test-deck-test`(81) `test-eng-eng`(34) `test-multi-sense`(39) `test-review-complete`(11) `test-review-interaction`(12) |
+| 学习与题型 | `test-confusables`(82) `test-hardwords`(26) `test-level-retry`(78) `test-fill`(85) `test-listen`(21) `test-deck-test`(81) `test-eng-eng`(34) `test-multi-sense`(39) `test-review-complete`(11) `test-review-interaction`(12) |
 | 存储与主题 | `test-idb-store`(42) `test-theme`(150) |
 | 新功能 | `test-add-words`(82) `test-import-file`(246) `test-export`(133) `test-xlsx`(33) |
-| DOM / 资源 | `smoke-dom`(145) `verify-assets`(214) |
+| DOM / 资源 | `smoke-dom`(145) `verify-assets`(218) |
 | 性能金丝雀 | `test-perf`(26，1 万词 / 500 关：统计/分组/抽题 + 耗时) |
 
 ## 已知问题 / 技术债

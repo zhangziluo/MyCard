@@ -217,13 +217,17 @@ export function wordForms(word) {
 }
 
 /**
- * 重刷时的题型权重（每次微调）：
- *   retry <= 0 → 三种题型等权（首次测试）
- *   retry >= 1 → 按 (retry-1)%3 轮换侧重一种题型（该题型权重 ×2）
+ * 关卡测试的题型列表（重刷时逐次微调）：
+ *   retry <= 0 → 五种基础题型等权（首次测试）
+ *   retry >= 1 → 按 (retry-1)%5 轮换侧重一种题型（该题型权重 ×2）
  * 返回的数组可直接作为 buildQuestions 的 types 参数（重复项即权重）。
+ *
+ * 注意：**关卡测试固定使用五种基础题型**（word2def / def2word / sentence2word /
+ * fill / listen），不包含可选题型 eng_eng / multi_sense——这两种仅在
+ * 「整卡组可配置测试」中按设置启用（见 test-engine.samplePlan 的 enabled 参数）。
  */
 export function typesForRetry(retry = 0) {
-  const types = enabledTypes();
+  const types = [...cfg.QUESTION_TYPES];
   const r = Math.max(0, Math.floor(Number(retry) || 0));
   if (r <= 0) return [...types];
   const idx = (r - 1) % types.length;

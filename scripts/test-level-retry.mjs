@@ -340,5 +340,39 @@ ok(lv.levelState(dEnd, 0) === 'passed', '第 1 关状态为 passed');
 ok(ls.getLevelStats(deck.id, 0).best === 100, '历史最佳 100%');
 ok(ROOT.innerHTML.includes('关卡通关') && ROOT.innerHTML.includes('100%'), '结果页展示通关与 100%');
 
+console.log('\n[关卡测试固定五种基础题型（不含 eng_eng / multi_sense）]');
+{
+  const cfg = await import('../js/test-config.js');
+  const before = cfg.loadConfig();
+  cfg.saveConfig({ enabled: { eng_eng: true, multi_sense: true } });
+  ok(
+    testMod.enabledTypes().includes('eng_eng') && testMod.enabledTypes().includes('multi_sense'),
+    '（前置）整卡组测试已启用 eng_eng / multi_sense'
+  );
+  const t0 = testMod.typesForRetry(0);
+  ok(
+    t0.length === 5 && !t0.includes('eng_eng') && !t0.includes('multi_sense'),
+    'typesForRetry 仍只用五种基础题型（关卡测试题型来源）',
+    t0
+  );
+  const t1 = testMod.typesForRetry(1);
+  ok(t1.length === 6 && !t1.includes('eng_eng') && !t1.includes('multi_sense'), '重刷加权也只在基础题型内', t1);
+
+  // 真跑一次关卡测试：题目类型同样不含可选题型
+  testMod.clearTestSession();
+  ROOT.innerHTML = '';
+  testMod.renderTest(ROOT, deck.id, 0);
+  const sess = readTestSession();
+  ok(!!sess && sess.questions.length > 0, '关卡测试会话已建立', sess && sess.questions.length);
+  ok(
+    sess.questions.every((q) => testMod.QUESTION_TYPES.includes(q.type)),
+    '关卡测试全部题目均为基础题型',
+    [...new Set(sess.questions.map((q) => q.type))]
+  );
+
+  cfg.saveConfig(before);
+  testMod.clearTestSession();
+}
+
 console.log(`\n关卡重刷结果: ${pass} 通过, ${fail} 失败`);
 process.exit(fail ? 1 : 0);

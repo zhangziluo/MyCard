@@ -11,7 +11,7 @@ import * as decks from './decks.js';
 import { renderReview, clearReviewSession } from './review.js';
 import { renderTest, clearTestSession } from './test.js';
 
-const APP_VERSION = 'v0.5.0';
+const APP_VERSION = 'v0.5.1';
 
 /* ------------------------------ 路由解析 ------------------------------ */
 
