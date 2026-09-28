@@ -646,10 +646,14 @@ function csvQuote(v) {
   return /[",\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
 }
 
+/** 二维数组 → CSV 文本（UTF-8 BOM + CRLF 行尾，Excel 友好；供模版与表格编辑页共用） */
+export function csvText(rows) {
+  return '\uFEFF' + (rows || []).map((r) => (r || []).map(csvQuote).join(',')).join('\r\n') + '\r\n';
+}
+
 /** 标准 CSV 模版文本（UTF-8 BOM + 表头 + 1 行示例；CRLF 行尾，Excel 友好） */
 export function csvTemplateText() {
-  const rows = [CSV_TEMPLATE_COLUMNS, CSV_TEMPLATE_EXAMPLE];
-  return '\uFEFF' + rows.map((r) => r.map(csvQuote).join(',')).join('\r\n') + '\r\n';
+  return csvText([CSV_TEMPLATE_COLUMNS, CSV_TEMPLATE_EXAMPLE]);
 }
 
 /** 触发浏览器下载文本文件；非浏览器环境返回 null（便于测试） */
@@ -689,6 +693,14 @@ export function downloadCsvTemplate() {
     res ? 'good' : 'warn'
   );
   return { filename: CSV_TEMPLATE_FILENAME, text, size: res ? res.size : text.length };
+}
+
+/** 下载任意二维数组为 CSV（表格编辑页「下载 CSV」用） */
+export function downloadCsvRows(filename, rows) {
+  const text = csvText(rows);
+  const res = downloadTextFile(String(filename || 'Mycard.csv'), text);
+  toast(res ? `已下载 ${String(filename || 'Mycard.csv')}` : '当前环境不支持下载，请手动复制表格', res ? 'good' : 'warn');
+  return { filename: String(filename || 'Mycard.csv'), text, size: res ? res.size : text.length };
 }
 
 /** 首页「下载 CSV 模版」链接 */
@@ -910,12 +922,36 @@ function commitWords(words, { deckId, deckName, src, duplicates, file }) {
     name: deck.name,
     added: deck.cards.length,
     skipped: 0,
-    duplicates: payload.duplicates,
+    // words 可能已被调用方去重过，此时 payload.duplicates 为 0 → 合并调用方传入的重复条数
+    duplicates: payload.duplicates || duplicates || 0,
     existing: false,
     mode: 'new',
     addedCardIds: deck.cards.map((c) => c.id),
     fileName
   };
+}
+
+/**
+ * 直接把「已解析好的词条数组」写入目标牌组。
+ * 供「表格编辑」页复用与文件导入完全一致的链路：validatePayload（校验 + 去重 + 上限）
+ *  → commitWords（已有牌组追加去重 / 新建牌组难度编排）→ 返回同样的结果结构（可记导入历史 / 撤销）。
+ * @param {Array} words 词条数组 [{ front, back, example?, exampleZh?, phonetic?, tags? }]
+ * @param {{deckId?:string, deckName?:string, src?:string, fileName?:string}} opts
+ */
+export function importWordsToDeck(words, { deckId = '', deckName = '', src = 'table_editor', fileName = '' } = {}) {
+  const payload = validatePayload({
+    name: String(deckName || '').trim() || DEFAULT_DECK_NAME,
+    description: '',
+    tags: ['导入'],
+    words
+  });
+  return commitWords(payload.words, {
+    deckId,
+    deckName: payload.name,
+    src,
+    duplicates: payload.duplicates,
+    file: { name: fileName || '表格编辑' }
+  });
 }
 
 /** 导入成功提示（共导入 X 张卡片到牌组「YYY」） */

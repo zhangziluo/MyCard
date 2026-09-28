@@ -1506,6 +1506,90 @@ body.modal-open { overflow: hidden; }
   font-weight: 600;
 }
 
+/* 表格编辑（v0.5.3）：在网页里按模版列填词表 → 导入为卡组（#/editor） */
+.table-editor-view { display: flex; flex-direction: column; gap: 12px; }
+.te-panel { padding: 12px; }
+.te-tools { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+.te-tools .btn { flex: 0 0 auto; }
+.te-stats { font-size: 12px; color: var(--tx3); margin: 0 0 10px; line-height: 1.6; }
+.te-stats b { color: var(--tx); font-variant-numeric: tabular-nums; }
+.te-stat-ok b { color: var(--accent-tx); }
+.te-stat-warn b { color: var(--warn-tx); }
+.te-sep { margin: 0 6px; opacity: 0.55; }
+.te-target { border-top: 1px solid var(--glass-brd); padding-top: 4px; }
+.te-table-wrap {
+  max-height: min(58vh, 460px);
+  overflow: auto;
+  border: 1px solid var(--glass-brd);
+  border-radius: var(--r-md);
+  background: var(--field-bg-soft);
+  -webkit-overflow-scrolling: touch;
+}
+.te-table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 12.5px; }
+.te-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  padding: 7px 8px;
+  background: var(--thead-bg);
+  color: var(--tx2);
+  font-weight: 600;
+  text-align: left;
+  white-space: nowrap;
+  border-bottom: 1px solid var(--glass-brd);
+}
+.te-table td { padding: 2px 4px; border-bottom: 1px solid var(--divider); vertical-align: middle; }
+.te-table tbody tr:nth-child(even) { background: var(--ovl-0); }
+.te-table tbody tr:hover { background: rgba(var(--accent-rgb), 0.06); }
+.te-table tbody tr.te-dup { background: rgba(255, 166, 77, 0.1); }
+.te-table tbody tr.te-dup .te-idx { color: var(--warn-tx); font-weight: 700; }
+.te-table tbody tr.te-bad .te-idx { color: var(--soft-danger-tx); font-weight: 700; }
+.te-idx {
+  width: 40px;
+  padding-right: 8px;
+  text-align: right;
+  color: var(--tx3);
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+}
+.te-ops { width: 96px; text-align: center; white-space: nowrap; }
+.te-cell {
+  width: 100%;
+  min-width: 88px;
+  min-height: 34px;
+  padding: 7px 8px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  color: var(--tx);
+  font-size: 12.5px;
+  font-family: inherit;
+}
+.te-cell::placeholder { color: var(--tx3); }
+.te-cell:focus { outline: none; border-color: var(--accent-tx); background: var(--field-bg-strong); }
+.te-op {
+  width: 26px;
+  height: 26px;
+  min-height: 0;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--ovl-1);
+  border: 1px solid var(--glass-brd);
+  border-radius: var(--r-sm);
+  color: var(--tx2);
+  font-size: 12px;
+  line-height: 1;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.18s var(--ease-out), color 0.18s var(--ease-out), border-color 0.18s var(--ease-out);
+}
+.te-op + .te-op { margin-left: 4px; }
+.te-op:hover { background: var(--ovl-2); color: var(--tx); }
+.te-op:disabled { opacity: 0.35; cursor: default; }
+.te-op-del:hover { color: var(--soft-danger-tx); border-color: var(--soft-danger-tx); }
+
 /* ------------------------------ 桌面端适配 ------------------------------ */
 /* 手机保持单列窄容器；桌面逐级放宽 #app，让卡组等网格「平铺」铺满页面 */
 @media (min-width: 640px) {

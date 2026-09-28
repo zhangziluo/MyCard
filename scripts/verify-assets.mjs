@@ -221,6 +221,80 @@ console.log('\n[本地文件导入词库（js/import-file.js）]');
   must(css.includes('var(--glass-brd)') && css.includes('var(--tx3)'), '预览/拖拽样式复用暗色 CSS 变量');
 }
 
+console.log('\n[表格编辑页（js/table-editor.js）]');
+{
+  must(existsSync(rel('js/table-editor.js')), 'js/table-editor.js 存在');
+  must(sw.includes("'./js/table-editor.js'"), 'sw.js PRECACHE 含 ./js/table-editor.js');
+  const teSrc = readFileSync(rel('js/table-editor.js'), 'utf8');
+  const impSrc = readFileSync(rel('js/import-file.js'), 'utf8');
+  const appSrc = readFileSync(rel('js/app.js'), 'utf8');
+  const decksSrc = readFileSync(rel('js/decks.js'), 'utf8');
+
+  // 列以 CSV 模版为准（同源常量，不重复维护列名）
+  must(teSrc.includes('export const TABLE_COLUMNS = CSV_TEMPLATE_COLUMNS'), '表格列取自 CSV_TEMPLATE_COLUMNS（模版同源）');
+  must(
+    teSrc.includes("export const TABLE_FIELDS = ['front', 'back', 'example', 'exampleZh', 'phonetic', 'tags']"),
+    '列 → 字段映射与模版列一一对应'
+  );
+  must(teSrc.includes('let rows = []') && teSrc.includes('let target = ') && teSrc.includes('let deckName = '), '模块级状态（重渲染保留输入）');
+
+  // 纯函数内核（便于单测）
+  for (const fn of [
+    'export function blankRow',
+    'export function normalizeTable',
+    'export function cleanRows',
+    'export function tableToWords',
+    'export function wordsToTable',
+    'export function tableStats',
+    'export function setCell',
+    'export function addRow',
+    'export function removeRow',
+    'export function moveRow',
+    'export function alignToTemplate',
+    'export function tableCsvRows',
+    'export function tableCsvText'
+  ]) {
+    must(teSrc.includes(fn), '提供 ' + fn.replace('export function ', ''));
+  }
+  must(teSrc.includes('export function loadDraft') && teSrc.includes('export function saveDraft') && teSrc.includes('export function clearDraft'), '草稿存取（localStorage）');
+  must(teSrc.includes('TABLE_DRAFT_KEY = '), '草稿存储键常量（清数据不误删）');
+  must(teSrc.includes('dupeRows') && teSrc.includes('te-dup'), '重复行标记（统计 + 行高亮）');
+  must(teSrc.includes("export async function tableRowsFromFile") && teSrc.includes('parseXlsxRows'), '从文件载入（CSV/TSV/XLSX/JSON 复用既有解析器）');
+
+  // 页面与交互（复用文件导入链路）
+  must(teSrc.includes('export function tableEditorHtml') && teSrc.includes('export function renderTableEditor'), '渲染函数（tableEditorHtml / renderTableEditor）');
+  must(teSrc.includes('export function tableEditorLinkHtml') && teSrc.includes('data-action="open-table-editor"'), '首页入口（tableEditorLinkHtml）');
+  must(teSrc.includes('export async function importTableToDeck') && teSrc.includes('importWordsToDeck(words, {'), '导入走 import-file 的 importWordsToDeck（同校验 / 去重 / 写库）');
+  must(teSrc.includes('recordImport([res])') && teSrc.includes('showImportSuccess(res)'), '复用导入历史与成功弹窗（可撤销）');
+  must(teSrc.includes("src: 'table_editor'"), '卡片来源标记 src=table_editor');
+  must(/on\(\s*'te-cell',[\s\S]*?refreshStats\(\)/.test(teSrc), '单元格输入只刷新统计（保住光标）');
+  for (const act of ['te-target', 'te-deck-name', 'te-add-row', 'te-move-up', 'te-move-down', 'te-del-row', 'te-clear', 'te-download', 'te-load-file', 'te-import-deck']) {
+    must(new RegExp("on\\(\\s*'" + act + "'").test(teSrc), '注册动作 ' + act);
+  }
+  must(teSrc.includes('DOWNLOAD') || teSrc.includes('downloadCsvRows(TABLE_CSV_FILENAME'), '下载 CSV（表头 = 模版列名）');
+  must(teSrc.includes('confirmDialog('), '载入 / 清空前二次确认（防误丢手填内容）');
+
+  // import-file.js 新增的复用导出
+  must(impSrc.includes('export function csvText') && impSrc.includes('export function csvTemplateText'), 'csvText 抽取 + 模版复用');
+  must(impSrc.includes('export function downloadCsvRows'), 'downloadCsvRows（通用 CSV 下载）');
+  must(impSrc.includes('export function importWordsToDeck'), 'importWordsToDeck（已解析词条 → 与文件导入同链路）');
+  must(/duplicates: payload\.duplicates \|\| duplicates \|\| 0/.test(impSrc), '新建卡组也报告文件内重复条数');
+
+  // 路由与首页入口
+  must(/if \(seg\[0\] === 'editor'\) return \{ view: 'editor', mode \}/.test(appSrc), "app.js 解析路由 #/editor");
+  must(/route\.view === 'editor'/.test(appSrc) && appSrc.includes("from './table-editor.js'"), 'app.js 路由到 renderTableEditor');
+  must(appSrc.includes("t = '表格编辑'"), '顶栏标题「表格编辑」');
+  must(decksSrc.includes('tableEditorLinkHtml') && decksSrc.includes("from './table-editor.js'"), '首页导入栏挂载「在网页里填表格」');
+
+  // 样式（复用既有变量，零硬编码颜色）
+  must(css.includes('.te-table') && css.includes('.te-cell') && css.includes('.te-stats') && css.includes('.te-tools'), '表格编辑样式齐备（.te-*）');
+  must(/\.te-dup/.test(css) && !/\.te-dup[^}]*#[0-9a-f]{3,6}/i.test(css), '重复行高亮用 CSS 变量而非硬编码色值');
+
+  // 测试脚本
+  must(existsSync(rel('scripts/test-table-editor.mjs')), '存在 scripts/test-table-editor.mjs（表格编辑单测）');
+  must(readFileSync(rel('scripts/smoke-dom.mjs'), 'utf8').includes('#/editor'), 'smoke-dom.mjs 覆盖 #/editor 路由渲染');
+}
+
 console.log('\n[浅色 / 深色模式（js/theme.js + css/style.css + index.html）]');
 {
   const themeSrc = readFileSync(rel('js/theme.js'), 'utf8');

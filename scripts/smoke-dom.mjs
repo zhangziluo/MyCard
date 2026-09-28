@@ -409,6 +409,41 @@ try {
   ok(false, 'app.js 启动抛错：' + (e && e.message));
 }
 
+// ---- 表格编辑页（app.render → #/editor）----
+console.log('\n[表格编辑页 #/editor]');
+{
+  const te = await import('../js/table-editor.js');
+  ok(appViewEl.innerHTML.includes('data-action="open-table-editor"'), '首页导入栏含「在网页里填表格」入口');
+
+  globalThis.location.hash = '#/editor';
+  (winListeners['hashchange'] || []).forEach((fn) => fn({ type: 'hashchange' }));
+  const html = appViewEl.innerHTML;
+  ok(html.includes('class="view table-editor-view"'), '路由 #/editor 渲染表格编辑页');
+  ok(html.includes('class="te-table"'), '渲染可编辑表格');
+  ok(html.includes('class="te-stats"'), '渲染统计条');
+  ok(html.includes('class="te-tools"'), '渲染工具栏');
+  ok(html.includes('class="te-target"'), '渲染目标卡组选择');
+  for (const col of te.TABLE_COLUMNS) {
+    ok(html.includes(`<th scope="col">${col}</th>`), `表头列「${col}」`);
+  }
+  ok((html.match(/class="te-cell"/g) || []).length === 18, '默认 3 行 × 6 列可编辑单元格（实际 ' + (html.match(/class="te-cell"/g) || []).length + '）');
+  ok(
+    ['te-import-deck', 'te-load-file', 'te-add-row', 'te-download', 'te-clear', 'te-target', 'te-deck-name', 'te-cell'].every((a) =>
+      html.includes(`data-action="${a}"`)
+    ),
+    '工具栏 / 目标卡组控件齐全'
+  );
+  ok(html.includes('value="表格导入"'), '默认新卡组名「表格导入」');
+  ok(html.includes('＋ 新建卡组'), '默认目标为「新建卡组」');
+
+  await fire('te-add-row');
+  ok((appViewEl.innerHTML.match(/class="te-cell"/g) || []).length === 24, '点「＋ 添加一行」→ 4 行（24 格）');
+
+  globalThis.location.hash = '#/home';
+  (winListeners['hashchange'] || []).forEach((fn) => fn({ type: 'hashchange' }));
+  ok(appViewEl.innerHTML.includes('我的卡组'), '从编辑页返回首页仍正常渲染');
+}
+
 // ---- 设置页（app.render → renderSettings）：主题色区块 ----
 console.log('\n[设置页 · 主题色]');
 {

@@ -10,8 +10,9 @@ import { on, bindDocument, navigate, toast, confirmDialog } from './ui.js';
 import * as decks from './decks.js';
 import { renderReview, clearReviewSession } from './review.js';
 import { renderTest, clearTestSession } from './test.js';
+import { renderTableEditor } from './table-editor.js';
 
-const APP_VERSION = 'v0.5.2';
+const APP_VERSION = 'v0.5.3';
 
 /* ------------------------------ 路由解析 ------------------------------ */
 
@@ -24,6 +25,8 @@ function parseHash() {
 
   if (!seg.length || seg[0] === 'home') return { view: 'home', mode };
   if (seg[0] === 'settings') return { view: 'settings', mode };
+  // #/editor → 表格编辑（在网页里按模版列填词表，再导入为卡组）
+  if (seg[0] === 'editor') return { view: 'editor', mode };
   if (seg[0] === 'deck' && seg[1]) {
     if (seg[2] === 'cards') return { view: 'cards', id: seg[1], mode };
     return { view: 'deck', id: seg[1], mode };
@@ -108,6 +111,11 @@ function renderAppbar(route) {
       backHref = '#/home';
       t = '设置';
       break;
+    case 'editor':
+      showBack = true;
+      backHref = '#/home';
+      t = '表格编辑';
+      break;
     default:
       t = 'Mycard';
   }
@@ -147,6 +155,8 @@ export function render() {
     renderTest(root, route.id, route.level);
   } else if (route.view === 'settings') {
     renderSettings(root);
+  } else if (route.view === 'editor') {
+    renderTableEditor(root);
   } else {
     decks.renderHome(root);
   }
