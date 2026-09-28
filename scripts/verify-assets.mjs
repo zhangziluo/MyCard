@@ -140,7 +140,7 @@ console.log('\n[首页「添加单词/词表」（js/add-words.js）]');
   must(awSrc.includes('STORE_LOOKUP'), '查询结果写入 lookup 缓存 store');
   const decksSrc = readFileSync(rel('js/decks.js'), 'utf8');
   must(decksSrc.includes("from './add-words.js'") && decksSrc.includes('addWordsPanelHtml()'), '首页（decks.js）挂载该面板');
-  must(readFileSync(rel('js/idb.js'), 'utf8').includes("export const DB_VERSION = 2"), 'IndexedDB 版本升到 2');
+  must(readFileSync(rel('js/idb.js'), 'utf8').includes('export const DB_VERSION = 3'), 'IndexedDB 版本升到 3（revlog）');
   must(readFileSync(rel('index.html'), 'utf8').includes('js/app.js'), 'index.html 仍从 app.js 引导');
 }
 
@@ -166,6 +166,33 @@ console.log('\n[本地文件导入词库（js/import-file.js）]');
   must(impSrc.includes("from './xlsx.js'") && impSrc.includes('parseXlsxRows'), 'import-file 接入 xlsx 解析');
   must(impSrc.includes('export function isXlsxFile') && impSrc.includes('export function rowsPreview'), 'xlsx 判定 + 二维表预览');
   must(impSrc.includes('export function readFileAsArrayBuffer'), 'xlsx 走二进制读取（readFileAsArrayBuffer）');
+  // v0.5.7：多工作表 / 公式求值 / 合并单元格
+  must(
+    xlsxSrc.includes('export function workbookSheets') && xlsxSrc.includes('export async function openXlsx') && xlsxSrc.includes('export async function listXlsxSheets'),
+    '多工作表：workbook.xml + rels 解析（workbookSheets / openXlsx / listXlsxSheets）'
+  );
+  must(/state === 'hidden'/.test(xlsxSrc) && xlsxSrc.includes('firstSheetPath'), '识别隐藏工作表 + 兼容旧调用（firstSheetPath）');
+  must(
+    xlsxSrc.includes('export function evalFormula') && xlsxSrc.includes('export function isFormulaSupported') && xlsxSrc.includes('FORMULA_FUNCTION_NAMES'),
+    '公式求值器（tokenizer + 递归下降；evalFormula / isFormulaSupported）'
+  );
+  must(
+    xlsxSrc.includes('FORMULA_MODE') && xlsxSrc.includes("evaluate: 'evaluate'") && xlsxSrc.includes('formulaShared'),
+    '公式两种模式（cached / evaluate）+ 共享公式从属格识别'
+  );
+  must(xlsxSrc.includes('visiting') && xlsxSrc.includes('unsupported'), '循环引用检测 + 求值失败统计（回退缓存值）');
+  must(
+    xlsxSrc.includes('MERGE_FILL') && xlsxSrc.includes('MERGE_BLANK') && xlsxSrc.includes('export function applyMerges'),
+    '合并单元格（fill 填充 / blank 只留左上角）'
+  );
+  must(xlsxSrc.includes('export function parseSheetDetailed') && xlsxSrc.includes('notices'), '解析明细（rows / merges / notices 统计）');
+  must(
+    impSrc.includes('export function xlsxWorkbookPreview') && impSrc.includes('export function sheetPickerHtml') && impSrc.includes('export function bindSheetPicker'),
+    '导入预览可选工作表（xlsxWorkbookPreview / sheetPickerHtml / bindSheetPicker）'
+  );
+  must(impSrc.includes('export function xlsxNoticesText'), '预览提示公式 / 合并单元格处理结果（xlsxNoticesText）');
+  must(impSrc.includes("src = 'batch_import', sheet = 0") && impSrc.includes('parseXlsxRows(await readFileAsArrayBuffer(file), { sheet })'), '导入可指定工作表（importMapped sheet 选项）');
+  must(readFileSync(rel('js/table-editor.js'), 'utf8').includes('parseXlsxRows(await readFileAsArrayBuffer(file), { sheet })'), '表格编辑页载入支持指定工作表');
   // 标准 CSV 模版下载
   must(
     impSrc.includes('export function csvTemplateText') && impSrc.includes('export function downloadCsvTemplate'),
@@ -454,8 +481,11 @@ console.log('\n[导出 txt / CSV / Markdown / JSON / Anki apkg（js/export.js + 
   must(/export function csvCell/.test(expSrc) && /export function mdCell/.test(expSrc), 'CSV / Markdown 单元格转义函数');
   must(/export function exportDeckTxt/.test(expSrc) && /export async function exportDeckApkg/.test(expSrc), '提供导出入口函数');
   must(/export function exportDeckCsv/.test(expSrc) && /export function exportDeckMarkdown/.test(expSrc), '提供 CSV / Markdown 导出入口');
-  must(/export function deckToJson/.test(expSrc) && /export function exportDeckJson/.test(expSrc), '提供 JSON 完整导出（deckToJson / exportDeckJson）');
-  must(/export function cardToAnkiSched/.test(expSrc) && /cardToAnkiSched\(c, i \+ 1, now, todayNumber\)/.test(expSrc), 'apkg 按卡片复习进度写入 Anki 调度列（cardToAnkiSched）');
+  must(/export function deckToJson/.test(expSrc) && /export async function exportDeckJson/.test(expSrc), '提供 JSON 完整导出（deckToJson / exportDeckJson）');
+  must(
+    /export function cardToAnkiSched/.test(expSrc) && /cardToAnkiSched\(c, i \+ 1, now, todayNumber, \{ lapses:/.test(expSrc),
+    'apkg 按卡片复习进度写入 Anki 调度列（cardToAnkiSched + lapses）'
+  );
   must(/on\('export-json'/.test(expSrc), '注册 export-json 动作');
   must(/export function pickScheduling/.test(storeSrc) && storeSrc.includes('...pickScheduling(f)') && storeSrc.includes('...pickScheduling(w)'), '导入路径保留复习进度（store.pickScheduling）');
   must(/export function crc32/.test(expSrc) && /export function zipStore/.test(expSrc), '内置最小 ZIP 写出器（CRC32 + STORED）');
@@ -473,6 +503,152 @@ console.log('\n[导出 txt / CSV / Markdown / JSON / Anki apkg（js/export.js + 
     '卡组菜单含 txt / csv / md / json / apkg 五个导出入口'
   );
   must(/from '\.\/export\.js'|import '\.\/export\.js'/.test(decksSrc), 'decks.js 加载 export.js（注册导出动作）');
+}
+
+console.log('\n[复习日志 revlog：本机记录 / apkg revlog 表 / JSON 往返（v0.5.8）]');
+{
+  const rvSrc = readFileSync(rel('js/revlog.js'), 'utf8');
+  const idbSrc = readFileSync(rel('js/idb.js'), 'utf8');
+  const storeSrc2 = readFileSync(rel('js/store.js'), 'utf8');
+  const expSrc2 = readFileSync(rel('js/export.js'), 'utf8');
+  const impSrc = readFileSync(rel('js/import-file.js'), 'utf8');
+  const revSrc = readFileSync(rel('js/review.js'), 'utf8');
+  must(existsSync(rel('js/revlog.js')), 'js/revlog.js 存在');
+  must(sw.includes("'./js/revlog.js'"), 'sw.js PRECACHE 含 ./js/revlog.js（离线可用）');
+  must(
+    /export const REVIEW_TYPES/.test(rvSrc) && /EASE_BY_FEEDBACK/.test(rvSrc) && /FEEDBACK_BY_EASE/.test(rvSrc),
+    'revlog.js：Anki type / ease 映射表'
+  );
+  must(
+    /export function makeEntry/.test(rvSrc) &&
+      /export function reviewTypeOf/.test(rvSrc) &&
+      /export function sanitizeEntry/.test(rvSrc),
+    'revlog.js：生成 / 归类 / 清洗函数'
+  );
+  must(
+    /export function pickReviewLog/.test(rvSrc) &&
+      /export function summarize/.test(rvSrc) &&
+      /export function toAnkiRow/.test(rvSrc),
+    'revlog.js：外部日志提取 / 汇总 / Anki 行换算'
+  );
+  must(rvSrc.includes('MAX_IMPORT_LOG') && rvSrc.includes('MAX_TIME_MS'), 'revlog.js：导入上限与停留上限常量');
+
+  must(/export const DB_VERSION = 3/.test(idbSrc), 'IndexedDB 版本升到 v3（新增 revlog store）');
+  must(/export const STORE_REVLOG = 'revlog'/.test(idbSrc), 'idb.js 导出 STORE_REVLOG');
+  must(
+    /createObjectStore\(STORE_REVLOG, \{ keyPath: 'id' \}\)/.test(idbSrc) &&
+      /createIndex\('byDeck'/.test(idbSrc) &&
+      /createIndex\('byCard'/.test(idbSrc),
+    'revlog store 以 id 为主键 + byDeck / byCard 索引'
+  );
+  must(idbSrc.includes('get(STORE_REVLOG).clear()'), '清空数据时一并清空 revlog');
+  must(storeSrc2.includes("import * as revlog from './revlog.js'"), 'store.js 复用 revlog.js');
+  must(
+    /export function recordReview/.test(storeSrc2) &&
+      /export async function revlogsOfDeck/.test(storeSrc2) &&
+      /export function importRevlogs/.test(storeSrc2) &&
+      /export async function revlogStats/.test(storeSrc2),
+    'store.js：recordReview / revlogsOfDeck / importRevlogs / revlogStats'
+  );
+  must(
+    storeSrc2.includes('pendingRevlogs = new Map()') && storeSrc2.includes('await idb.putAll(idb.STORE_REVLOG, logs)'),
+    'store.js：日志走「写穿 + 合并防抖」队列落盘'
+  );
+  must(
+    /purgeRevlogs\(\{ cardId \}\)/.test(storeSrc2) && /purgeRevlogs\(\{ deckId \}\)/.test(storeSrc2),
+    'store.js：删卡片 / 删卡组时级联清理日志'
+  );
+  must(expSrc2.includes("import * as revlog from './revlog.js'"), 'export.js 复用 revlog.js');
+  must(
+    /INSERT INTO revlog VALUES/.test(expSrc2) && /revlog\.toAnkiRow\(e, cardId, nextRevId\(e\.ts\)\)/.test(expSrc2),
+    'apkg 写入 revlog 表（每次评分一行 + 主键去重）'
+  );
+  must(/sched\.lapses/.test(expSrc2) && /sched\.left/.test(expSrc2), 'apkg cards 表写入 lapses / left');
+  must(/formatVersion: 2/.test(expSrc2) && /out\.reviewLog = logs/.test(expSrc2), 'JSON 导出 formatVersion 2 + 每卡 reviewLog');
+  must(
+    /export async function exportDeckJson/.test(expSrc2) && /store\.revlogsOfDeck\(deckId\)/.test(expSrc2),
+    'JSON / apkg 导出前读取该卡组日志'
+  );
+  must(
+    /pickReviewLog\(w\)/.test(impSrc) &&
+      /function attachReviewLogs/.test(impSrc) &&
+      /store\.importRevlogs\(deck\.id, entries\)/.test(impSrc),
+    'import-file.js：JSON 回导时按单词恢复复习日志'
+  );
+  must(/revlog\.reattach\(e, c\.id\)/.test(impSrc), 'import-file.js：日志重新归属到落库后的卡片 id');
+  must(/logsWritten/.test(impSrc) && /恢复复习日志/.test(impSrc), '导入结果与提示包含恢复的日志条数');
+  must(
+    /store\.recordReview\(S\.deckId, snap, fb, updated, \{ timeMs:/.test(revSrc) &&
+      /S\.shownAt = Date\.now\(\)/.test(revSrc) &&
+      /const snap = \{ id: card\.id, state: card\.state/.test(revSrc),
+    'review.js：评分时写入日志（含单卡停留时长 + 评分前快照）'
+  );
+  must(existsSync(rel('scripts/test-revlog.mjs')), '存在 scripts/test-revlog.mjs（纯函数单测）');
+  must(
+    readFileSync(rel('scripts/test-export.mjs'), 'utf8').includes('FROM revlog r JOIN cards c') &&
+      readFileSync(rel('scripts/test-export.mjs'), 'utf8').includes('revlog 写入 3 行'),
+    'test-export 用 Python 独立校验 apkg 的 revlog 表'
+  );
+  must(
+    readFileSync(rel('scripts/test-idb-store.mjs'), 'utf8').includes('复习日志（revlog）：写穿') &&
+      readFileSync(rel('scripts/test-idb-store.mjs'), 'utf8').includes('旧库从 v2 增量升级到 v3'),
+    'test-idb-store 覆盖 v2→v3 升级与日志写穿 / 级联清理'
+  );
+}
+
+
+// 8) v0.5.9「我的生词」批量整理
+console.log('\n[我的生词批量整理（js/wordbook.js + js/wordbook-view.js，v0.5.9）]');
+{
+  const wbSrc = readFileSync(rel('js/wordbook.js'), 'utf8');
+  const viewSrc = readFileSync(rel('js/wordbook-view.js'), 'utf8');
+  const storeSrc2 = readFileSync(rel('js/store.js'), 'utf8');
+  const appSrc = readFileSync(rel('js/app.js'), 'utf8');
+  const decksSrc3 = readFileSync(rel('js/decks.js'), 'utf8');
+  const awSrc2 = readFileSync(rel('js/add-words.js'), 'utf8');
+  const uiSrc = readFileSync(rel('js/ui.js'), 'utf8');
+
+  must(existsSync(rel('js/wordbook.js')), 'js/wordbook.js 存在（纯函数内核）');
+  must(existsSync(rel('js/wordbook-view.js')), 'js/wordbook-view.js 存在（整理页）');
+  must(sw.includes("'./js/wordbook.js'"), 'sw.js PRECACHE 含 ./js/wordbook.js');
+  must(sw.includes("'./js/wordbook-view.js'"), 'sw.js PRECACHE 含 ./js/wordbook-view.js');
+  must(/const VERSION = 'v1\.9\.0'/.test(sw), 'sw.js VERSION 已递增（v1.9.0）');
+
+  // 内核：去重合并 / 标签 / 筛选排序 / 选中集 / 补查目标
+  must(/export function normKey/.test(wbSrc), 'wordbook.js：normKey（大小写 / 空格归一为同一个词）');
+  must(/export function dupGroups/.test(wbSrc) && /export function mergePlans/.test(wbSrc), 'wordbook.js：dupGroups / mergePlans');
+  must(/export function keepScore/.test(wbSrc) && /STATE_RANK/.test(wbSrc), 'wordbook.js：主卡优先级（复习状态 > 次数 > 间隔 > 加入时间）');
+  must(/extraBacks/.test(wbSrc), 'wordbook.js：合并后其它释义进 extraBacks');
+  must(/export function filterWords/.test(wbSrc) && /export function sortWords/.test(wbSrc), 'wordbook.js：filterWords / sortWords');
+  must(/export function tagPatchPlans/.test(wbSrc) && /export function renameTagPlans/.test(wbSrc), 'wordbook.js：批量加/去标签与重命名方案');
+  must(/export function lookupTargets/.test(wbSrc), 'wordbook.js：补查目标（勾选的词 / 缺释义的词）');
+
+  // 存储层：批量写与合并
+  must(/export function updateCards/.test(storeSrc2), 'store.js：updateCards（批量写标签，单次落库）');
+  must(/export function mergeCards/.test(storeSrc2), 'store.js：mergeCards（保留主卡 + 删副卡）');
+  must(/queueDeleteCard\(c\.id\)/.test(storeSrc2) && /副卡日志一并清理/.test(storeSrc2), 'store.js：删副卡时级联清理复习日志');
+  must(/merge: true/.test(storeSrc2) && /extraBacks/.test(storeSrc2), 'store.js：addWords 支持 { merge: true } 合并释义');
+
+  // 路由与入口
+  must(/0\.5\.9/.test(appSrc), 'app.js 版本号更新为 v0.5.9');
+  must(/from '\.\/wordbook-view\.js'/.test(appSrc) && /renderWordbook\(root\)/.test(appSrc), 'app.js 挂载 renderWordbook');
+  must(/seg\[0\] === 'words'/.test(appSrc) && /#\/words/.test(appSrc), 'app.js 解析 #/words 路由（含 ?page=N 分页）');
+  must(/on\('nav-words'/.test(decksSrc3), 'decks.js 提供 nav-words 入口动作');
+  must(/export function cardFormModal/.test(decksSrc3), 'decks.js 导出 cardFormModal（整理页复用编辑弹窗）');
+  must(/整.*生词本/.test(decksSrc3), 'decks.js 首页 / 生词卡组菜单提供「整理生词本」入口');
+  must(/export function prefillInput/.test(awSrc2) && /loadMergePref|saveMergePref/.test(awSrc2), 'add-words.js：prefillInput + 合并偏好');
+  must(/export function icon/.test(uiSrc) && /wordbook-view\.js/.test(uiSrc), 'ui.js：共享 icon()（供整理页复用）');
+
+  // 页面：分页 / 多选 / 批量
+  must(/export const WORDS_PER_PAGE = 100/.test(viewSrc), '整理页分页常量 WORDS_PER_PAGE = 100');
+  must(/data-action="wb-pick-page"/.test(viewSrc) && /data-action="wb-page"/.test(viewSrc), '整理页有本页全选与分页动作');
+  must(/data-action="wb-batch-tag"/.test(viewSrc) && /data-action="wb-batch-delete"/.test(viewSrc), '整理页有批量加标签 / 删除');
+  must(/data-action="wb-batch-lookup"/.test(viewSrc) && /prefillInput\(words/.test(viewSrc), '整理页「在线补查」回填首页查词框');
+  must(/wbReportHtml/.test(viewSrc) && /openDedupeReport/.test(viewSrc), '整理页先出合并报告再落库');
+  must(/openTagManager/.test(viewSrc) && /openBatchTagModal/.test(viewSrc), '整理页标签管理 / 批量标签弹窗');
+  must(/setViewState|getViewState/.test(viewSrc), '整理页状态可读可写（测试用）');
+  must(existsSync(rel('scripts/test-wordbook.mjs')), '存在 scripts/test-wordbook.mjs');
+  must(/wb-/.test(css) && /\.field select/.test(css), 'css/style.css 含生词本样式与弹窗下拉框样式');
 }
 
 console.log('\n[大卡组性能（单遍统计 / 复用 levels / 抽题快路径）]');

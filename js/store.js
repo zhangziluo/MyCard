@@ -16,6 +16,8 @@
 import { DEFAULT_PER_LEVEL, clampPerLevel, splitCards, suggestLevelForNewCard, resplitLevels } from './levels.js';
 import * as sched from './scheduler.js';
 import * as idb from './idb.js';
+import * as revlog from './revlog.js';
+import * as wordbook from './wordbook.js';
 import { arrangeCards } from './arrange.js';
 
 /** 旧版整库 key（IndexedDB 不可用时的回退；迁移完成后会被删除以释放空间） */
@@ -90,7 +92,9 @@ function normalizeDeck(d) {
     demo: !!d.demo,
     source: typeof d.source === 'string' && d.source ? d.source : null,
     passedLevels: d.passedLevels ? { ...d.passedLevels } : {},
-    cards: Array.isArray(d.cards) ? d.cards.map(normalizeCard) : []
+    cards: Array.isArray(d.cards) ? d.cards.map(normalizeCard) : [],
+    // 复习日志：IndexedDB 模式下独立存于 revlog 表；回退模式下随卡组整库保存
+    revlogs: Array.isArray(d.revlogs) ? d.revlogs.filter(Boolean) : []
   };
 }
 
@@ -197,6 +201,7 @@ function legacyPersist() {
 
 let pendingDecks = new Map(); // id -> deck meta
 let pendingCards = new Map(); // cardId -> card record（含 deckId）
+let pendingRevlogs = new Map(); // 日志 id -> 日志记录（含 deckId / cardId）
 let deletedDeckIds = new Set();
 let deletedCardIds = new Set();
 let flushTimer = null;
@@ -213,10 +218,12 @@ function scheduleFlush() {
 export async function flushPending() {
   const decks = [...pendingDecks.values()];
   const cards = [...pendingCards.values()];
+  const logs = [...pendingRevlogs.values()];
   const delDecks = [...deletedDeckIds];
   const delCards = [...deletedCardIds];
   pendingDecks = new Map();
   pendingCards = new Map();
+  pendingRevlogs = new Map();
   deletedDeckIds = new Set();
   deletedCardIds = new Set();
   if (!idbReady) return 0;
@@ -226,7 +233,8 @@ export async function flushPending() {
     if (delCards.length) await idb.delAll(idb.STORE_CARDS, delCards);
     if (decks.length) await idb.putAll(idb.STORE_DECKS, decks);
     if (cards.length) await idb.putAll(idb.STORE_CARDS, cards);
-    written = decks.length + cards.length + delDecks.length + delCards.length;
+    if (logs.length) await idb.putAll(idb.STORE_REVLOG, logs);
+    written = decks.length + cards.length + logs.length + delDecks.length + delCards.length;
     persistMeta();
   } catch (e) {
     console.warn('[store] IndexedDB 写入失败', e);
@@ -255,6 +263,7 @@ export function queueDeleteCard(cardId) {
   if (!idbReady || !cardId) return;
   pendingCards.delete(cardId);
   deletedCardIds.add(cardId);
+  purgeRevlogs({ cardId }); // 卡片没了，其复习日志一并清理
   scheduleFlush();
 }
 
@@ -262,7 +271,39 @@ export function queueDeleteDeck(deckId) {
   if (!idbReady || !deckId) return;
   pendingDecks.delete(deckId);
   deletedDeckIds.add(deckId);
+  purgeRevlogs({ deckId }); // 卡组没了，其复习日志一并清理
   scheduleFlush();
+}
+
+/**
+ * 清理复习日志（异步、不阻塞调用方；失败仅告警）。
+ * @param {{deckId?:string, cardId?:string}} where 给出 deckId 走 byDeck，给出 cardId 走 byCard
+ */
+function purgeRevlogs(where = {}) {
+  const { deckId, cardId } = where;
+  if (!deckId && !cardId) return;
+  const hit = (r) => (deckId ? r.deckId === deckId : false) || (cardId ? r.cardId === cardId : false);
+  for (const [id, r] of pendingRevlogs) if (hit(r)) pendingRevlogs.delete(id);
+  if (!idbReady) {
+    // 回退模式：日志随卡组存在内存里，直接过滤（必要时整库回写）
+    let changed = false;
+    for (const deck of getDb().decks) {
+      if (!Array.isArray(deck.revlogs) || !deck.revlogs.length) continue;
+      if (deckId && deck.id !== deckId) continue;
+      const kept = deck.revlogs.filter((r) => !hit(r));
+      if (kept.length !== deck.revlogs.length) {
+        deck.revlogs = kept;
+        changed = true;
+      }
+    }
+    if (changed) legacyPersist();
+    return;
+  }
+  const index = deckId ? 'byDeck' : 'byCard';
+  idb
+    .getAllByIndex(idb.STORE_REVLOG, index, deckId || cardId)
+    .then((list) => (list && list.length ? idb.delAll(idb.STORE_REVLOG, list.map((r) => r.id)) : 0))
+    .catch(() => {});
 }
 
 /** 统一持久化入口：IndexedDB 模式写精简元数据，回退模式写整库 */
@@ -399,6 +440,7 @@ export function resetAll() {
   idbReady = false; // 先停落盘，避免清库后又被写回
   pendingDecks = new Map();
   pendingCards = new Map();
+  pendingRevlogs = new Map();
   deletedDeckIds = new Set();
   deletedCardIds = new Set();
   try {
@@ -513,26 +555,41 @@ export function ensureUserDeck() {
 }
 
 /**
- * 把查词/导入结果追加到「我的生词」卡组（按 word 去重，不覆盖已有词）。
+ * 把查词/导入结果追加到「我的生词」卡组（按 word 去重）。
+ * v0.5.9：`merge: true` 时，已存在的词不直接跳过，而是把新释义/例句/标签**合并**进原卡片
+ *        （原 back 始终是第一义，新释义追加为 extraBacks；复习进度不动）。
  * @param {Array} items [{ word, ipa, phonetic, back, extraBacks, example, exampleZh, tags }]
- * @param {object} opts  { src: 'online_lookup' | 'batch_import' }
- * @returns {{ deck:object, added:number, skipped:number, words:string[] }}
+ * @param {object} opts  { src: 'online_lookup' | 'batch_import', merge: boolean }
+ * @returns {{ deck:object, added:number, merged:number, skipped:number, words:string[], mergedWords:string[] }}
  */
-export function addWords(items, { src = 'online_lookup' } = {}) {
+export function addWords(items, { src = 'online_lookup', merge = false } = {}) {
   const deck = ensureUserDeck();
-  const existing = new Set(deck.cards.map((c) => String(c.front || '').toLowerCase()));
+  const index = new Map(); // normKey(front) → 卡片（同一个词只认第一张）
+  for (const c of deck.cards) {
+    const key = wordbook.normKey(c.front);
+    if (key && !index.has(key)) index.set(key, c);
+  }
   const fresh = [];
   const skippedWords = [];
+  const mergedWords = [];
+  const mergedCards = [];
   for (const it of items || []) {
     const front = String((it && (it.word ?? it.front)) || '').trim();
     if (!front) continue;
-    const key = front.toLowerCase();
-    if (existing.has(key)) {
-      skippedWords.push(front);
+    const key = wordbook.normKey(front);
+    const hit = index.get(key);
+    if (hit) {
+      const res = merge ? wordbook.mergeInto(hit, it) : { changed: false };
+      if (res.changed) {
+        applyCardFields(hit, res.patch);
+        if (!mergedCards.includes(hit)) mergedCards.push(hit);
+        mergedWords.push(front);
+      } else {
+        skippedWords.push(front);
+      }
       continue;
     }
-    existing.add(key);
-    fresh.push({
+    const card = {
       front,
       back: String(it.back ?? ''),
       example: it.example ?? '',
@@ -543,10 +600,23 @@ export function addWords(items, { src = 'online_lookup' } = {}) {
       extraBacks: Array.isArray(it.extraBacks) ? it.extraBacks.map(String) : [],
       src,
       addedAt: Date.now()
-    });
+    };
+    index.set(key, card);
+    fresh.push(card);
   }
   if (fresh.length) addManyCards(deck.id, fresh);
-  return { deck: getDeck(deck.id), added: fresh.length, skipped: skippedWords.length, words: fresh.map((f) => f.front) };
+  if (mergedCards.length) {
+    persist();
+    queueCards(deck.id, mergedCards);
+  }
+  return {
+    deck: getDeck(deck.id),
+    added: fresh.length,
+    merged: mergedWords.length,
+    skipped: skippedWords.length,
+    words: fresh.map((f) => f.front),
+    mergedWords
+  };
 }
 
 /* ------------------------------ 卡片 CRUD ------------------------------ */
@@ -617,12 +687,25 @@ export function updateCard(deckId, cardId, patch) {
   if (!deck) return null;
   const card = deck.cards.find((c) => c.id === cardId);
   if (!card) return null;
+  applyCardFields(card, patch || {});
+  persist();
+  queueCard(deckId, card);
+  return card;
+}
+
+/**
+ * 把卡片字段补丁写进卡片对象（不改内存库以外的东西）。
+ * updateCard / updateCards / mergeCards 三个入口共用，保证字段语义一致。
+ */
+function applyCardFields(card, patch = {}) {
   if ('front' in patch) card.front = String(patch.front);
   if ('back' in patch) card.back = String(patch.back);
   if ('example' in patch) card.example = patch.example ?? '';
   if ('exampleZh' in patch) card.exampleZh = patch.exampleZh ?? '';
   if ('phonetic' in patch) card.phonetic = String(patch.phonetic ?? '');
   if ('tags' in patch) card.tags = (patch.tags || []).map(String);
+  if ('groups' in patch) card.groups = (patch.groups || []).map(String);
+  if ('extraBacks' in patch) card.extraBacks = (patch.extraBacks || []).map(String);
   if ('level' in patch && Number.isInteger(patch.level) && patch.level >= 0) card.level = patch.level;
   // 复习流程写入调度结果
   if ('state' in patch) card.state = patch.state;
@@ -631,9 +714,70 @@ export function updateCard(deckId, cardId, patch) {
   if ('easeFactor' in patch) card.easeFactor = patch.easeFactor;
   if ('due' in patch) card.due = patch.due;
   if ('lastReview' in patch) card.lastReview = patch.lastReview;
-  persist();
-  queueCard(deckId, card);
+  if ('src' in patch) card.src = typeof patch.src === 'string' && patch.src ? patch.src : null;
+  if ('addedAt' in patch) card.addedAt = patch.addedAt || null;
   return card;
+}
+
+/**
+ * 批量更新卡片（v0.5.9「我的生词」批量标签等）：单次 persist + 批量排队。
+ * @param {string} deckId
+ * @param {Array<{id:string, patch:object}>} entries
+ * @returns {{ updated:number }}
+ */
+export function updateCards(deckId, entries) {
+  const deck = getDeck(deckId);
+  if (!deck || !Array.isArray(entries) || !entries.length) return { updated: 0 };
+  const byId = new Map(deck.cards.map((c) => [String(c.id), c]));
+  const changed = [];
+  for (const e of entries) {
+    const card = e ? byId.get(String(e.id)) : null;
+    if (!card || !e.patch || !Object.keys(e.patch).length) continue;
+    changed.push(applyCardFields(card, e.patch));
+  }
+  if (!changed.length) return { updated: 0 };
+  persist();
+  queueCards(deckId, changed);
+  return { updated: changed.length };
+}
+
+/**
+ * 应用「重复词合并」方案（v0.5.9）：保留主卡（复习进度与复习日志都在它身上），
+ * 把合并后的字段写入主卡，再删掉多余的重复卡片（其日志级联清理）。
+ * @param {string} deckId
+ * @param {Array<{keepId:string, patch:object, removeIds:string[]}>} plans
+ * @returns {{ kept:number, removed:number, groups:number }}
+ */
+export function mergeCards(deckId, plans) {
+  const deck = getDeck(deckId);
+  if (!deck || !Array.isArray(plans) || !plans.length) return { kept: 0, removed: 0, groups: 0 };
+  const byId = new Map(deck.cards.map((c) => [String(c.id), c]));
+  const dead = new Set();
+  const kept = [];
+  const removed = [];
+  let groups = 0;
+  for (const p of plans) {
+    if (!p) continue;
+    const keep = byId.get(String(p.keepId));
+    if (!keep || dead.has(String(keep.id))) continue;
+    const targets = (p.removeIds || [])
+      .map((id) => byId.get(String(id)))
+      .filter((c) => c && c !== keep && !dead.has(String(c.id)));
+    if (!targets.length) continue;
+    if (p.patch && Object.keys(p.patch).length) kept.push(applyCardFields(keep, p.patch));
+    for (const t of targets) {
+      dead.add(String(t.id));
+      removed.push(t);
+    }
+    groups++;
+  }
+  if (!removed.length) return { kept: 0, removed: 0, groups: 0 };
+  deck.cards = deck.cards.filter((c) => !dead.has(String(c.id)));
+  persist();
+  if (kept.length) queueCards(deckId, kept);
+  if (idbReady) for (const c of removed) queueDeleteCard(c.id); // 副卡日志一并清理
+  queueDeck(deck);
+  return { kept: kept.length, removed: removed.length, groups };
 }
 
 /**
@@ -711,6 +855,92 @@ export function markLevelLearned(deckId, levelIndex, now = Date.now()) {
     queueDeck(deck);
   }
   return deck;
+}
+
+/* ------------------------------ 复习日志（revlog，v0.5.8） ------------------------------ */
+
+/**
+ * 写入一条复习日志（评分瞬间调用；同步、不阻塞 UI）。
+ * 存储位置：IndexedDB revlog 表（不支持 IDB 时随卡组存于整库 localStorage）。
+ * @param {string} deckId
+ * @param {object} before 评分前的卡片
+ * @param {string} feedback 'again' | 'hard' | 'good' | 'easy'
+ * @param {object} after  评分后的调度结果（sched.applyFeedback 返回值）
+ * @param {{ now?:number, timeMs?:number }} [opts] timeMs = 该卡停留毫秒
+ * @returns {object|null} 写入的日志条目（参数不合法时为 null）
+ */
+export function recordReview(deckId, before, feedback, after, { now = Date.now(), timeMs = 0 } = {}) {
+  if (!before || !before.id) return null;
+  const entry = revlog.makeEntry({ cardId: before.id, ts: now, feedback, before, after: after || before, timeMs });
+  if (!entry || !getDeck(deckId)) return null;
+  queueRevlog({ ...entry, deckId });
+  return entry;
+}
+
+/** 写入 / 覆盖一条日志（自动补 deckId；回退模式下写进卡组对象） */
+function queueRevlog(entry) {
+  if (!entry || !entry.id || !entry.deckId) return;
+  if (!idbReady) {
+    const deck = getDb().decks.find((x) => x.id === entry.deckId);
+    if (!deck) return;
+    if (!Array.isArray(deck.revlogs)) deck.revlogs = [];
+    const i = deck.revlogs.findIndex((r) => r.id === entry.id);
+    if (i >= 0) deck.revlogs[i] = entry;
+    else deck.revlogs.push(entry);
+    legacyPersist();
+    return;
+  }
+  pendingRevlogs.set(entry.id, entry);
+  scheduleFlush();
+}
+
+/**
+ * 导入外部日志（JSON 回导 / 测试）：只接受属于本卡组已有卡片的条目，返回写入条数。
+ * @param {string} deckId
+ * @param {Array} entries [{ cardId, ts, ease, type, ivl, lastIvl, factor, time }]
+ */
+export function importRevlogs(deckId, entries) {
+  const deck = getDeck(deckId);
+  const list = Array.isArray(entries) ? entries : [];
+  if (!deck || !list.length) return 0;
+  const known = new Set(deck.cards.map((c) => c.id));
+  let n = 0;
+  for (const raw of list) {
+    const e = revlog.sanitizeEntry(raw);
+    if (!e || !known.has(e.cardId)) continue;
+    queueRevlog({ ...e, deckId: deck.id });
+    n++;
+  }
+  return n;
+}
+
+/** 某卡组的全部复习日志（时间升序；含尚未落盘的最新一批） */
+export async function revlogsOfDeck(deckId) {
+  const id = String(deckId || '');
+  if (!id) return [];
+  const map = new Map();
+  const deck = getDeck(id);
+  for (const r of (deck && deck.revlogs) || []) map.set(r.id, r); // 回退模式 / 内存兜底
+  if (idbReady) {
+    try {
+      const stored = await idb.getAllByIndex(idb.STORE_REVLOG, 'byDeck', id);
+      for (const r of stored) map.set(r.id, r);
+    } catch (e) {}
+  }
+  for (const r of pendingRevlogs.values()) if (r.deckId === id) map.set(r.id, r); // 未落盘的优先
+  return revlog.sortEntries([...map.values()]);
+}
+
+/** 某张卡的复习日志（时间升序） */
+export async function revlogsOfCard(deckId, cardId) {
+  const list = await revlogsOfDeck(deckId);
+  const key = String(cardId || '');
+  return list.filter((r) => r.cardId === key);
+}
+
+/** 卡组复习日志汇总 { total, lapses, timeMs, first, last, ease } */
+export async function revlogStats(deckId) {
+  return revlog.summarize(await revlogsOfDeck(deckId));
 }
 
 /* ------------------------------ 其它查询 ------------------------------ */

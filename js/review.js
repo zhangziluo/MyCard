@@ -356,6 +356,8 @@ export function renderReview(root, deckId, level, mode) {
   }
 
   const flipped = root.dataset.flipped === '1';
+  // 本张卡的展示时刻（复习日志 time 字段 = 单卡停留毫秒；每次重渲染重新计时）
+  S.shownAt = Date.now();
   const pct = Math.round((S.pos / S.total) * 100);
   const isAll = S.mode === 'all';
   const roundDone = (S.round || 0) >= 1; // 已至少完成 1 整轮
@@ -413,8 +415,13 @@ function rate(fb) {
   const card = currentCard();
   const deck = store.getDeck(S.deckId);
   if (!deck || !card) return false;
+  // 评分前先快照调度字段：updateCard 会原地改卡片对象，日志需要「评分前」的值
+  const snap = { id: card.id, state: card.state, interval: card.interval, easeFactor: card.easeFactor };
   const updated = sched.applyFeedback(card, fb);
   store.updateCard(S.deckId, card.id, updated);
+  // 复习日志（v0.5.8）：记录本次评分明细（ease / 间隔 / 停留时长），导出 .apkg 时写入 Anki 的 revlog 表
+  store.recordReview(S.deckId, snap, fb, updated, { timeMs: S.shownAt ? Date.now() - S.shownAt : 0 });
+  S.shownAt = Date.now(); // 下一张的计时起点（S.pos 之后会前进）
   S.counts[fb] = (S.counts[fb] || 0) + 1;
   // 困难词标记：「重来 / 不认识」标记为困难词，「轻松」取消标记
   if (fb === 'again') hw.markHard(S.deckId, card.id);

@@ -271,19 +271,42 @@ export function cardToDeckItem(card, lang = null) {
   };
 }
 
-/** 把查词结果加入「我的生词」卡组（去重，不覆盖已有词） */
+/**
+ * 把查词结果加入「我的生词」卡组（去重，不覆盖已有词）。
+ * v0.5.9：面板上的「重复时合并释义」开关打开时（默认），已存在的词不跳过，
+ *        而是把新释义 / 例句 / 标签合并进原卡片（原 back 仍是第一义，进度不动）。
+ */
 export function commitCards(cards, src = 'online_lookup') {
   const items = (cards || [])
     .filter(Boolean)
     .map((c) => Object.assign(cardToDeckItem(c, c.lang), { src }));
-  return store.addWords(items, { src });
+  return store.addWords(items, { src, merge: AW.merge });
 }
 
 /* ============================== 首页面板 UI ============================== */
 
+const MERGE_PREF_KEY = 'mycard-aw-merge';
+
+/** 「重复时合并释义」偏好（默认开）：老卡片里同一个词的多个释义会被合并，而不是直接跳过 */
+export function loadMergePref() {
+  try {
+    const v = localStorage.getItem(MERGE_PREF_KEY);
+    return v == null ? true : v === '1';
+  } catch (e) {
+    return true;
+  }
+}
+
+export function saveMergePref(on_) {
+  try {
+    localStorage.setItem(MERGE_PREF_KEY, on_ ? '1' : '0');
+  } catch (e) {}
+}
+
 const AW = {
   mode: 'empty', // empty | single | list | text
   busy: false,
+  merge: loadMergePref(), // 重复词：true 合并释义 / false 跳过
   candidates: [], // text 模式候选词
   selected: new Set(), // 已勾选的候选
   cards: [], // 查到的卡片
@@ -293,7 +316,46 @@ const AW = {
   progress: null // { done, total, word }
 };
 
+/** 等待被「在线补查 / 整理生词本」填入查词框的词（面板渲染时一次性消费） */
+let pendingPrefill = null;
+
+/**
+ * 预填查词框（生词本整理页的「在线补查」用）。
+ * 面板已经渲染 → 直接写入；尚未渲染（例如先调用再跳转 #/home）→ 暂存，等 addWordsPanelHtml() 消费。
+ * @returns {number} 实际填入的词数
+ */
+export function prefillInput(words, { merge = true } = {}) {
+  const list = (words || [])
+    .map((w) => String(w == null ? '' : w).trim())
+    .filter(Boolean)
+    .filter((w, i, arr) => arr.indexOf(w) === i);
+  if (!list.length) return 0;
+  pendingPrefill = { words: list, merge: !!merge };
+  AW.mode = 'empty';
+  applyPrefill();
+  return list.length;
+}
+
+/** 把暂存的预填词写入已渲染的查词框（返回是否已消费） */
+function applyPrefill() {
+  if (!pendingPrefill) return false;
+  const ta = byId('add-words-input');
+  if (!ta) return false; // 面板还没渲染：留给 addWordsPanelHtml() 消费
+  ta.value = pendingPrefill.words.join('\n');
+  AW.merge = pendingPrefill.merge;
+  const box = byId('aw-merge-box');
+  if (box) box.checked = AW.merge;
+  pendingPrefill = null;
+  resetPanel(false); // 清掉上一次的预览（保留刚写入的输入）
+  return true;
+}
+
 export function addWordsPanelHtml() {
+  // 生词本整理页「在线补查」预填：把待查词直接渲染进输入框（一次性消费）
+  const pre = pendingPrefill;
+  pendingPrefill = null;
+  if (pre) AW.merge = pre.merge;
+  const preValue = pre && pre.words.length ? esc(pre.words.join('\n')) : '';
   return `
   <section class="add-words glass" id="add-words">
     <div class="add-words-head">
@@ -301,9 +363,13 @@ export function addWordsPanelHtml() {
       <span class="sub-note">在线查词 · 加入「${esc(store.USER_DECK_NAME)}」</span>
     </div>
     <textarea id="add-words-input" class="add-words-input" rows="3" placeholder="${esc(ADD_PLACEHOLDER)}"
-      spellcheck="false" autocomplete="off" autocapitalize="off"></textarea>
+      spellcheck="false" autocomplete="off" autocapitalize="off">${preValue}</textarea>
     <div class="add-words-bar">
       <span class="aw-hint" id="aw-hint">${esc(HINT_TEXT)}</span>
+      <label class="aw-merge" title="已存在的词不跳过：把新释义合并进原卡片（旧释义仍在，学习进度不变）">
+        <input type="checkbox" id="aw-merge-box" data-action="aw-merge"${AW.merge ? ' checked' : ''}>
+        <span>重复时合并释义</span>
+      </label>
       <button class="btn btn-primary" data-action="aw-submit" id="aw-submit">添加</button>
     </div>
     <div class="preview-area" id="aw-preview">${previewHtml()}</div>
@@ -402,7 +468,7 @@ export function resetPanel(clearInput = true) {
 
 /** 面板状态快照（测试用） */
 export function getPanelState() {
-  return { mode: AW.mode, busy: AW.busy, candidates: [...AW.candidates], selected: [...AW.selected], cards: [...AW.cards], failed: [...AW.failed] };
+  return { mode: AW.mode, busy: AW.busy, merge: !!AW.merge, candidates: [...AW.candidates], selected: [...AW.selected], cards: [...AW.cards], failed: [...AW.failed] };
 }
 
 export function isBusy() {
@@ -484,8 +550,12 @@ export async function runLookup(words, opts = {}) {
 export function confirmAdd(src = 'online_lookup') {
   if (!AW.cards.length) return null;
   const res = commitCards(AW.cards, src);
-  if (res.added) {
-    toast(`已加入「${store.USER_DECK_NAME}」${res.added} 个词${res.skipped ? `（跳过重复 ${res.skipped}）` : ''}`, 'good');
+  const merged = res.merged || 0;
+  if (res.added || merged) {
+    const parts = [`新增 ${res.added} 个`];
+    if (merged) parts.push(`合并释义 ${merged} 个`);
+    if (res.skipped) parts.push(`跳过重复 ${res.skipped} 个`);
+    toast(`已更新「${store.USER_DECK_NAME}」：${parts.join(' · ')}`, 'good');
   } else {
     toast(`这些词都已在「${store.USER_DECK_NAME}」中，已跳过 ${res.skipped} 个`, 'warn');
   }
@@ -499,6 +569,27 @@ export function confirmAdd(src = 'online_lookup') {
 on('aw-submit', () => {
   submitInput();
 });
+
+// 「重复时合并释义」开关（记忆到本机，下次打开保持）
+on(
+  'aw-merge',
+  (el) => {
+    AW.merge = !!(el && el.checked);
+    saveMergePref(AW.merge);
+    toast(AW.merge ? '重复词将合并释义进原卡片（进度不变）' : '重复词将直接跳过', 'info');
+  },
+  'change'
+);
+
+/** 面板状态里的合并开关（测试用） */
+export function isMergeEnabled() {
+  return !!AW.merge;
+}
+
+/** 暂存的预填词（测试用，不消费状态） */
+export function peekPendingPrefill() {
+  return pendingPrefill ? { words: [...pendingPrefill.words], merge: pendingPrefill.merge } : null;
+}
 
 on('aw-token', (btn) => {
   const w = btn && btn.dataset ? btn.dataset.word : '';

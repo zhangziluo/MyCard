@@ -244,11 +244,18 @@ console.log('\n[Anki 调度映射（复习进度）]');
 
   const n = ex.cardToAnkiSched({ state: 'new' }, 3, NOW, 0);
   ok(n.type === 0 && n.queue === 0 && n.due === 3, '新卡：type/queue=0、due=队列位置', n);
-  ok(n.ivl === 0 && n.factor === 2500 && n.reps === 0, '新卡：ivl=0 / factor=2500 / reps=0', n);
+  ok(n.ivl === 0 && n.factor === 2500 && n.reps === 0 && n.lapses === 0, '新卡：ivl=0 / factor=2500 / reps=0 / lapses=0', n);
+  ok(n.left === 0, '新卡：left=0（未进入学习步）', n.left);
 
-  const l = ex.cardToAnkiSched({ state: 'learning', easeFactor: 2.3 }, 5, NOW, 0);
-  ok(l.type === 1 && l.queue === 1 && l.due === 0, '学习卡：type/queue=1、due=今天', l);
-  ok(l.ivl === 0 && l.factor === 2300 && l.reps === 0, '学习卡：ivl=0 / factor=ease×1000', l);
+  const l = ex.cardToAnkiSched({ state: 'learning', interval: 10 / 1440, easeFactor: 2.3, lastReview: NOW }, 5, NOW, 0);
+  ok(l.type === 1 && l.queue === 1, '学习卡：type/queue=1', l);
+  ok(l.ivl === 600, '学习卡：ivl = 剩余步长（秒）', l.ivl);
+  ok(l.due === Math.floor(NOW / 1000) + 600, '学习卡：due = 到期时刻（epoch 秒）', l.due);
+  ok(l.factor === 2300 && l.reps === 1 && l.left === 1, '学习卡：factor=ease×1000 / reps=1 / left=1', l);
+  ok(
+    ex.cardToAnkiSched({ state: 'learning' }, 1, NOW, 0).due === Math.floor(NOW / 1000),
+    '学习卡缺 lastReview 时 due = 当前时刻'
+  );
 
   const r = ex.cardToAnkiSched(
     { state: 'review', lastReview: NOW, repetitions: 4, interval: 7, easeFactor: 2.6, due: NOW + 7 * DAY },
@@ -269,14 +276,15 @@ console.log('\n[Anki 调度映射（复习进度）]');
   ok(ex.cardToAnkiSched({ state: 'review', lastReview: NOW, interval: 1, easeFactor: 9, due: NOW }, 1, NOW, 0).factor === 3000, 'easeFactor 上限钳制到 3000');
   ok(ex.cardToAnkiSched({ state: 'review', lastReview: NOW, interval: 1, easeFactor: 0.1, due: NOW }, 1, NOW, 0).factor === 1300, 'easeFactor 下限钳制到 1300');
   ok(ex.cardToAnkiSched({ state: 'review', lastReview: NOW, interval: 0.2, easeFactor: 2.5, due: NOW }, 1, NOW, 0).ivl === 1, '不足 1 天的间隔按 1 天');
-  ok(ex.cardToAnkiSched({ state: 'learning' }, 1, NOW, 1).due === 1, 'todayNumber 参与 due 计算');
   ok(ex.cardToAnkiSched({ state: 'review', lastReview: null }, 2, NOW, 0).type === 0, '无 lastReview 的 review 态按新卡处理');
+  ok(ex.cardToAnkiSched({ state: 'review', lastReview: NOW, interval: 3, due: NOW }, 1, NOW, 0, { lapses: 4 }).lapses === 4, 'lapses 由复习日志传入（Anki cards.lapses）');
+  ok(ex.cardToAnkiSched({ state: 'review', lastReview: NOW, interval: 3, due: NOW }, 1, NOW, 0).mod === Math.floor(NOW / 1000), '复习卡 mod = lastReview（秒）');
 }
 
-console.log('\n[JSON 导出（含复习进度）]');
+console.log('\n[JSON 导出（含复习进度 + 复习日志）]');
 {
   const obj = JSON.parse(ex.deckToJson(live));
-  ok(obj.formatVersion === 1, 'formatVersion = 1');
+  ok(obj.formatVersion === 2, 'formatVersion = 2（新增 reviewLog）');
   ok(obj.name === '导出测试·四级', '包含卡组名', obj.name);
   ok(obj.cards.length === 3, '只导出有正面的卡（3 张）', obj.cards.length);
   const c0 = obj.cards[0];
@@ -302,6 +310,19 @@ console.log('\n[JSON 导出（含复习进度）]');
   const jc = JSON.parse(ex.deckToJson(store.getDeck(dj.id))).cards[0];
   ok(jc.state === 'review' && jc.repetitions === 5 && jc.interval === 15 && jc.easeFactor === 2.7, '复习进度被导出', jc);
   ok(jc.due === 9999999999999 && jc.lastReview === 1700000000000, 'due / lastReview 被导出', [jc.due, jc.lastReview]);
+
+  /* 复习日志随 JSON 导出（每次评分明细） */
+  const before = { id: card.id, state: 'new', interval: 0, easeFactor: 2.5 };
+  const after = { id: card.id, state: 'review', interval: 15, easeFactor: 2.7 };
+  store.recordReview(dj.id, before, 'good', after, { now: 1700000000000, timeMs: 4200 });
+  store.recordReview(dj.id, before, 'again', { ...after, interval: 10 / 1440 }, { now: 1700000005000, timeMs: 900 });
+  const logged = JSON.parse(ex.deckToJson(store.getDeck(dj.id))).cards[0].reviewLog;
+  ok(Array.isArray(logged) && logged.length === 2, '每张卡带上 reviewLog（2 条）', logged && logged.length);
+  ok(logged[0].cardId === card.id && logged[0].ease === 3 && logged[0].type === 0, '日志 1：记住 / 学习步', logged[0]);
+  ok(logged[0].time === 4200 && logged[0].ivl === 15 && logged[0].factor === 2700, '日志 1：停留时长 / 间隔(天) / factor', logged[0]);
+  ok(logged[1].ease === 1 && Math.abs(logged[1].ivl - 10 / 1440) < 1e-9, '日志 2：重来（10 分钟步长按天记录）', logged[1]);
+  ok(logged[0].ts < logged[1].ts, '日志按时间升序');
+  ok(!JSON.parse(ex.deckToJson(live)).cards.some((c) => 'reviewLog' in c), '无日志的卡不写 reviewLog 字段');
 }
 
 console.log('\n[.apkg 生成（内置 sql.js）+ Python 独立校验]');
@@ -393,11 +414,12 @@ print('INTEGRITY=' + str(con.execute('PRAGMA integrity_check').fetchone()[0]))
   ok(v.CARD === '1,0,0,0,2500,0', 'card：did=1 / ord=0 / 新卡 / factor=2500 / reps=0', v.CARD);
   ok(v.INTEGRITY === 'ok', 'SQLite PRAGMA integrity_check = ok', v.INTEGRITY);
 
-  /* 复习进度随 .apkg 迁移（独立卡组：1 张复习卡 + 1 张新卡） */
+  /* 复习进度 + 复习日志随 .apkg 迁移（独立卡组：1 张复习卡 + 1 张学习卡 + 1 张新卡） */
   const NOW2 = 1700000000000;
   const DAY2 = ex.ANKI_DAY_MS;
   const dS = store.createDeck({ name: '进度导出' });
   const revCard = store.addCard(dS.id, { front: 'rev', back: '已复习' });
+  const learnCard = store.addCard(dS.id, { front: 'learn', back: '学习步' });
   store.addCard(dS.id, { front: 'fresh', back: '新卡' });
   store.updateCard(dS.id, revCard.id, {
     state: 'review',
@@ -407,6 +429,22 @@ print('INTEGRITY=' + str(con.execute('PRAGMA integrity_check').fetchone()[0]))
     due: NOW2 + 7 * DAY2,
     lastReview: NOW2
   });
+  store.updateCard(dS.id, learnCard.id, {
+    state: 'learning',
+    repetitions: 1,
+    interval: 10 / 1440,
+    easeFactor: 2.3,
+    due: NOW2 + 10 * 60000,
+    lastReview: NOW2 - 300000
+  });
+  // 复习日志：记住（复习） + 重来（遗忘 → 重学）
+  store.recordReview(dS.id, { id: revCard.id, state: 'review', interval: 4, easeFactor: 2.6 }, 'good',
+    { state: 'review', interval: 7, easeFactor: 2.6 }, { now: NOW2 - 1000, timeMs: 5000 });
+  store.recordReview(dS.id, { id: revCard.id, state: 'review', interval: 7, easeFactor: 2.6 }, 'again',
+    { state: 'learning', interval: 10 / 1440, easeFactor: 2.3 }, { now: NOW2, timeMs: 1000 });
+  // 学习卡：一步「记住」出学习步
+  store.recordReview(dS.id, { id: learnCard.id, state: 'new', interval: 0, easeFactor: 2.5 }, 'good',
+    { state: 'learning', interval: 10 / 1440, easeFactor: 2.5 }, { now: NOW2 - 300000, timeMs: 2500 });
   const bytes2 = await ex.deckToApkg(store.getDeck(dS.id), { now: NOW2 });
   const apkgPath2 = join(mkdtempSync(join(tmpdir(), 'mycard-sched-')), 'sched.apkg');
   writeFileSync(apkgPath2, bytes2);
@@ -418,9 +456,12 @@ print('INTEGRITY=' + str(con.execute('PRAGMA integrity_check').fetchone()[0]))
     "f = os.path.join(d, 'collection.anki2')",
     "open(f, 'wb').write(z.read('collection.anki2'))",
     'con = sqlite3.connect(f)',
-    "q = 'SELECT n.sfld, c.type, c.queue, c.due, c.ivl, c.factor, c.reps FROM cards c JOIN notes n ON n.id = c.nid ORDER BY c.id'",
+    "q = 'SELECT n.sfld, c.type, c.queue, c.due, c.ivl, c.factor, c.reps, c.lapses, c.left, c.mod FROM cards c JOIN notes n ON n.id = c.nid ORDER BY c.id'",
     'for r in con.execute(q):',
-    "    print('ROW=%s|%d|%d|%d|%d|%d|%d' % r)"
+    "    print('ROW=%s|%d|%d|%d|%d|%d|%d|%d|%d|%d' % r)",
+    "q2 = 'SELECT n.sfld, r.ease, r.ivl, r.lastIvl, r.factor, r.time, r.type FROM revlog r JOIN cards c ON c.id = r.cid JOIN notes n ON n.id = c.nid ORDER BY r.id'",
+    'for r in con.execute(q2):',
+    "    print('LOG=%s|%d|%d|%d|%d|%d|%d' % r)"
   ].join('\n');
   let out2 = '';
   try {
@@ -429,19 +470,42 @@ print('INTEGRITY=' + str(con.execute('PRAGMA integrity_check').fetchone()[0]))
     ok(false, 'python3 复习进度校验执行失败：' + (e && e.message));
   }
   const rows = {};
+  const logs = [];
   for (const line of out2.trim().split('\n')) {
-    if (!line.startsWith('ROW=')) continue;
-    const [sfld, type, queue, due, ivl, factor, reps] = line.slice(4).split('|');
-    rows[sfld] = { type: +type, queue: +queue, due: +due, ivl: +ivl, factor: +factor, reps: +reps };
+    if (line.startsWith('ROW=')) {
+      const [sfld, type, queue, due, ivl, factor, reps, lapses, left, mod] = line.slice(4).split('|');
+      rows[sfld] = {
+        type: +type, queue: +queue, due: +due, ivl: +ivl, factor: +factor,
+        reps: +reps, lapses: +lapses, left: +left, mod: +mod
+      };
+    } else if (line.startsWith('LOG=')) {
+      const [sfld, ease, ivl, lastIvl, factor, time, type] = line.slice(4).split('|');
+      logs.push({ sfld, ease: +ease, ivl: +ivl, lastIvl: +lastIvl, factor: +factor, time: +time, type: +type });
+    }
   }
-  ok(!!rows.rev && !!rows.fresh, 'notes 含 rev / fresh 两张卡', Object.keys(rows));
+  ok(!!rows.rev && !!rows.fresh && !!rows.learn, 'notes 含 rev / learn / fresh 三张卡', Object.keys(rows));
   const R = rows.rev || {};
   ok(R.type === 2 && R.queue === 2, 'apkg 复习卡 type/queue = 2', R);
   ok(R.ivl === 7 && R.factor === 2600 && R.reps === 4, 'apkg 复习卡 ivl=7 / factor=2600 / reps=4', R);
   ok(R.due === 7, 'apkg 复习卡 due = 7（今天 0 + 剩余 7 天）', R.due);
+  ok(R.lapses === 1, 'apkg 复习卡 lapses = 1（来自复习日志的重学次数）', R.lapses);
+  ok(R.left === 0 && R.mod === Math.floor(NOW2 / 1000), 'apkg 复习卡 left=0 / mod=lastReview', [R.left, R.mod]);
   const F = rows.fresh || {};
   ok(F.type === 0 && F.queue === 0 && F.factor === 2500 && F.reps === 0, 'apkg 新卡仍为 type/queue=0 / factor=2500', F);
-  ok(F.due === 2, 'apkg 新卡 due = 队列位置 2', F.due);
+  ok(F.due === 3, 'apkg 新卡 due = 队列位置 3', F.due);
+  const L = rows.learn || {};
+  ok(L.type === 1 && L.queue === 1, 'apkg 学习卡 type/queue = 1', L);
+  ok(L.ivl === 600, 'apkg 学习卡 ivl = 600 秒（= 10 分钟步长）', L.ivl);
+  ok(L.due === Math.floor(NOW2 / 1000) + 300 && L.left === 1, 'apkg 学习卡 due = 到期时刻 / left = 1', [L.due, L.left]);
+  ok(logs.length === 3, 'apkg revlog 写入 3 行（每次评分一行）', logs.length);
+  const l0 = logs.find((x) => x.sfld === 'rev' && x.type === 1) || {};
+  ok(l0.ease === 3 && l0.ivl === 7 && l0.lastIvl === 4, 'revlog（复习）：ease=3 / ivl=7 天 / lastIvl=4 天', l0);
+  ok(l0.factor === 2600 && l0.time === 5000, 'revlog（复习）：factor / 停留毫秒正确', l0);
+  const l1 = logs.find((x) => x.sfld === 'rev' && x.type === 2) || {};
+  ok(l1.ease === 1 && l1.ivl === -600, 'revlog（重学）：ease=1 / ivl=-600 秒（Anki 负秒约定）', l1);
+  ok(l1.lastIvl === 7, 'revlog（重学）：lastIvl 仍按天记录（7）', l1.lastIvl);
+  const l2 = logs.find((x) => x.sfld === 'learn') || {};
+  ok(l2.type === 0 && l2.ivl === -600 && l2.lastIvl === 0, 'revlog（学习）：type=0 / 步长 -600 秒 / lastIvl 0', l2);
 }
 
 console.log(`\n导出结果: ${pass} 通过, ${fail} 失败`);

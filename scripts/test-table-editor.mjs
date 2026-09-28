@@ -147,6 +147,46 @@ async function fire(action, dataset = {}, type = 'click', value = undefined) {
 function makeFile(name, text) {
   return { name, size: text.length, text: async () => text };
 }
+/** 二进制文件桩（xlsx 走 file.arrayBuffer()） */
+function makeBinFile(name, bytes) {
+  const buf = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+  return { name, size: bytes.length, arrayBuffer: async () => buf };
+}
+/** 列号 → Excel 列名（0 → A） */
+function colName(i) {
+  let s = '';
+  let n = i + 1;
+  while (n > 0) {
+    const m = (n - 1) % 26;
+    s = String.fromCharCode(65 + m) + s;
+    n = Math.floor((n - 1) / 26);
+  }
+  return s;
+}
+/** 多工作表 xlsx（词表 / 备份两张表，内联字符串） */
+function xlsxMultiBytes() {
+  const sheetXml = (rows) =>
+    `<?xml version="1.0"?><worksheet><sheetData>${rows
+      .map((r, ri) => `<row r="${ri + 1}">${r.map((v, ci) => `<c r="${colName(ci)}${ri + 1}" t="inlineStr"><is><t>${v}</t></is></c>`).join('')}</row>`)
+      .join('')}</sheetData></worksheet>`;
+  return ex.zipStore([
+    {
+      name: 'xl/workbook.xml',
+      data:
+        `<?xml version="1.0"?><workbook xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>` +
+        `<sheet name="词表" sheetId="1" r:id="rId1"/><sheet name="备份" sheetId="2" r:id="rId2"/></sheets></workbook>`
+    },
+    {
+      name: 'xl/_rels/workbook.xml.rels',
+      data:
+        `<?xml version="1.0"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">` +
+        `<Relationship Id="rId1" Type="x/worksheet" Target="worksheets/sheet1.xml"/>` +
+        `<Relationship Id="rId2" Type="x/worksheet" Target="worksheets/sheet2.xml"/></Relationships>`
+    },
+    { name: 'xl/worksheets/sheet1.xml', data: sheetXml([['单词', '释义'], ['apple', '苹果']]) },
+    { name: 'xl/worksheets/sheet2.xml', data: sheetXml([['单词', '释义'], ['cat', '猫']]) }
+  ]);
+}
 const cellCount = (html) => (html.match(/class="te-cell"/g) || []).length;
 
 installFakeIndexedDB();
@@ -154,6 +194,7 @@ const store = await import('../js/store.js');
 const imp = await import('../js/import-file.js');
 const hist = await import('../js/import-history.js');
 const te = await import('../js/table-editor.js'); // 注册 te-* 动作
+const ex = await import('../js/export.js'); // 复用 ZIP 写出器拼测试用 .xlsx
 
 console.log('\n[列与标准 CSV 模版一致]');
 {
@@ -365,6 +406,17 @@ console.log('\n[从文件载入：CSV / TSV / JSON]');
   ok(!!err && /没有解析到有效词条/.test(String(err.message)), '空 JSON → 抛错（由页面 toast 提示）', err && err.message);
 
   err = null;
+  // 多工作表 xlsx：默认第一张，可用 sheet 选项指定（v0.5.7）
+  const bytes = xlsxMultiBytes();
+  const xlsxDefault = await te.tableRowsFromFile(makeBinFile('多表.xlsx', bytes));
+  ok(xlsxDefault.length === 1 && xlsxDefault[0][0] === 'apple' && xlsxDefault[0][1] === '苹果', 'XLSX：默认载入第一张表', xlsxDefault[0]);
+  const xlsxSecond = await te.tableRowsFromFile(makeBinFile('多表.xlsx', bytes), { sheet: 1 });
+  ok(xlsxSecond[0][0] === 'cat' && xlsxSecond[0][1] === '猫', 'XLSX：sheet 选项指定第二张表', xlsxSecond[0]);
+  const xlsxByName = await te.tableRowsFromFile(makeBinFile('多表.xlsx', bytes), { sheet: '备份' });
+  ok(xlsxByName[0][0] === 'cat', 'XLSX：也可按工作表名指定', xlsxByName[0]);
+  ok((await te.loadFileIntoTable(makeBinFile('多表.xlsx', bytes), { sheet: 1 }))[0][0] === 'cat', 'loadFileIntoTable 透传 sheet 选项');
+
+
   try {
     await te.tableRowsFromFile(null);
   } catch (e) {

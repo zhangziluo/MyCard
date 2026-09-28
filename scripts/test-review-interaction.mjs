@@ -129,5 +129,15 @@ CARD.dispatch('pointerup', { clientX: 14, clientY: 12, pointerId: 2 });
 ok(store.getDeck(deck.id).cards[2].lastReview === before, '轻触不评分');
 ok(VIEW.dataset.flipped === '1', '轻触 → 翻面');
 
+// 复习日志（v0.5.8）：交互链路（键盘 / 手势）评分同样落日志
+const logs0 = await store.revlogsOfCard(deck.id, c0.id);
+ok(logs0.length === 1 && logs0[0].ease === 3, '↑ 评分写入复习日志（ease=3）', logs0);
+ok(logs0[0].type === 0 && logs0[0].time >= 0, '新卡首次评分 → type=0（学习步）且带停留时长', logs0[0]);
+ok(logs0[0].ivl === c0.interval && logs0[0].lastIvl === 0, '日志记录评分后 / 评分前的间隔（天）', logs0[0]);
+ok(logs0[0].factor === Math.round(c0.easeFactor * 1000), '日志 factor = easeFactor × 1000', logs0[0]);
+const logs1 = await store.revlogsOfCard(deck.id, c1.id);
+ok(logs1.length === 1 && logs1[0].ease === 4, '右滑（轻松）也写入日志（ease=4）', logs1);
+ok((await store.revlogsOfDeck(deck.id)).length === 2, '共 2 条日志（轻触不评分 → 不记日志）');
+
 console.log(`\n交互链路结果: ${pass} 通过, ${fail} 失败`);
 process.exit(fail ? 1 : 0);

@@ -11,8 +11,9 @@ import * as decks from './decks.js';
 import { renderReview, clearReviewSession } from './review.js';
 import { renderTest, clearTestSession } from './test.js';
 import { renderTableEditor } from './table-editor.js';
+import { renderWordbook } from './wordbook-view.js'; // v0.5.9 生词本批量整理（#/words）
 
-const APP_VERSION = 'v0.5.6';
+const APP_VERSION = 'v0.5.9';
 
 /* ------------------------------ 路由解析 ------------------------------ */
 
@@ -27,6 +28,8 @@ function parseHash() {
   if (seg[0] === 'settings') return { view: 'settings', mode };
   // #/editor → 表格编辑（在网页里按模版列填词表，再导入为卡组）
   if (seg[0] === 'editor') return { view: 'editor', mode };
+  // #/words?page=N → 生词本批量整理（去重合并 / 标签整理 / 补查）
+  if (seg[0] === 'words') return { view: 'words', page: Number(q.get('page')) || 1, mode };
   if (seg[0] === 'deck' && seg[1]) {
     if (seg[2] === 'cards') return { view: 'cards', id: seg[1], mode };
     return { view: 'deck', id: seg[1], mode };
@@ -116,6 +119,11 @@ function renderAppbar(route) {
       backHref = '#/home';
       t = '表格编辑';
       break;
+    case 'words':
+      showBack = true;
+      backHref = '#/home';
+      t = '生词本整理';
+      break;
     default:
       t = 'Mycard';
   }
@@ -157,6 +165,8 @@ export function render() {
     renderSettings(root);
   } else if (route.view === 'editor') {
     renderTableEditor(root);
+  } else if (route.view === 'words') {
+    renderWordbook(root);
   } else {
     decks.renderHome(root);
   }

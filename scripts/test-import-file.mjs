@@ -76,6 +76,20 @@ const store = await import('../js/store.js');
 const imp = await import('../js/import-file.js');
 const ex = await import('../js/export.js'); // 复用 ZIP 写出器拼测试用 .xlsx
 
+/** 列号 → Excel 列名（0 → A，26 → AA） */
+function colName(i) {
+  let s = '';
+  let n = i + 1;
+  while (n > 0) {
+    const m = (n - 1) % 26;
+    s = String.fromCharCode(65 + m) + s;
+    n = Math.floor((n - 1) / 26);
+  }
+  return s;
+}
+/** XML 文本转义（内联字符串用） */
+const xmlEsc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;');
+
 /**
  * 用「共享字符串 + STORED ZIP」拼一个最小 xlsx（不含 workbook.xml，走 sheet1.xml 回退）。
  * @param {string[][]} rows
@@ -87,19 +101,9 @@ function xlsxBytes(rows) {
     const s = String(v);
     if (!idx.has(s)) {
       idx.set(s, items.length);
-      items.push(`<si><t>${s.replace(/&/g, '&amp;').replace(/</g, '&lt;')}</t></si>`);
+      items.push(`<si><t>${xmlEsc(s)}</t></si>`);
     }
     return idx.get(s);
-  };
-  const colName = (i) => {
-    let s = '';
-    let n = i + 1;
-    while (n > 0) {
-      const m = (n - 1) % 26;
-      s = String.fromCharCode(65 + m) + s;
-      n = Math.floor((n - 1) / 26);
-    }
-    return s;
   };
   const sheetRows = rows
     .map((r, ri) => `<row r="${ri + 1}">${r.map((v, ci) => `<c r="${colName(ci)}${ri + 1}" t="s"><v>${si(v)}</v></c>`).join('')}</row>`)
@@ -107,6 +111,29 @@ function xlsxBytes(rows) {
   return ex.zipStore([
     { name: 'xl/sharedStrings.xml', data: `<?xml version="1.0"?><sst>${items.join('')}</sst>` },
     { name: 'xl/worksheets/sheet1.xml', data: `<?xml version="1.0"?><worksheet><sheetData>${sheetRows}</sheetData></worksheet>` }
+  ]);
+}
+
+/**
+ * 多工作表 xlsx（workbook.xml + rels + 两张表：词表 / 备份；内联字符串）。
+ */
+function xlsxMultiBytes() {
+  const sheetXml = (rows) =>
+    `<?xml version="1.0"?><worksheet><sheetData>${rows
+      .map((r, ri) => `<row r="${ri + 1}">${r.map((v, ci) => `<c r="${colName(ci)}${ri + 1}" t="inlineStr"><is><t>${xmlEsc(v)}</t></is></c>`).join('')}</row>`)
+      .join('')}</sheetData></worksheet>`;
+  const workbook =
+    `<?xml version="1.0"?><workbook xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>` +
+    `<sheet name="词表" sheetId="1" r:id="rId1"/><sheet name="备份" sheetId="2" r:id="rId2"/></sheets></workbook>`;
+  const rels =
+    `<?xml version="1.0"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">` +
+    `<Relationship Id="rId1" Type="x/worksheet" Target="worksheets/sheet1.xml"/>` +
+    `<Relationship Id="rId2" Type="x/worksheet" Target="worksheets/sheet2.xml"/></Relationships>`;
+  return ex.zipStore([
+    { name: 'xl/workbook.xml', data: workbook },
+    { name: 'xl/_rels/workbook.xml.rels', data: rels },
+    { name: 'xl/worksheets/sheet1.xml', data: sheetXml([['单词', '释义'], ['apple', '苹果'], ['book', '书']]) },
+    { name: 'xl/worksheets/sheet2.xml', data: sheetXml([['单词', '释义'], ['cat', '猫']]) }
   ]);
 }
 
@@ -634,7 +661,65 @@ console.log('\n[导入 JSON：进度字段简写与非法值]');
   ok(!!d3.id && d3.front === 'epsilon', '卡片仍正常写入', d3.front);
 }
 
-console.log('\n[导入 XLSX：Excel 工作簿（第一个工作表）]');
+console.log('\n[导入 JSON：复习日志还原（reviewLog / revlog）]');
+{
+  const json = JSON.stringify({
+    formatVersion: 2,
+    name: '带日志词库',
+    cards: [
+      {
+        front: 'zeta',
+        back: 'ζ',
+        state: 'review',
+        repetitions: 2,
+        interval: 6,
+        easeFactor: 2.6,
+        due: 1800000000000,
+        lastReview: 1700000005000,
+        reviewLog: [
+          { cardId: 'old-id', ts: 1700000000000, ease: 3, type: 0, ivl: 1, lastIvl: 0, factor: 2500, time: 4200 },
+          { cardId: 'old-id', ts: 1700000005000, ease: 1, type: 2, ivl: 0.0069, lastIvl: 1, factor: 2300, time: 900 }
+        ]
+      },
+      { front: 'eta', back: 'η', revlog: [{ ts: 1700000001000, ease: 2, type: 1, ivl: 3, lastIvl: 1, factor: 2500, time: 100 }] },
+      { front: 'theta', back: 'θ', reviewLog: [{ ts: 0, ease: 3 }, { ts: 1700000002000, ease: 9 }] }
+    ]
+  });
+  const res = await imp.importMapped(makeFile('带日志词库.json', json), { deckName: '带日志词库', src: 'batch_import' });
+  const deck = store.getDeck(res.deck.id);
+  ok(res.logsWritten === 4, '导入结果带 logsWritten = 4（2+1+1）', res.logsWritten);
+  ok(String(imp.importSuccessHtml(res)).includes('恢复复习日志 4 条'), '成功提示显示恢复的日志条数');
+
+  const z = deck.cards.find((c) => c.front === 'zeta');
+  const logs = await store.revlogsOfCard(deck.id, z.id);
+  ok(logs.length === 2, 'zeta 恢复 2 条日志', logs.length);
+  ok(logs[0].cardId === z.id && logs[0].id === `1700000000000-${z.id}`, '日志重新归属到新卡片 id（主键同步刷新）', logs[0].id);
+  ok(logs[0].ease === 3 && logs[0].time === 4200, '日志档位 / 停留时长保留', logs[0]);
+  ok(logs[1].type === 2 && Math.abs(logs[1].ivl - 0.0069) < 1e-4, '重学条目 type / 步长（天）保留', logs[1]);
+
+  const e = deck.cards.find((c) => c.front === 'eta');
+  ok((await store.revlogsOfCard(deck.id, e.id)).length === 1, 'revlog 字段名同样被识别');
+  const t = deck.cards.find((c) => c.front === 'theta');
+  ok((await store.revlogsOfCard(deck.id, t.id)).length === 1, '非法条目（ts=0）被丢弃，合法条目保留（ease 越界→3）', (await store.revlogsOfCard(deck.id, t.id)).length);
+  const st = await store.revlogStats(deck.id);
+  ok(st.total === 4 && st.lapses === 1, '卡组汇总：4 条 / 1 次遗忘', st);
+
+  // 追加导入：日志同样写入已有牌组
+  const add = JSON.stringify({ name: '追加', cards: [{ front: 'iota', back: 'ι', reviewLog: [{ ts: 1700000003000, ease: 4, type: 1, ivl: 9, lastIvl: 3, factor: 2600, time: 700 }] }] });
+  const res2 = await imp.importMapped(makeFile('追加.json', add), { deckId: deck.id, src: 'batch_import' });
+  ok(res2.existing === true && res2.logsWritten === 1, '追加导入写入 1 条日志', res2.logsWritten);
+  const io = store.getDeck(deck.id).cards.find((c) => c.front === 'iota');
+  ok((await store.revlogsOfCard(deck.id, io.id)).length === 1, '新卡带上日志');
+  ok((await store.revlogStats(deck.id)).total === 5, '卡组日志共 5 条');
+
+  // 无日志的 JSON 不受影响
+  const plain = JSON.stringify({ name: '无日志', cards: [{ front: 'kappa', back: 'κ' }] });
+  const res3 = await imp.importMapped(makeFile('无日志.json', plain), { deckName: '无日志', src: 'batch_import' });
+  ok(!res3.logsWritten, '无日志时不产生 logsWritten', res3.logsWritten);
+  ok((await store.revlogStats(res3.deck.id)).total === 0, '新卡组无日志');
+}
+
+
 {
   const bytes = xlsxBytes([
     ['单词', '释义', '音标'],
@@ -679,6 +764,88 @@ console.log('\n[导入 XLSX：Excel 工作簿（第一个工作表）]');
   ok(html.includes('单词') && html.includes('苹果'), '预览表格含数据');
   ok(html.includes('field-map'), '预览含字段映射区');
   body.children.length = 0;
+console.log('\n[导入 XLSX：多工作表 / 公式提示]');
+{
+  const bytes = xlsxMultiBytes();
+  const xl = await import('../js/xlsx.js');
+  const wb = await xl.openXlsx(bytes);
+  ok(wb.sheets.map((s) => s.name).join(',') === '词表,备份', 'workbook 里两张表都列出', wb.sheets.map((s) => s.name));
+
+  const pv1 = imp.xlsxWorkbookPreview(wb, 0);
+  ok(pv1.sheet === '词表' && pv1.rows[0][0] === 'apple' && pv1.totalRows === 2, '预览第一张表（带表名与统计）', pv1);
+  const pv2 = imp.xlsxWorkbookPreview(wb, 1);
+  ok(pv2.sheet === '备份' && pv2.rows[0][0] === 'cat', '预览第二张表', pv2.rows);
+  ok(imp.previewMetaHtml(pv2, 'x.xlsx').includes('Excel 工作表「备份」'), '元信息标注工作表名');
+  ok(imp.previewMetaHtml(imp.rowsPreview([['单词', '释义'], ['cat', '猫']]), 'x.xlsx').includes('Excel 工作表（取第一个 sheet）'), '未带表名时回退旧文案');
+
+  const meta = imp.previewMetaHtml(
+    imp.rowsPreview([['单词', '释义'], ['cat', '猫']], {
+      sheet: '第一页',
+      notices: { formulas: 4, evaluated: 1, unsupported: 2, merges: 1, mergedCells: 3 }
+    }),
+    'y.xlsx'
+  );
+  ok(
+    meta.includes('已计算 1 个公式') && meta.includes('2 个公式用 Excel 缓存值') && meta.includes('合并单元格补全 3 格'),
+    '元信息提示公式 / 合并单元格处理结果',
+    meta
+  );
+  ok(imp.xlsxNoticesText(null) === '' && imp.xlsxNoticesText({ formulas: 0 }) === '', '无有效统计时提示为空串');
+  ok(imp.xlsxNoticesText({ evaluated: 2 }) === '已计算 2 个公式', '只列有内容的统计项');
+
+  const picker = imp.sheetPickerHtml(wb.sheets, 1);
+  ok(picker.includes('name="sheet"') && picker.includes('id="import-sheet"'), '工作表下拉含 name/id');
+  ok(picker.includes('>词表<') && picker.includes('>备份<'), '下拉列出全部工作表');
+  ok(picker.includes('value="1" selected') && !picker.includes('value="0" selected'), '选中项回填 selected');
+  ok(imp.sheetPickerHtml([{ index: 0, name: '唯一', hidden: false }]) === '', '只有一张表时不渲染下拉');
+  ok(imp.sheetPickerHtml(wb.sheets.map((s, i) => ({ ...s, hidden: i === 1 })), 0).includes('备份（隐藏）'), '隐藏表加「（隐藏）」标注');
+
+  const handlers = {};
+  const sel = { value: '1', addEventListener: (t, fn) => { handlers[t] = fn; } };
+  let picked = -1;
+  ok(
+    imp.bindSheetPicker({ querySelector: (s) => (s === '#import-sheet' ? sel : null) }, (i) => { picked = i; }) === true,
+    '绑定工作表下拉'
+  );
+  handlers.change();
+  ok(picked === 1, '切换后回调拿到工作表序号', picked);
+  ok(imp.bindSheetPicker({}, () => {}) === false, '没有下拉时安全返回 false');
+
+  const fields = [
+    { name: 'col-0', type: 'select-one', value: 'front' },
+    { name: 'col-1', type: 'select-one', value: 'back' },
+    { name: 'target', type: 'select-one', value: '__new__' },
+    { name: 'newDeckName', type: 'text', value: 'X' },
+    { name: 'sheet', type: 'select-one', value: '1' }
+  ];
+  const inputs = imp.readPreviewInputs({ querySelectorAll: (s) => (s === '[name]' ? fields : []) }, { cols: 2 });
+  ok(inputs.sheet === 1, '读出选中的工作表序号', inputs);
+  ok(imp.readPreviewInputs(null, { cols: 2 }).sheet === 0, '没有下拉时默认第一张表');
+
+  const fromFirst = await imp.importMapped(makeBinFile('多表.xlsx', bytes), {
+    mapping: ['front', 'back'],
+    deckName: '第一张表'
+  });
+  ok(fromFirst.name === '第一张表' && fromFirst.added === 2, '默认导入第一张表（apple / book）', fromFirst.added);
+  const fromSheet1 = await imp.importMapped(makeBinFile('多表2.xlsx', bytes), {
+    mapping: ['front', 'back'],
+    deckName: '指定工作表',
+    sheet: 1
+  });
+  ok(fromSheet1.added === 1 && store.getDeck(fromSheet1.deckId).cards[0].front === 'cat', 'sheet 选项导入第二张表', fromSheet1.added);
+
+  body.children.length = 0;
+  await imp.openImportPreview(makeBinFile('多表预览.xlsx', bytes));
+  await tick();
+  const overlay = body.children.filter((c) => c && c.className === 'modal-overlay').pop();
+  const html = overlay ? String(overlay.innerHTML) : '';
+  ok(html.includes('import-sheet') && html.includes('>词表<') && html.includes('>备份<'), '预览弹窗含工作表下拉');
+  ok(html.includes('Excel 工作表「词表」'), '预览弹窗元信息标注当前表名');
+  ok(html.includes('import-preview-body'), '预览区包在可重渲染容器里');
+  body.children.length = 0;
+}
+
+
 }
 
 console.log('\n[标准 CSV 模版（下载）]');

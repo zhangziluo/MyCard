@@ -273,12 +273,14 @@ export function clearDraft() {
 /**
  * 读取本地文件 → 按模版列对齐的表格行（CSV / TSV / TXT 走分隔符解析；XLSX 走 xlsx.js；JSON 走词库解析）。
  * 解析失败会抛出带原因的错误，由调用方 toast 展示。
+ * @param {File} file
+ * @param {{ sheet?: number|string }} [opts] sheet：xlsx 的工作表序号 / 名称（默认第一张）
  */
-export async function tableRowsFromFile(file) {
+export async function tableRowsFromFile(file, { sheet = 0 } = {}) {
   if (!file) throw new Error('没有选择文件');
   const name = String(file.name || '');
   if (isXlsxFile(name)) {
-    return alignToTemplate(await parseXlsxRows(await readFileAsArrayBuffer(file)));
+    return alignToTemplate(await parseXlsxRows(await readFileAsArrayBuffer(file), { sheet }));
   }
   const text = await readFileAsText(file);
   const isJson = /\.json$/i.test(name) || /^\s*[[{]/.test(text);
@@ -736,8 +738,12 @@ export function openTableFilePicker({ onFile = null } = {}) {
   return input;
 }
 
-/** 把文件内容载入表格（覆盖前会先确认，避免误丢手填内容） */
-export async function loadFileIntoTable(file) {
+/**
+ * 把文件内容载入表格（覆盖前会先确认，避免误丢手填内容）。
+ * @param {File} file
+ * @param {{ sheet?: number|string }} [opts] sheet：xlsx 的工作表（默认第一张；首页导入预览里可下拉切换）
+ */
+export async function loadFileIntoTable(file, { sheet = 0 } = {}) {
   if (!file) return null;
   const filename = String(file.name || '');
   if (!isSupportedFile(filename)) {
@@ -746,7 +752,7 @@ export async function loadFileIntoTable(file) {
   }
   let loaded = [];
   try {
-    loaded = await tableRowsFromFile(file);
+    loaded = await tableRowsFromFile(file, { sheet });
   } catch (e) {
     toast(`载入失败：${(e && e.message) || e}`, 'error');
     return null;

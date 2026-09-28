@@ -4,22 +4,27 @@
 // 设计目标：让 store.js 把「卡组正文 + 学习进度」放大到 IndexedDB 存储，
 // 从而突破 localStorage 约 5MB 的配额（全部内置词库约 7 万词）。
 //
-// 库名 mycard，版本 1：
+// 库名 mycard，版本 3：
 //   decks  (keyPath: id)              — 卡组元信息（不含 cards）
 //   cards  (keyPath: id, 索引 byDeck) — 卡片正文 + 学习进度（带 deckId）
 //   meta   (keyPath: key)             — 迁移标记等少量元数据
+//   lookup (keyPath: key)             — 在线查词缓存（v2）
+//   revlog (keyPath: id, 索引 byDeck / byCard) — 每次评分明细（v3，导出 .apkg 时写入
+//          Anki 的 revlog 表；见 js/revlog.js）
 //
 // 环境无 indexedDB（Node 单测 / 极老浏览器）时 isAvailable() 返回 false，
 // 调用方需回退到 localStorage 方案。
 // ============================================================================
 
 export const DB_NAME = 'mycard';
-export const DB_VERSION = 2;
+export const DB_VERSION = 3;
 export const STORE_DECKS = 'decks';
 export const STORE_CARDS = 'cards';
 export const STORE_META = 'meta';
 /** 在线查词缓存（v0.6）：key = `${lang}_${word}`，value = 卡片对象 */
 export const STORE_LOOKUP = 'lookup';
+/** 复习日志（v0.5.8）：key = 日志 id，value = { id, deckId, cardId, ts, ease, type, … } */
+export const STORE_REVLOG = 'revlog';
 
 /** 当前环境是否支持 IndexedDB */
 export function isAvailable() {
@@ -59,6 +64,12 @@ export function openDb() {
       }
       if (!db.objectStoreNames.contains(STORE_LOOKUP)) {
         db.createObjectStore(STORE_LOOKUP, { keyPath: 'key' }); // v2：在线查词缓存
+      }
+      if (!db.objectStoreNames.contains(STORE_REVLOG)) {
+        // v3：复习日志（每次评分明细）——增量升级时只补建缺的 store，老数据不受影响
+        const revlog = db.createObjectStore(STORE_REVLOG, { keyPath: 'id' });
+        revlog.createIndex('byDeck', 'deckId', { unique: false });
+        revlog.createIndex('byCard', 'cardId', { unique: false });
       }
     };
     req.onsuccess = () => resolve(req.result);
@@ -156,11 +167,12 @@ export async function getAllByIndex(store, indexName, value) {
 
 /** 清空所有业务数据（保留库结构） */
 export async function clearAll() {
-  return withStore([STORE_DECKS, STORE_CARDS, STORE_META, STORE_LOOKUP], 'readwrite', (get) => {
+  return withStore([STORE_DECKS, STORE_CARDS, STORE_META, STORE_LOOKUP, STORE_REVLOG], 'readwrite', (get) => {
     get(STORE_DECKS).clear();
     get(STORE_CARDS).clear();
     get(STORE_META).clear();
     get(STORE_LOOKUP).clear();
+    get(STORE_REVLOG).clear();
   });
 }
 

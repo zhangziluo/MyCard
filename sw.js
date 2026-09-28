@@ -7,7 +7,7 @@
  * 说明：发布新版本时递增 VERSION，新 SW 会 skipWaiting + claim 立即接管，
  *       配合 app.js 的 controllerchange 自动刷新，用户无需手动强刷即可看到新功能。
  * ============================================================ */
-const VERSION = 'v1.8.6';
+const VERSION = 'v1.9.0';
 const CACHE = 'mycard-' + VERSION;
 
 const PRECACHE = [
@@ -19,6 +19,7 @@ const PRECACHE = [
   './js/app.js',
   './js/store.js',
   './js/idb.js',
+  './js/revlog.js',
   './js/scheduler.js',
   './js/levels.js',
   './js/difficulty.js',
@@ -37,6 +38,8 @@ const PRECACHE = [
   './js/test-engine.js',
   './js/ui.js',
   './js/decks.js',
+  './js/wordbook.js',
+  './js/wordbook-view.js',
   './js/review.js',
   './js/test.js',
   './data/words.json',

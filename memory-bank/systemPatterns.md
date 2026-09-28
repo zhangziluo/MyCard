@@ -38,16 +38,28 @@ index.html ──► js/app.js（入口：路由 / 顶栏 / 设置页 / boot）
 11. **表格页的输入增强走纯函数内核**（v0.5.5）：粘贴解析 `gridFromPaste`（Tab/换行，**单格返回空 → 不拦截浏览器默认粘贴**）与铺开 `applyPaste`（自动补行至 `MAX_TABLE_ROWS`、超列**截断**并由 UI 提示）都是纯函数，可被 `test-table-editor.mjs` 直接单测；文档级 paste 监听用 `bindPasteOnce()` 惰性绑定且**只绑一次**（视图重渲染不重复绑定）。
 12. **写库前先出预览 / 校验报告**（v0.5.5）：`#/editor` 点「导入为卡组」先 `openTableImportPreview()`（宽版弹窗：可导入条数 / 缺单词 / 表内重复去重 / 目标卡组已存在的**唯一单词数** / 前 `PREVIEW_ROWS` 行预览），**确认后才**调 `importWordsToDeck`。同类「不可逆操作前先给报告」是本项目的既定交互模式。
 
+13. **评分要记日志，且必须先「快照」再改卡**（v0.5.8）：`review.js` 的 `rate()` 里 `store.updateCard` 会**原地修改**卡片对象，因此日志参数要用**评分前**的 `{id, state, interval, easeFactor}` 快照（否则 `lastIvl` / `type` 会被污染）；日志写入是**同步、非阻塞**的（`store.recordReview` → `pendingRevlogs` 防抖落盘），绝不 await 进渲染链路。
+14. **导 Anki 的字段语义别混用**（v0.5.8）：`cards` 表里**学习卡** `due` = 到期时刻（epoch 秒）、`ivl` = 剩余秒、`left` = 剩余步数、`type/queue = 1`；**复习卡** `due` = 相对天数、`ivl` = 整天、`type/queue = 2`。`revlog` 表 `ivl`/`lastIvl` 用**符号区分单位**（正数 = 天、负数 = 秒），`time` 是**毫秒**、`factor` 是 `×1000` 的整数、`id` 是**毫秒主键且必须唯一**（同毫秒逐条 +1 探测）。改这些映射时同步跑 `test-export.mjs`（用 Python `sqlite3` 独立校验产物）。
+
+15. **整理 / 批量改数据也是「纯函数内核 + 薄页面」**（v0.5.9）：`js/wordbook.js` 负责「什么算同一个词（`normKey`）、保留哪张（`keepScore`/`pickKeeper`）、合并成什么（`mergeGroup`/`mergePlans`）、怎么筛排（`filterWords`/`sortWords`）」——全部无 DOM 无存储、可直接单测；`js/wordbook-view.js` 只做渲染与事件，落库交给 `store.mergeCards`/`updateCards`。**新增「批量整理类」功能照此分层**（同 `test-engine`/`table-editor` 的做法）。
+16. **合并 / 删除这类不可逆操作先出报告**（v0.5.9）：整理页点「合并重复词」先 `openDedupeReport()`（合并报告 + 保留规则说明），确认后才 `runMerge()` 写库；批量删除走 `confirmDialog`。与「导入先预览」（第 12 条）同一交互约定。
+17. **页面状态分家：易失的放内存，可分享 / 可回退的进 URL**（v0.5.9）：`#/words` 的搜索 / 筛选 / 排序 / 选中都在模块级 `S`（重渲染与翻页不丢，卡片删除 / 合并后用 `limitSelection` 收敛），**只有页码进 URL**（`#/words?page=N`）以支持浏览器前进后退；UI 用 `replaceState` 以外的 `navigate()` 改 hash（与关卡分页、卡片管理分页一致）。
+18. **重渲染型输入框要手动救回焦点**（v0.5.9）：`wb-search` 输入防抖 180ms 后整体重渲染，必须记下 `selectionStart` 并在新 DOM 上 `restoreSearchFocus(caret)`（`type=search` 的 `setSelectionRange` 可能抛错 → try/catch 忽略）。这与 `#/editor` 里「单元格输入只 `refreshStats()`、不整页重渲染」（第 11 条）是两种合法策略：**需要重排列表**（搜索 / 筛选 / 排序）就重渲染 + 救焦点，**只是补统计**就别重渲染。
+
 ## 数据模型（store.js）
 - **Card**：`id, front, back, example, exampleZh, phonetic, tags[], groups[], extraBacks[], createdAt, level, state('new'|'learning'|'review'), repetitions, interval, easeFactor, due, lastReview, src, addedAt`
 - **导入时的复习进度**：`store.pickScheduling()` 统一校验（state 白名单 / easeFactor 1.3–3.0 / 数值钳制，非法 → 新卡）；`seedBuiltinDeck` 与 `addManyCards` 均调用 → JSON 完整导出可无损回导
+- **复习日志（RevlogEntry，v0.5.8）**：`id('ts-cardId'), cardId, ts, ease(1–4), type(0 学习/1 复习/2 重学), ivl(天), lastIvl(天), factor(easeFactor×1000), time(毫秒)`；`ivl`/`lastIvl` **本机统一存「天」**，仅导出 Anki 时换算（`>=1 天 = 正数天`、`不足 1 天的学习步 = 负秒数`，与 Anki 的 `interval_secs()` 一致）；校验 / 截断 / 换算全在纯函数模块 `js/revlog.js`
+- **多释义（`extraBacks`）与合并语义（v0.5.9）**：首义永远在 `back`、其余义按顺序在 `extraBacks`（自动去重）；「我的生词」整理页合并重复卡时，**保留卡片的 `back` 仍是第一义**（不会被副卡覆盖），副卡释义追加进 `extraBacks`、标签取并集，**复习进度 / `lastReview` / revlog 一律不动**；「同一个词」= `wordbook.normKey(front)`（`trim` + 小写，不做空格 / 连字符归一）
 - **Deck**：`id, name, description, tags[], paused, cardsPerLevel(null=跟随全局), createdAt, demo, source, passedLevels{}, cards[]`
   - `source`：`'demo'`（内置示范）/ `'custom'`（我的生词）/ `null`（用户自建/导入）/ `'online_lookup'` 等（卡片级 src）
 - **关卡**：`level` 即关卡索引（整数），每关 `clampPerLevel(15–30, 默认 20)`；`LEVELS_PER_PAGE = 15`
 
 ## 存储与迁移
-- IndexedDB 库 `mycard` **v2**：`decks`(id) / `cards`(id, 索引 byDeck=deckId) / `meta`(key) / `lookup`(key=`${lang}_${word}`)
-- localStorage：`mycard-meta`（设置+卡组清单）、`mycard-accent`、`mycard-mode`、`mycard-active-tag`、`mycard-hard-words`、`mycard-test-config`、`mycard-test-priority`、`mycard-import-history`（导入历史摘要，最近 20 条）、`mycard-table-draft`（`#/editor` 表格草稿，防抖写入，≤5000 行）、`test_progress_{deckId}[__wrong]`；IndexedDB `meta` 另存 `import-rollback:{id}`（追加导入的 cardIds，最近 5 次可精确回滚）；sessionStorage：`mycard-level-stats`、`mycard-review-session`、`mycard-review-all-session`、`mycard-test-session`
+- IndexedDB 库 `mycard` **v3**：`decks`(id) / `cards`(id, 索引 byDeck=deckId) / `meta`(key) / `lookup`(key=`${lang}_${word}`) / **`revlog`**(id, 索引 byDeck=deckId / byCard=cardId)
+  - **升级策略**：`onupgradeneeded` 里用 `objectStoreNames.contains()` **逐 store 增量补建**（v2→v3 只加 `revlog`，既有数据不动）；`clearAll()` 清空时**必须把所有业务 store 都列上**（漏一个就会「清空后又读回旧数据」）
+  - **复习日志落盘**：`pendingRevlogs` 并入 `flushPending()` 的写穿队列；查询 `revlogsOfDeck()` = IDB ∪ 未落盘 ∪ 回退模式内存（`deck.revlogs`）；删卡片 / 删卡组走 `purgeRevlogs()` **异步级联清理**（不阻塞 UI）
+- localStorage：`mycard-meta`（设置+卡组清单）、`mycard-accent`、`mycard-mode`、`mycard-active-tag`、`mycard-hard-words`、`mycard-test-config`、`mycard-test-priority`、`mycard-import-history`（导入历史摘要，最近 20 条）、`mycard-table-draft`（`#/editor` 表格草稿，防抖写入，≤5000 行）、`mycard-aw-merge`（首页添加单词的「重复词自动合并」偏好，v0.5.9，默认开）、`test_progress_{deckId}[__wrong]`；IndexedDB `meta` 另存 `import-rollback:{id}`（追加导入的 cardIds，最近 5 次可精确回滚）；sessionStorage：`mycard-level-stats`、`mycard-review-session`、`mycard-review-all-session`、`mycard-test-session`
 - 旧库 `localStorage['mycard-v1']` 首启自动迁移到 IndexedDB 并删键
 - **下线词库清理**：`store.purgeRemovedBuiltins()` 按 `REMOVED_BUILTIN_SOURCES`（kaoyan/cet4/… 共 10 本）删除旧版自动导入的内置卡组，启动时执行、幂等；只删 source 命中的，不影响 demo/custom/自建
 

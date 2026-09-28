@@ -221,6 +221,66 @@ console.log('\n[卡片 → 卡组条目 / 加入「我的生词」]');
   ok(store.getDeck(r1.deck.id).cards.length === 1, '卡组内不产生重复卡片');
 }
 
+console.log('\n[重复词处理偏好（重复时合并释义）]');
+{
+  const ui = await import('../js/ui.js');
+  const fireChange = (action, props = {}) => {
+    const el = Object.assign({ dataset: { action }, classList: { add() {}, remove() {} } }, props);
+    el.closest = () => el;
+    ui.handleEvent({ type: 'change', target: { closest: () => el }, preventDefault() {} });
+  };
+  const cardOf = (w, gloss) =>
+    aw.cardFromFreeDict('en', w, [{ word: w, meanings: [{ partOfSpeech: 'v', definitions: [{ definition: gloss }] }] }]);
+
+  ok(aw.loadMergePref() === true && aw.isMergeEnabled() === true, '默认开启（localStorage 无记录 → true）');
+  ok(aw.addWordsPanelHtml().includes('重复时合并释义'), '面板渲染「重复时合并释义」开关');
+  ok(/id="aw-merge-box"[^>]*checked/.test(aw.addWordsPanelHtml()), '默认勾选');
+
+  ok(aw.commitCards([cardOf('giveup', '放弃')], 'online_lookup').added === 1, '加入 giveup（原卡 back = v. 放弃）');
+  const r1 = aw.commitCards([cardOf('GiveUp', '投降')], 'online_lookup');
+  ok(r1.added === 0 && r1.merged === 1 && r1.skipped === 0, '开启时：大小写不同的同一个词 → 合并（merged=1）', r1);
+  const kept = store.getUserDeck().cards.find((c) => c.front.toLowerCase() === 'giveup');
+  ok(kept.back === 'v. 放弃', '原释义保持第一义', kept.back);
+  ok(kept.extraBacks.join(',') === 'v. 投降', '新释义追加到「其它释义」', kept.extraBacks);
+  ok(store.getUserDeck().cards.filter((c) => c.front.toLowerCase() === 'giveup').length === 1, '不产生重复卡片');
+
+  fireChange('aw-merge', { checked: false });
+  ok(aw.isMergeEnabled() === false && globalThis.localStorage.getItem('mycard-aw-merge') === '0', '关掉开关 → 写入 localStorage（0）');
+  ok(aw.getPanelState().merge === false, '面板状态同步');
+  ok(!/id="aw-merge-box"[^>]*checked/.test(aw.addWordsPanelHtml()), '重渲染后面板不再勾选');
+  const r2 = aw.commitCards([cardOf('giveup', '又一条释义')], 'online_lookup');
+  ok(r2.added === 0 && r2.merged === 0 && r2.skipped === 1, '关闭时：重复词直接跳过', r2);
+  ok(store.getUserDeck().cards.find((c) => c.front.toLowerCase() === 'giveup').extraBacks.length === 1, '跳过后不追加释义');
+
+  fireChange('aw-merge', { checked: true });
+  ok(aw.loadMergePref() === true && aw.isMergeEnabled() === true, '重新开启 → 偏好读取为 true');
+  ok(globalThis.localStorage.getItem('mycard-aw-merge') === '1', 'localStorage 记录已开启（1）');
+}
+
+console.log('\n[生词本整理页「在线补查」预填查词框]');
+{
+  elFor('add-words-input').value = '旧内容';
+  ok(aw.prefillInput(['eel', 'eel', '  ', 'eel'], { merge: true }) === 1, '预填去重 + 去空白 → 1 个词');
+  ok(elFor('add-words-input').value === 'eel', '待查词写入查词框（覆盖旧内容）');
+  ok(aw.getPanelState().mode === 'empty' && aw.getPanelState().cards.length === 0, '预填时清掉上一次预览');
+  ok(aw.isMergeEnabled() === true && elFor('aw-merge-box').checked === true, '预填同步「合并释义」开关（默认开）');
+  ok(aw.peekPendingPrefill() === null, '面板已在 DOM → 立即消费，不再暂存');
+  ok(aw.prefillInput([], {}) === 0 && elFor('add-words-input').value === 'eel', '空数组不改动查词框');
+
+  ok(aw.prefillInput(['aa', 'bb'], { merge: false }) === 2, '多个词全部填入');
+  ok(elFor('add-words-input').value === 'aa\nbb', '每行一个词');
+  ok(aw.isMergeEnabled() === false && elFor('aw-merge-box').checked === false, '预填可显式关闭合并（补查的重复词不再跳过）');
+
+  // 面板尚未渲染（在 #/words 上点补查 → 再跳首页）：先暂存，等 addWordsPanelHtml() 消费
+  const realGetById = globalThis.document.getElementById;
+  globalThis.document.getElementById = (id) => (id === 'add-words-input' ? null : elFor(id));
+  ok(aw.prefillInput(['eel'], { merge: true }) === 1, '面板未渲染时也能接受预填');
+  ok((aw.peekPendingPrefill() || {}).words?.join(',') === 'eel', '待查词暂存，等面板渲染');
+  ok(/>eel<\/textarea>/.test(aw.addWordsPanelHtml()), '面板渲染时把暂存词写进 textarea');
+  ok(aw.peekPendingPrefill() === null, '消费后清除暂存');
+  globalThis.document.getElementById = realGetById;
+}
+
 console.log('\n[面板渲染与三种输入流程]');
 {
   const html = aw.addWordsPanelHtml();

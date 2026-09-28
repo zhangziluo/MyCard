@@ -101,8 +101,11 @@ export function installFakeIndexedDB() {
           db = new FakeDb(name, version);
           dbs.set(name, db);
         }
+        // 版本升级（v2 → v3 等）也要触发 upgradeneeded：idb.js 用 contains 增量补建 store
+        const upgrading = isNew || Number(version) > db.version;
+        if (Number(version) > db.version) db.version = version;
         r.result = db;
-        if (isNew && r.onupgradeneeded) r.onupgradeneeded();
+        if (upgrading && r.onupgradeneeded) r.onupgradeneeded();
         if (r.onsuccess) r.onsuccess();
       }, 0);
       return r;

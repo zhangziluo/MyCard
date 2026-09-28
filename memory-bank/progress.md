@@ -1,6 +1,6 @@
 # Progress — 完成度与遗留
 
-> 更新时间：2026-09-28 ｜ APP `v0.5.6` / SW `v1.8.6` ｜ **2093 条校验全绿**
+> 更新时间：2026-09-28 ｜ APP `v0.5.9` / SW `v1.9.0` ｜ **2604 条校验全绿**
 
 ## 已交付（按版本）
 
@@ -116,14 +116,40 @@
 - 测试：`test-perf.mjs` 新增「带优先池且词数 ≥ 题数」段落——用 **Proxy 计数卡组元素读取次数**（快路径 ~3 万次 vs 慢路径 ~75 万次，断言 < 10 万），这是与机器速度无关的回归守卫；`test-deck-test.mjs` 新增「优先池快路径」不变量（优先槽位全部命中 / 错题命中 ≤ 优先槽位 + 池内词数 / **只有错题可能重复** / 同随机源可复现 / 词数 = 题数仍取满）
 - 注意（语义澄清，非 bug）：`prioCap = min(floor(n/2), n)` **不按优先池大小收敛**——池比配额小时优先槽位会重复取错题（这是「错题占 50% 配额」的既有语义），新快路径**保持**该行为
 
-## 测试资产（23 个 test-*.mjs + `smoke-dom` + `verify-assets` = 25 个脚本 / 2093 条断言）
+**v0.5.7** `.xlsx` 多工作表 / 公式 / 合并单元格（`js/xlsx.js`，仍零依赖）
+- **多工作表**：`workbookSheets()` 解析 `xl/workbook.xml`（`<sheet name sheetId r:id>` + `state="hidden"`）与 `xl/_rels/workbook.xml.rels`（Target 归一化，兼容 `sheet1.xml` / `worksheets/sheet1.xml` / 绝对 `/xl/…`），缺失时回退 `sheet1.xml`；新增 `openXlsx()`（一次读字节 → 名称 / 隐藏 / 各表行）与 `listXlsxSheets()` / `parseXlsxSheets()`
+- **导入侧工作表切换**：`xlsxWorkbookPreview()` + `sheetPickerHtml()` + `bindSheetPicker()`——**只在工作表 > 1 张时渲染**切换器，隐藏表标注「（隐藏）」，点选即重新解析并刷新预览表格 / 提示行 / 字段映射（`readPreviewInputs` 读 `sheet`，`runMappedImport`/`importMapped` 带 `sheet` 透传）
+- **公式求值**：自写**分词 → 递归下降解析 → 求值**（`tokenizeFormula`/`parseFormula`/`evalFormula`/`isFormulaSupported`）——算术 `+ - * / ^`（`^` **左结合**、`-2^2 = 4`）、比较 `= <> < > <= >=`、文本连接 `&`、百分比 `%`、括号、区域引用（`A1:B2`）与常用函数 `SUM/AVERAGE/COUNT/COUNTA/MIN/MAX/ROUND/ABS/INT/MOD/POWER/SQRT/LEN/LEFT/RIGHT/MID/UPPER/LOWER/TRIM/CONCAT/CONCATENATE/IF/IFERROR/AND/OR/NOT/TRUE/FALSE`（`IF`/`IFERROR` 惰性求值）
+- **取值策略（默认 `FORMULA_MODE = 'cache'`）**：优先使用 Excel 写入的缓存 `<v>`；缓存缺失或显式 `formulaMode: 'evaluate'` 才求值；**循环引用 / 不支持函数（`VLOOKUP` 等）/ 跨表引用（`Sheet1!A1`）/ 数组公式 / 自定义名称一律回退缓存值**；共享公式的**从属格**（只有 `si`、无自身表达式）永不求值；`parseSheetDetailed()` 返回 `notices`（已计算 N / 用缓存 M / 求值失败），预览以提示行展示
+- **合并单元格**：`parseMerges()` 读 `<mergeCells>`；`applyMerges(rows, merges, { mode })` 默认 `MERGE_FILL`（左上角值填充整区，**区域超出已有行列自动补齐**、已有数据不覆盖），`MERGE_BLANK` 只留左上角；预览提示「合并单元格补全 K 格」
+- **接线**：`js/import-file.js`（`rowsPreview.sheet`/`notices`、`xlsxNoticesText`、`previewMetaHtml` 显示工作表名与公式/合并提示、`openImportPreview` 改用 `openXlsx`）、`js/table-editor.js`（`tableRowsFromFile`/`loadFileIntoTable` 支持 `{ sheet }`，入口仍默认第一张表）
+- 测试：`test-xlsx` 33 → **125**（workbook/rels/隐藏表/公式全函数矩阵/循环引用回退/合并补全与越界）、`test-import-file` 299 → **322**（多表切换 / 提示行 / `sheet` 透传）、`test-table-editor` 219 → **223**、`verify-assets` 301 → **312**
+
+**v0.5.8** 复习日志（`revlog`）与 apkg 学习步保真
+- **新增 `js/revlog.js`（纯函数）**：`REVIEW_TYPES`（0 学习 / 1 复习 / 2 重学 / 3 filtered）、`EASE_BY_FEEDBACK`·`FEEDBACK_BY_EASE`（1~4 ↔ 重来/困难/记住/轻松）、`makeEntry({cardId, ts, feedback, before, after, timeMs})` → `{id: 'ts-cardId', cardId, ts, ease, type, ivl, lastIvl, factor, time}`（`ivl`/`lastIvl` 存**天**、`factor` 存 `easeFactor×1000`、`time` 停留毫秒封顶 1 小时）、`reviewTypeOf`（复习卡答重来 = 2 重学，新卡/学习步 = 0）、`sanitizeEntry`/`pickReviewLog`（兼容 `reviewLog`/`revlog`/`cid`、去重、单卡上限 `MAX_IMPORT_LOG = 500`、ease/type/factor/time/天数一律钳制）、`sortEntries`/`lapsesOf`/`summarize`、`reattach(entry, cardId)`、`entryToAnkiIvl`/`entryToAnkiLastIvl`/`toAnkiRow`
+- **存储**：`js/idb.js` 库 **v2 → v3**，新增 `revlog`（keyPath `id` + `byDeck`/`byCard` 索引）；升级走 `contains` **增量补建**（旧数据不动），`clearAll` 一并清空。`js/store.js` 新增 `recordReview`（评分即写、同步不阻塞）/`importRevlogs`/`revlogsOfDeck`（IDB ∪ 未落盘 ∪ 回退模式内存）/`revlogsOfCard`/`revlogStats`；`pendingRevlogs` 并入 `flushPending` 写穿队列；`queueDeleteCard`/`queueDeleteDeck` → `purgeRevlogs` **级联清理**；不支持 IDB 时日志随卡组存整库（`deck.revlogs`）
+- **评分链路**（`js/review.js`）：`renderReview` 记录 `S.shownAt`；`rate()` **先快照评分前的 `state`/`interval`/`easeFactor`**（`updateCard` 原地改对象，否则日志的 `lastIvl`/`type` 会被污染）再 `applyFeedback`，然后 `store.recordReview(..., { timeMs })`
+- **apkg 导出**（`js/export.js`）：`cardToAnkiSched` 补 `lapses`/`left`/`mod`，**学习卡按 Anki 语义写 `due = 到期 epoch 秒`、`ivl = 剩余秒`、`left = 1`**（复习卡仍是「相对天数 + 整天」）；`buildCollection` 逐条 `INSERT INTO revlog`（`revlog.toAnkiRow`，同毫秒主键递增去重）；导出前由 `store.revlogsOfDeck` 读入日志，toast 显示「复习日志 N 条」
+- **JSON 往返**：`deckToJson` 升 `formatVersion: 2`，每张卡带 `reviewLog`（无日志不写该字段）；`import-file.js` 新增 `pickLogFields`/`collectReviewLogs`/`attachReviewLogs`——落库会重排关卡、卡片 id 全变，故按 **`front` 小写匹配**再 `revlog.reattach` 重新归属（同步刷新主键），成功提示加「恢复复习日志 N 条」
+- 说明：「跳过翻面 · 直接测试」通关不是评分动作，故**不写日志**（`markLevelLearned` 保持无日志）
+- 测试：新增 `test-revlog.mjs`（**58** 条纯函数断言：映射 / 生成 / 单位 / 清洗截断 / 排序汇总 / 负秒换算）；`test-idb-store` 42 → **67**（v2→v3 增量升级、日志写穿与重载读回、级联清理、`importRevlogs` 归属过滤）；`test-export` 133 → **155**（Python `sqlite3` 校验 `revlog` 表 3 行 + 学习卡 `due`/`ivl`/`left` + `cards.lapses` + `formatVersion: 2`/`reviewLog`）；`test-import-file` 322 → **336**（`reviewLog`/`revlog` 回导、重新归属、追加导入、上级 500 条与钳制）；`test-review-interaction` 12 → **18**（评分落日志 + 评分前快照不被污染）；`verify-assets` 312 → **339**
+
+**v0.5.9**「我的生词」批量整理（`#/words`）
+- **新增 `js/wordbook.js`（纯函数内核）**：`normKey`（正面 `trim` + 小写 = 「同一个词」）、`STATE_RANK`/`keepScore`/`pickKeeper`（保留优先级：复习状态 > 复习次数 > 间隔 > `easeFactor` > 加入最早 > id）、`dupGroups`/`dedupeStats`（重复组 / 冗余张数）、`mergeText`/`mergeInto`/`mergeGroup`/`mergePlans`（**首义仍是第一义**、副卡释义进 `extraBacks` 自动去重、标签取并集、复习进度与 revlog 不动）、`tagCounts`/`applyTagEdit`/`tagPatchPlans`/`renameTagPlans`（`from` 为空 = 删除标签）、`filterWords`（正面 / 释义 / 其它释义 / 例句 / 例句翻译 / 标签）、`sortWords`（加入时间 / 字母序 / 关卡顺序）、`statsOf`、多选助手 `toggleId`/`idsOf`/`isAllSelected`/`isPartialSelected`/`limitSelection`/`lookupTargets`
+- **新增 `js/wordbook-view.js`（`#/words` 整理页）**：概览四数（总数 / 缺释义 / 重复词组 / 未打标签）可点击下钻；搜索输入防抖 180ms，重渲染后 `restoreSearchFocus(caret)` **恢复焦点与光标**；标签·来源 chips ＋ 排序下拉 ＋「只看缺释义」；每页 `WORDS_PER_PAGE = 100`，**页码进 URL**（`#/words?page=N`，前进后退可用）；「合并重复词（N 组）」**先弹合并报告**（每组「N 张 → 1 张 · M 个释义」＋释义序列）再落库；卡片行内快捷加标签 / 编辑 / 删除；多选批量栏（加标签 / 去标签 / 在线补查 / 删除 / 清除选择）＋「本页全选」；标签管理弹窗（重命名 → 并入已有标签、删除 → 从所有卡片摘掉）
+- **存储层**：`store.mergeCards(deckId, plans)`（保留主卡 + 删副卡 + `purgeRevlogs` 级联清理 revlog，返回 `{groups, kept, removed}`）、`store.updateCards(deckId, patches)`（批量写标签）、`addWords(..., { merge })`
+- **首页添加单词联动**：`add-words.js` 新增「重复词自动合并」开关（`MERGE_PREF_KEY = 'mycard-aw-merge'`，默认**开**；`isMergeEnabled`/`setMergeEnabled`；`addWords` 报告 `merged`/`skipped`，关掉时保持旧的「跳过」语义）与 `prefillInput`/`pendingPrefill`/`peekPendingPrefill`（整理页「在线补查」把词回填查词框）
+- **接线**：`js/app.js` 路由 `#/words` + `APP_VERSION = 'v0.5.9'`；`js/decks.js` 卡组页图标按钮 ＋ 菜单项 `nav-words`（仅「我的生词」显示）；`js/ui.js` 共享 `icon()`；`css/style.css` 生词本页面 / 批量栏 / 报告 / 标签弹窗样式；`sw.js` `v1.9.0`
+- 测试：新增 `test-wordbook.mjs`（**124** 条：内核 + 页面渲染 / 筛选分页 / 多选批量 / 在线补查 / 合并报告）；`test-add-words` 82 → **110**（重复词偏好 + 预填查词框）；`test-idb-store` 67 → **80**（`mergeCards` 删副卡级联、`updateCards`、`addWords({merge})` 写穿与重载一致）；`smoke-dom` 170 → **199**（整理页渲染 / 批量栏 / 标签弹窗 / 卡片菜单 / 分页 URL / 去重报告→合并 / 两处入口）；`verify-assets` 339 → **374**（v0.5.9 第 8 节断言）
+
+## 测试资产（25 个 test-*.mjs + `smoke-dom` + `verify-assets` = 27 个脚本 / 2604 条断言）
 | 分类 | 脚本 |
 | --- | --- |
-| 核心纯函数 | `test-core`(43) `test-difficulty`(39) `test-arrange`(22) `test-pagination`(25) `test-resplit-levels`(26) |
-| 学习与题型 | `test-confusables`(82) `test-hardwords`(26) `test-level-retry`(78) `test-fill`(85) `test-listen`(21) `test-deck-test`(92) `test-eng-eng`(34) `test-multi-sense`(39) `test-review-complete`(11) `test-review-interaction`(12) |
-| 存储与主题 | `test-idb-store`(42) `test-theme`(150) |
-| 新功能 | `test-add-words`(82) `test-import-file`(299) `test-table-editor`(219) `test-export`(133) `test-xlsx`(33) |
-| DOM / 资源 | `smoke-dom`(170) `verify-assets`(301) |
+| 核心纯函数 | `test-core`(43) `test-difficulty`(39) `test-arrange`(22) `test-pagination`(25) `test-resplit-levels`(26) `test-revlog`(58) |
+| 学习与题型 | `test-confusables`(82) `test-hardwords`(26) `test-level-retry`(78) `test-fill`(85) `test-listen`(21) `test-deck-test`(92) `test-eng-eng`(34) `test-multi-sense`(39) `test-review-complete`(11) `test-review-interaction`(18) |
+| 存储与主题 | `test-idb-store`(80) `test-theme`(150) |
+| 新功能 | `test-add-words`(110) `test-import-file`(336) `test-table-editor`(223) `test-export`(155) `test-xlsx`(125) `test-wordbook`(124) |
+| DOM / 资源 | `smoke-dom`(199) `verify-assets`(374) |
 | 性能金丝雀 | `test-perf`(29，1 万词 / 500 关：统计/分组/抽题（含优先池读取次数）+ 耗时) |
 
 ## 已知问题 / 技术债
@@ -131,7 +157,7 @@
 - **注意**：`refs/cline/checkpoints/*` 已被清理（v0.4.18）；Cline 扩展在后续会话中可能**重建**同类检查点并再次持有大对象——若 `.git` 再度膨胀，用同样方式（`for-each-ref refs/cline` → `update-ref -d` → `gc --prune=now`）回收即可
 
 ## 刻意决定 / 已知限制（非技术债）
-- **apkg 复习进度为「近似迁移」**：`due` 用「今天 + 相对天数」（Anki review 本就是日粒度），learning 的分钟级步进不映射、`revlog` 为空——因 Mycard 不存逐次复习历史 / 无 learning 步进子模型，**明确不做**（需先改存储模型）
+- **apkg 复习进度为「近似迁移」**：`due` 用「今天 + 相对天数」（Anki review 本就是日粒度）——**v0.5.8 起不再有此限制**：learning 步写 `due` = 到期 epoch 秒 / `ivl` = 剩余秒 / `left`，且逐次评分历史写入 `revlog` 表；剩余差异只有「Mycard 无 filtered deck / 自定义 learning 步参数」这类模型差异
 - **`--soft-danger-tx` 刻意固定**：它是「危险/错误」语义色，**不应**跟随 accent（浅色 `#c6283b` / 深色 `#ff9ba6`）
 - **原始 `--accent` 仅用于「填充/品牌底」**：按钮渐变、`.opt-picked .opt-key`（主色底 + 白字）、`.about-list li::before` 装饰圆点；**前景类**（文字 / 图标 / 焦点环 / 边框 / 原生 `accent-color`）一律走 `--accent-tx`（v0.4.19 起）
 

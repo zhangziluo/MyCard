@@ -407,6 +407,18 @@ body {
 }
 .field input:focus, .field textarea:focus { border-color: var(--accent-tx); outline: none; }
 .field input::placeholder, .field textarea::placeholder { color: var(--tx3); }
+/* 下拉框（v0.5.9 生词本「标签管理」等弹窗使用） */
+.field select {
+  width: 100%;
+  background: var(--field-bg);
+  border: 1px solid var(--glass-brd);
+  color: var(--tx);
+  border-radius: var(--r-sm);
+  padding: 11px 13px;
+  font-size: 15px;
+  font-family: inherit;
+}
+.field select:focus { border-color: var(--accent-tx); outline: none; }
 .hint { font-size: 12px; color: var(--tx3); line-height: 1.6; }
 
 /* ------------------------------ 弹窗 ------------------------------ */
@@ -1603,6 +1615,163 @@ body.modal-open { overflow: hidden; }
 .te-preview-list b { color: var(--tx); font-variant-numeric: tabular-nums; }
 .te-preview-list.te-preview-warn { color: var(--warn-tx); }
 .te-preview-list.te-preview-warn b { color: var(--warn-tx); }
+
+/* ------------------------------ 生词本整理（v0.5.9） ------------------------------ */
+.view-wordbook { gap: 12px; }
+
+/* 顶部概览：四个可点击下钻的小格 */
+.wb-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(74px, 1fr)); gap: 8px; padding: 12px; }
+.wb-stat {
+  appearance: none;
+  -webkit-appearance: none;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 9px 4px;
+  font-family: inherit;
+  color: var(--tx2);
+  background: var(--ovl-0);
+  border: 1px solid var(--glass-brd);
+  border-radius: var(--r-md);
+  transition: border-color 0.18s var(--ease-out), background 0.18s var(--ease-out);
+}
+.wb-stat b { font-size: 19px; font-weight: 800; color: var(--tx); font-variant-numeric: tabular-nums; line-height: 1.2; }
+.wb-stat span { font-size: 11px; line-height: 1.3; }
+.wb-stat:active { transform: scale(0.97); }
+.wb-stat.is-off { opacity: 0.5; }
+.wb-stat[disabled] { cursor: default; }
+.wb-stat.chip-on {
+  background: rgba(var(--accent-rgb), 0.12);
+  border-color: rgba(var(--accent-rgb), 0.55);
+  box-shadow: none;
+}
+
+/* 工具区：搜索 / 标签 chips / 排序 */
+.wb-tools { padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+.wb-search-box {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  color: var(--tx3);
+  background: var(--field-bg);
+  border: 1px solid var(--glass-brd);
+  border-radius: var(--r-md);
+}
+.wb-search-box:focus-within { border-color: var(--accent-tx); }
+.wb-search {
+  flex: 1;
+  min-width: 0;
+  padding: 11px 0;
+  background: none;
+  border: none;
+  outline: none;
+  color: var(--tx);
+  font-size: 15px;
+  font-family: inherit;
+}
+.wb-search::-webkit-search-cancel-button { display: none; }
+.wb-search-clear {
+  appearance: none;
+  -webkit-appearance: none;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  cursor: pointer;
+  color: var(--tx2);
+  background: var(--ovl-1);
+  border: none;
+  border-radius: 999px;
+}
+.wb-tools-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.wb-sort {
+  flex: 1 1 150px;
+  min-width: 0;
+  padding: 9px 10px;
+  color: var(--tx);
+  background: var(--field-bg);
+  border: 1px solid var(--glass-brd);
+  border-radius: var(--r-sm);
+  font-size: 13.5px;
+  font-family: inherit;
+}
+.wb-tools-row .btn-link { white-space: nowrap; font-size: 13px; }
+
+/* 批量操作栏 */
+.wb-batch {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  padding: 12px;
+  border-color: rgba(var(--accent-rgb), 0.4);
+}
+.wb-batch-info { font-size: 13px; color: var(--tx2); }
+.wb-batch-info b { color: var(--accent-tx); font-variant-numeric: tabular-nums; }
+.wb-batch-ops { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.wb-batch-ops .btn-sm { min-width: 0; }
+.wb-batch-ops .btn-link { margin-left: auto; font-size: 12px; }
+
+/* 本页全选 + 列表 */
+.wb-pick-page { display: flex; align-items: center; gap: 8px; padding: 2px 4px; font-size: 12.5px; color: var(--tx2); }
+.wb-pick-page input,
+.wb-check input { width: 18px; height: 18px; accent-color: var(--accent-tx); }
+.wb-list { display: flex; flex-direction: column; gap: 10px; }
+.wb-item { align-items: flex-start; }
+.wb-item.is-picked { background: rgba(var(--accent-rgb), 0.09); border-color: rgba(var(--accent-rgb), 0.5); }
+.wb-check { display: flex; flex: 0 0 auto; align-items: center; padding-top: 2px; }
+.wb-ipa {
+  margin-left: 6px;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--tx3);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.wb-more { margin-left: 6px; font-size: 11.5px; color: var(--accent-tx); }
+.wb-void { font-size: 13px; font-style: italic; color: var(--tx3); }
+.tag-src { color: var(--tx3); border-style: dashed; background: var(--ovl-1); }
+
+.wb-fab { gap: 8px; }
+.wb-fab .btn { flex: 1 1 auto; min-width: 0; }
+
+/* 合并报告弹窗 */
+.wb-report { display: flex; flex-direction: column; gap: 10px; }
+.wb-report-lead { font-size: 13.5px; line-height: 1.65; color: var(--tx2); }
+.wb-report-lead b { color: var(--accent-tx); font-variant-numeric: tabular-nums; }
+.wb-plan-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 46vh;
+  margin: 0;
+  padding: 0;
+  overflow: auto;
+  list-style: none;
+}
+.wb-plan { padding: 10px 12px; background: var(--glass-bg); border: 1px solid var(--glass-brd); border-radius: var(--r-md); }
+.wb-plan-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.wb-plan-head b { font-size: 15px; overflow-wrap: anywhere; }
+.wb-plan-senses { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.wb-sense {
+  padding: 3px 10px;
+  font-size: 12.5px;
+  color: var(--tx2);
+  background: var(--ovl-1);
+  border-radius: 999px;
+  overflow-wrap: anywhere;
+}
+
+/* 标签弹窗里的快捷 chips */
+.wb-quick-tags { display: flex; flex-wrap: wrap; gap: 6px; }
+.wb-quick-tags .chip { padding: 5px 11px; font-size: 12.5px; }
+
+
 
 /* ------------------------------ 桌面端适配 ------------------------------ */
 /* 手机保持单列窄容器；桌面逐级放宽 #app，让卡组等网格「平铺」铺满页面 */

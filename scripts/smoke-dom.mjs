@@ -136,6 +136,15 @@ async function fire(action, dataset = {}) {
   ui.handleEvent({ type: 'click', target: { closest: () => btn }, preventDefault() {} });
 }
 
+/** 模拟 data-action 事件（可指定事件类型与附加属性，如 change 的 checked / value） */
+async function fireOn(type, action, props = {}) {
+  const ui = await import('../js/ui.js');
+  const btn = Object.assign({ dataset: { action }, classList: { add() {}, remove() {} } }, props);
+  btn.dataset = Object.assign({ action }, props.dataset || {});
+  btn.closest = () => btn;
+  ui.handleEvent({ type, target: { closest: () => btn }, preventDefault() {} });
+}
+
 // ---- 加载被测模块（全部浏览器模块，验证 import 图完整） ----
 const store = await import('../js/store.js');
 const decks = await import('../js/decks.js');
@@ -518,6 +527,106 @@ console.log('\n[卡组菜单 · 导出 txt / csv / md / json / apkg]');
   ok(html.includes('导出为 txt 词表') && html.includes('Anki'), '导出文案正确');
   ok(html.includes('导出为 CSV（带表头）') && html.includes('导出为 Markdown'), 'CSV / Markdown 文案正确');
   ok(html.includes('导出为 JSON（含复习进度）'), 'JSON 导出文案正确');
+}
+
+// ---- 生词本整理页（app.render → #/words，v0.5.9）----
+console.log('\n[生词本整理页 #/words]');
+{
+  const wb = await import('../js/wordbook.js');
+  const wbv = await import('../js/wordbook-view.js');
+
+  // 造数据：我的生词（含标签 / 缺释义 / 大小写不同的重复卡）
+  store.addWords(
+    [
+      { word: 'apple', back: 'n. 苹果', tags: ['水果'] },
+      { word: 'banana', back: 'n. 香蕉', tags: ['水果'] },
+      { word: 'cherry', back: '', tags: [] }
+    ],
+    { src: 'custom' }
+  );
+  const ud = store.getUserDeck();
+  store.addCard(ud.id, { front: 'Apple', back: 'n. 苹果树' });
+  const cherry = store.getUserDeck().cards.find((c) => c.front === 'cherry');
+
+  globalThis.location.hash = '#/words';
+  (winListeners['hashchange'] || []).forEach((fn) => fn({ type: 'hashchange' }));
+  let html = appViewEl.innerHTML;
+  ok(html.includes('class="view view-wordbook"'), '路由 #/words 渲染生词本整理页');
+  ok(html.includes('id="wb-search"') && html.includes('data-action="wb-sort"'), '工具栏：搜索框 + 排序下拉');
+  ok(html.includes('data-action="wb-tag"') && html.includes('data-action="wb-src"'), '筛选：标签 chips + 来源 chips');
+  ok(html.includes('data-action="wb-toggle-missing"') && html.includes('只看缺释义'), '筛选：只看缺释义');
+  ok(html.includes('data-action="wb-dedupe-report"') && html.includes('data-action="wb-go-add"'), '底部：合并重复词 + 添加生词');
+  ok(html.includes('重复词组') && html.includes('未打标签'), '概览含重复词组 / 未打标签统计');
+  ok(html.includes('（缺释义，可「在线补查」）'), '缺释义的卡片带补查提示');
+  ok(!html.includes('class="wb-batch glass"'), '未勾选时不出批量操作栏');
+
+  // 多选 → 批量操作栏
+  await fireOn('change', 'wb-pick', { dataset: { card: cherry.id }, checked: true });
+  ok(appViewEl.innerHTML.includes('已选 <b>1</b> 张'), '勾选 1 张 → 批量操作栏显示计数');
+  await fireOn('change', 'wb-pick-page', { checked: true });
+  ok(appViewEl.innerHTML.includes(`已选 <b>${store.getUserDeck().cards.length}</b> 张`), '「本页全选」勾选本页全部卡片');
+  await fireOn('change', 'wb-pick-page', { checked: false });
+  ok(!appViewEl.innerHTML.includes('class="wb-batch glass"'), '取消本页全选 → 批量操作栏消失');
+
+  // 批量标签弹窗
+  await fireOn('change', 'wb-pick', { dataset: { card: cherry.id }, checked: true });
+  await fire('wb-batch-tag');
+  const tm = fakeBody.children.filter((c) => c && c.className === 'modal-overlay').pop();
+  const thtml = tm ? String(tm.innerHTML) : '';
+  ok(thtml.includes('给选中的 1 张加标签') && thtml.includes('name="tags"'), '「加标签」弹窗（含标签输入框）');
+  ok(thtml.includes('data-action="wb-quick-tag"'), '弹窗提供已用标签快捷填入');
+  ok(thtml.includes('只影响当前勾选的 1 张卡片'), '弹窗说明只影响勾选卡片');
+
+  // 标签管理弹窗（重命名 / 删除）
+  await fire('wb-tag-manage');
+  const gm = fakeBody.children.filter((c) => c && c.className === 'modal-overlay').pop();
+  const ghtml = gm ? String(gm.innerHTML) : '';
+  ok(ghtml.includes('标签管理') && ghtml.includes('name="from"') && ghtml.includes('name="to"'), '「标签管理」弹窗含 from/to 字段');
+  ok(ghtml.includes('留空 = 删除该标签'), '标签管理说明「留空 = 删除」');
+
+  // 搜索 / 筛选（DOM 层）
+  await fire('wb-all');
+  ok(wbv.getViewState().tag === wb.ALL && wbv.getViewState().src === wb.ALL && !wbv.getViewState().missing, '「全部」清空筛选');
+  await fire('wb-tag', { tag: '水果' });
+  ok(wbv.getViewState().tag === '水果' && /筛选出 \d+/.test(appViewEl.innerHTML), '点标签 chip → 筛选并显示结果数');
+  await fire('wb-toggle-missing');
+  ok(wbv.getViewState().missing === true && appViewEl.innerHTML.includes('显示全部'), '「只看缺释义」切换为显示全部');
+
+  // 分页（>100 张）：先清掉筛选，否则「只看缺释义」会只剩 1 张
+  await fire('wb-all');
+  store.addWords(
+    Array.from({ length: 120 }, (_, i) => ({ word: 'smoke' + i, back: '释义' + i })),
+    { src: 'custom' }
+  );
+  globalThis.location.hash = '#/words';
+  (winListeners['hashchange'] || []).forEach((fn) => fn({ type: 'hashchange' }));
+  ok(appViewEl.innerHTML.includes('第 1/2 页'), '超过 100 张 → 渲染分页条');
+  await fire('wb-page', { page: '2' });
+  ok(globalThis.location.hash === '#/words?page=2', '点「下一页」→ URL 写入 #/words?page=2（可回退）');
+  (winListeners['hashchange'] || []).forEach((fn) => fn({ type: 'hashchange' }));
+  ok(appViewEl.innerHTML.includes('第 2/2 页'), '回到第 2 页仍能渲染');
+
+  // 去重合并：报告弹窗 → 确认合并
+  globalThis.location.hash = '#/words';
+  (winListeners['hashchange'] || []).forEach((fn) => fn({ type: 'hashchange' }));
+  await fire('wb-dedupe-report');
+  const dm = fakeBody.children.filter((c) => c && c.className === 'modal-overlay').pop();
+  const dhtml = dm ? String(dm.innerHTML) : '';
+  ok(dhtml.includes('合并重复词 · 1 组'), '「合并重复词」先弹报告（1 组）');
+  ok(dhtml.includes('apple') && dhtml.includes('n. 苹果树') && dhtml.includes('合并后删掉'), '报告列出重复词与合并后的释义（原释义仍是第一义）');
+  const merged = wbv.mergeDuplicates();
+  ok(merged.groups === 1 && merged.removed === 1, '确认后合并：1 组 → 删 1 张副卡', merged);
+  ok(store.getUserDeck().cards.filter((c) => c.front.toLowerCase() === 'apple').length === 1, '合并后重复词只剩 1 张');
+
+  // 首页 / 卡组菜单入口
+  globalThis.location.hash = '#/home';
+  (winListeners['hashchange'] || []).forEach((fn) => fn({ type: 'hashchange' }));
+  ok(appViewEl.innerHTML.includes('data-action="nav-words"'), '首页有「整理生词本」入口');
+  await fire('deck-options', { id: store.getUserDeck().id });
+  const om = fakeBody.children.filter((c) => c && c.className === 'modal-overlay').pop();
+  ok(String(om ? om.innerHTML : '').includes('整理生词本（去重 / 标签）'), '生词卡组菜单含「整理生词本（去重 / 标签）」');
+  await fire('nav-words');
+  ok(globalThis.location.hash === '#/words', '点入口 → 跳到 #/words');
 }
 
 console.log(`\n冒烟结果: ${pass} 通过, ${fail} 失败`);

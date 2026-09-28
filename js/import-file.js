@@ -12,14 +12,15 @@
 //   1) JSON：词库文件格式 {name?, description?, tags?, levelSize?, words:[...]}
 //            或纯单词数组 [{front|word, back|meaning, example, exampleZh, phonetic, tags}]
 //   2) CSV/TSV：可带表头（中英文均可），列顺序不限；无表头时按 front,back,example,... 位置解析
-//   3) XLSX：Excel 工作簿（取第一个工作表），零依赖解析（见 xlsx.js），走同一套字段映射
+//   3) XLSX：Excel 工作簿（多工作表可选；公式 / 合并单元格见 xlsx.js），走同一套字段映射
 //
 // 导出：解析 / 预览 / 校验等纯函数（便于单测）+ 打开预览 / 导入 + 首页按钮与拖拽区
 // ============================================================================
 
 import * as store from './store.js';
+import * as revlog from './revlog.js';
 import { on, toast, navigate, esc, openModal, readForm } from './ui.js';
-import { parseXlsxRows } from './xlsx.js';
+import { parseXlsxRows, openXlsx } from './xlsx.js';
 import { recordImport, undoImport } from './import-history.js';
 
 export const ACCEPT =
@@ -189,6 +190,14 @@ export function pickSchedFields(w) {
   return out;
 }
 
+/**
+ * 从词条对象提取「复习日志」（JSON 完整导出会带上 `reviewLog`，兼容 `revlog`）。
+ * 校验 / 截断由 revlog.pickReviewLog 负责（单卡上限 MAX_IMPORT_LOG 条）。
+ */
+export function pickLogFields(w) {
+  return revlog.pickReviewLog(w);
+}
+
 /** 单词对象数组 → 规范化词条（兼容 front/word/term、back/meaning/definition 等写法） */
 export function normalizeWordObjects(list) {
   return (list || [])
@@ -211,6 +220,8 @@ export function normalizeWordObjects(list) {
       if (Array.isArray(w.extraBacks) && w.extraBacks.length) out.extraBacks = w.extraBacks.map(String);
       if (Array.isArray(w.groups) && w.groups.length) out.groups = w.groups.map(String);
       Object.assign(out, pickSchedFields(w)); // 复习进度随导入保留（由 store 校验）
+      const logs = revlog.pickReviewLog(w); // 复习日志随导入保留（落库后按 front 挂到卡片上）
+      if (logs.length) out.reviewLog = logs;
       return out;
     })
     .filter(Boolean);
@@ -402,16 +413,40 @@ export function csvPreview(text, { limit = PREVIEW_ROWS } = {}) {
 /**
  * 二维字符串表 → 预览数据（xlsx 解析结果复用；与 csvPreview 同构，可走同一套字段映射/导入）
  * @param {string[][]} rows
- * @returns {{ kind:'xlsx', delimiter:null, header:string[]|null, rows:string[][], cols:number, totalRows:number }}
+ * @param {{ limit?:number, sheet?:string, notices?:object }} [opts] sheet=工作表名；notices=公式/合并统计
+ * @returns {{ kind:'xlsx', delimiter:null, header:string[]|null, rows:string[][], cols:number,
+ *             totalRows:number, sheet:string, notices:object|null }}
  */
-export function rowsPreview(rows, { limit = PREVIEW_ROWS } = {}) {
+export function rowsPreview(rows, { limit = PREVIEW_ROWS, sheet = '', notices = null } = {}) {
   const all = (Array.isArray(rows) ? rows : []).map((r) =>
     Array.isArray(r) ? r.map((v) => String(v == null ? '' : v)) : []
   );
   const headerRow = all.length && isHeaderRow(all[0]) ? all[0] : null;
   const body = headerRow ? all.slice(1) : all;
   const cols = all.reduce((m, r) => Math.max(m, r.length), 0);
-  return { kind: 'xlsx', delimiter: null, header: headerRow, rows: body.slice(0, limit), cols, totalRows: body.length };
+  return {
+    kind: 'xlsx',
+    delimiter: null,
+    header: headerRow,
+    rows: body.slice(0, limit),
+    cols,
+    totalRows: body.length,
+    sheet: sheet || '',
+    notices: notices || null
+  };
+}
+
+/**
+ * 已打开的 workbook → 某张工作表的预览数据（弹窗里切换工作表时复用）。
+ * @param {{ sheets:Array, read:Function }} wb openXlsx 的返回值
+ * @param {number|string} which 工作表序号或名称
+ * @param {{ limit?:number }} [opts]
+ */
+export function xlsxWorkbookPreview(wb, which = 0, { limit = PREVIEW_ROWS } = {}) {
+  const detail = wb.read(which);
+  const idx = typeof which === 'number' ? which : (wb.sheets || []).findIndex((s) => s.name === String(which));
+  const info = (wb.sheets || [])[idx] || {};
+  return rowsPreview(detail.rows, { limit, sheet: info.name || '', notices: detail.notices });
 }
 
 /** 预览是否「逐列映射」型（CSV / xlsx 共用同一套字段映射与导入逻辑） */
@@ -456,7 +491,17 @@ export function previewTableHtml(preview) {
   return `<div class="csv-table-wrap"><table class="csv-table"><thead>${head}</thead><tbody>${body}</tbody></table></div>`;
 }
 
-/** 预览元信息（文件名 / 分隔符 / 行列数 / 表头识别情况） */
+/** 公式 / 合并单元格统计 → 可读提示（没有内容时返回空串） */
+export function xlsxNoticesText(notices) {
+  if (!notices) return '';
+  const bits = [];
+  if (notices.evaluated) bits.push(`已计算 ${notices.evaluated} 个公式`);
+  if (notices.unsupported) bits.push(`${notices.unsupported} 个公式用 Excel 缓存值`);
+  if (notices.mergedCells) bits.push(`合并单元格补全 ${notices.mergedCells} 格`);
+  return bits.join(' · ');
+}
+
+/** 预览元信息（文件名 / 分隔符 / 行列数 / 表头识别情况 / xlsx 工作表与公式提示） */
 export function previewMetaHtml(preview, filename = '') {
   const bits = [];
   if (preview.kind === 'csv') bits.push(`分隔符：${delimiterLabel(preview.delimiter)}`);
@@ -465,17 +510,53 @@ export function previewMetaHtml(preview, filename = '') {
     preview.kind === 'json'
       ? 'JSON 词库'
       : preview.kind === 'xlsx'
-        ? 'Excel 工作表（取第一个 sheet）'
+        ? preview.sheet
+          ? `Excel 工作表「${preview.sheet}」`
+          : 'Excel 工作表（取第一个 sheet）'
         : preview.header
           ? '已识别表头（首行为列名）'
           : '未识别表头（列名用「列 1…」）'
   );
+  const extra = preview.kind === 'xlsx' ? xlsxNoticesText(preview.notices) : '';
+  if (extra) bits.push(extra);
   const shown = Math.min(PREVIEW_ROWS, preview.totalRows);
   return (
     `<p class="csv-meta">${esc(filename)}${filename ? ' · ' : ''}${esc(bits.join(' · '))}</p>` +
     `<p class="csv-hint">仅预览前 ${shown} 行；确认后将整份文件导入为<b>新卡组</b>（按难度编排关卡）。</p>`
   );
 }
+
+/**
+ * 工作表下拉（多张表时才渲染；隐藏表标注「隐藏」）。
+ * @param {Array<{index:number,name:string,hidden:boolean}>} sheets
+ * @param {number} selected 选中的工作表序号
+ */
+export function sheetPickerHtml(sheets, selected = 0) {
+  const list = Array.isArray(sheets) ? sheets : [];
+  if (list.length < 2) return '';
+  const opts = list
+    .map(
+      (s, i) =>
+        `<option value="${i}"${i === selected ? ' selected' : ''}>${esc(s.name || `Sheet${i + 1}`)}${s.hidden ? '（隐藏）' : ''}</option>`
+    )
+    .join('');
+  return (
+    `<div class="field-map-row"><label class="fm-col" for="import-sheet">工作表</label>` +
+    `<select id="import-sheet" name="sheet" class="fm-select">${opts}</select>` +
+    `<span class="fm-hint">共 ${list.length} 张表</span></div>`
+  );
+}
+
+/** 绑定工作表下拉：切换后回调（用于重渲染预览区） */
+export function bindSheetPicker(overlay, onChange) {
+  const sel = overlay && typeof overlay.querySelector === 'function' ? overlay.querySelector('#import-sheet') : null;
+  if (!sel || typeof sel.addEventListener !== 'function') return false;
+  sel.addEventListener('change', () => {
+    if (typeof onChange === 'function') onChange(Number(sel.value) || 0);
+  });
+  return true;
+}
+
 
 /* ------------------------------ 字段映射 / 目标牌组 ------------------------------ */
 
@@ -616,14 +697,15 @@ export function bindTargetToggle(overlay) {
   return true;
 }
 
-/** 读取预览弹窗里的映射表与目标牌组选择 */
+/** 读取预览弹窗里的映射表、目标牌组选择与工作表选择 */
 export function readPreviewInputs(overlay, preview) {
   const form = overlay && typeof overlay.querySelectorAll === 'function' ? readForm(overlay) : {};
   const cols = Math.max(1, (preview && preview.cols) || 1);
   const mapping = Array.from({ length: cols }, (_, i) => form[`col-${i}`] || 'ignore');
   const target = form.target || '__new__';
   const deckName = String(form.newDeckName || '').trim();
-  return { mapping, target, deckName };
+  const sheet = Number.isInteger(Number(form.sheet)) && String(form.sheet || '').trim() !== '' ? Number(form.sheet) : 0;
+  return { mapping, target, deckName, sheet };
 }
 
 /* ------------------------------ 首页入口 ------------------------------ */
@@ -865,34 +947,39 @@ export function openFilePicker({ multiple = true } = {}) {
 
 /**
  * 打开「导入预览」弹窗：前 10 行表格 + 自动识别分隔符 + 行列统计。
- * 点「确认导入」才真正写入卡组（复用 importDeckFromFile）。
+ * xlsx 会列出全部工作表（可切换预览，多表时顶部落「工作表」下拉）。
+ * 点「确认导入」才真正写入卡组（复用 importMapped）。
  */
 export async function openImportPreview(file) {
   if (!file) {
     toast('没有选择文件', 'warn');
     return null;
   }
-  let preview = null;
+  const isXlsx = isXlsxFile(file.name);
+  let wb = null;
+  const state = { preview: null };
   try {
-    preview = isXlsxFile(file.name)
-      ? rowsPreview(await parseXlsxRows(await readFileAsArrayBuffer(file)))
-      : buildPreview(file.name, await readFileAsText(file));
+    if (isXlsx) wb = await openXlsx(await readFileAsArrayBuffer(file));
+    state.preview = isXlsx ? xlsxWorkbookPreview(wb, 0) : buildPreview(file.name, await readFileAsText(file));
   } catch (e) {
     toast(`解析失败：${(e && e.message) || e}`, 'error');
     return null;
   }
-  if (!preview.totalRows) {
+  if (!state.preview.totalRows) {
     toast('解析不出有效数据行，请检查文件内容', 'warn');
     return null;
   }
+  const previewHtml = () => {
+    const p = state.preview;
+    return previewMetaHtml(p, file.name) + previewTableHtml(p) + (isTabular(p) ? fieldMapHtml(p) : '');
+  };
 
   const overlay = openModal({
     title: '导入预览',
     wide: true,
     body:
-      previewMetaHtml(preview, file.name) +
-      previewTableHtml(preview) +
-      (isTabular(preview) ? fieldMapHtml(preview) : '') +
+      (wb ? sheetPickerHtml(wb.sheets, 0) : '') +
+      `<div id="import-preview-body">${previewHtml()}</div>` +
       targetDeckHtml(file, {
         decks: store.getDb().decks.map((d) => ({ id: d.id, name: d.name, count: (d.cards || []).length })),
         defaultName: deckNameFromFile(file.name)
@@ -902,8 +989,8 @@ export async function openImportPreview(file) {
         label: '确认导入',
         cls: 'btn-primary',
         onClick: () => {
-          const inputs = readPreviewInputs(overlay, preview);
-          if (isTabular(preview)) {
+          const inputs = readPreviewInputs(overlay, state.preview);
+          if (isTabular(state.preview)) {
             const check = validateMapping(inputs.mapping);
             if (!check.ok) {
               toast(check.error, 'warn');
@@ -922,13 +1009,24 @@ export async function openImportPreview(file) {
     ]
   });
   bindTargetToggle(overlay);
+  // 切换工作表 → 只重渲染「元信息 + 表格 + 字段映射」（目标牌组区不动）
+  bindSheetPicker(overlay, (index) => {
+    try {
+      state.preview = xlsxWorkbookPreview(wb, index);
+    } catch (e) {
+      toast(`读取工作表失败：${(e && e.message) || e}`, 'error');
+      return;
+    }
+    const box = typeof overlay.querySelector === 'function' ? overlay.querySelector('#import-preview-body') : null;
+    if (box) box.innerHTML = previewHtml();
+  });
   return overlay;
 }
 
 /**
  * 预览弹窗 → 按映射与目标牌组导入（完整解析，不只前 10 行）。
  * @param {File} file
- * @param {{mapping?:string[], target?:string, deckName?:string}} inputs
+ * @param {{mapping?:string[], target?:string, deckName?:string, sheet?:number}} inputs
  * @returns {Promise<{deck:object, deckId:string, name:string, added:number, skipped:number, duplicates:number, existing:boolean}>}
  */
 export async function runMappedImport(file, inputs = {}) {
@@ -938,7 +1036,8 @@ export async function runMappedImport(file, inputs = {}) {
     const res = await importMapped(file, {
       mapping: inputs.mapping || null,
       deckId: inputs.target && inputs.target !== '__new__' ? inputs.target : '',
-      deckName: inputs.deckName || ''
+      deckName: inputs.deckName || '',
+      sheet: inputs.sheet || 0
     });
     const entry = await recordImport([res]);
     res.historyId = entry.id;
@@ -952,17 +1051,19 @@ export async function runMappedImport(file, inputs = {}) {
 }
 
 /**
- * 导入本地文件到目标牌组（CSV 按映射取列；JSON 走既有解析）。
+ * 导入本地文件到目标牌组（CSV 按映射取列；JSON 走既有解析；xlsx 可选工作表）。
  * - 指定 deckId：追加进已有牌组（跳过已存在的单词）并重拆关卡
  * - 指定 deckName：新建牌组（难度分层 + 错峰编排）
+ * @param {{ mapping?:string[]|null, deckId?:string, deckName?:string, src?:string, sheet?:number|string }} [opts]
+ *        sheet：xlsx 的工作表序号 / 名称（默认第一张）
  */
-export async function importMapped(file, { mapping = null, deckId = '', deckName = '', src = 'batch_import' } = {}) {
+export async function importMapped(file, { mapping = null, deckId = '', deckName = '', src = 'batch_import', sheet = 0 } = {}) {
   if (!file) throw new Error('没有选择文件');
   let words = [];
   let duplicates = 0;
   if (isXlsxFile(file.name)) {
-    // xlsx：解析第一个工作表 → 与 CSV 同样按「逐列映射」取数据
-    const rows = await parseXlsxRows(await readFileAsArrayBuffer(file));
+    // xlsx：解析指定工作表（默认第一张）→ 与 CSV 同样按「逐列映射」取数据
+    const rows = await parseXlsxRows(await readFileAsArrayBuffer(file), { sheet });
     const map = Array.isArray(mapping) && mapping.length ? mapping : defaultMapping(rowsPreview(rows));
     const check = validateMapping(map);
     if (!check.ok) throw new Error(check.error);
@@ -995,9 +1096,38 @@ export async function importMapped(file, { mapping = null, deckId = '', deckName
   return commitWords(words, { deckId, deckName, src, duplicates, file });
 }
 
+/**
+ * 收集词条携带的复习日志（key = 单词小写；用于落库后按 front 挂到卡片上）。
+ * 说明：落库会重排关卡（顺序 / id 都会变），因此不能用「下标」对应，只能按 front 匹配。
+ */
+function collectReviewLogs(words) {
+  const map = new Map();
+  for (const w of words || []) {
+    const logs = revlog.pickReviewLog(w);
+    if (!logs.length) continue;
+    const key = String((w && w.front) || '').trim().toLowerCase();
+    if (key) map.set(key, [...(map.get(key) || []), ...logs]);
+  }
+  return map;
+}
+
+/** 把词条携带的复习日志写到对应卡片（返回写入条数） */
+function attachReviewLogs(deck, logsByFront) {
+  if (!deck || !logsByFront.size) return 0;
+  const entries = [];
+  for (const c of deck.cards || []) {
+    const logs = logsByFront.get(String(c.front || '').trim().toLowerCase());
+    if (!logs || !logs.length) continue;
+    // 落库后卡片 id 是新生成的 → 重新归属（同步刷新日志主键，避免跨卡重号）
+    for (const e of logs) entries.push(revlog.reattach(e, c.id));
+  }
+  return entries.length ? store.importRevlogs(deck.id, entries) : 0;
+}
+
 /** 写入目标牌组（已有牌组 → 追加去重；否则新建） */
 function commitWords(words, { deckId, deckName, src, duplicates, file }) {
   const fileName = (file && file.name) || '';
+  const logsByFront = collectReviewLogs(words);
   if (deckId) {
     const deck = store.getDeck(deckId);
     if (!deck) throw new Error('目标牌组不存在');
@@ -1015,7 +1145,8 @@ function commitWords(words, { deckId, deckName, src, duplicates, file }) {
       fresh.push(Object.assign({}, w, { src, addedAt: Date.now() }));
     }
     if (fresh.length) store.addManyCards(deck.id, fresh); // 单事务整批写入 + 重新拆分关卡
-    const after = store.getDeck(deck.id);
+    let after = store.getDeck(deck.id);
+    const logsWritten = attachReviewLogs(after, logsByFront); // JSON 回导：复习日志随卡片恢复
     // 追加导入：记录实际新增的卡片 id（供「导入回滚」精确撤销）
     const addedCardIds = after.cards.filter((c) => !before.has(c.id)).map((c) => c.id);
     return {
@@ -1028,6 +1159,7 @@ function commitWords(words, { deckId, deckName, src, duplicates, file }) {
       existing: true,
       mode: 'append',
       addedCardIds,
+      logsWritten,
       fileName
     };
   }
@@ -1050,6 +1182,7 @@ function commitWords(words, { deckId, deckName, src, duplicates, file }) {
     existing: false,
     mode: 'new',
     addedCardIds: deck.cards.map((c) => c.id),
+    logsWritten: attachReviewLogs(deck, logsByFront),
     fileName
   };
 }
@@ -1081,7 +1214,8 @@ export function importWordsToDeck(words, { deckId = '', deckName = '', src = 'ta
 export function importSuccessHtml(res) {
   const extra = [
     res.skipped ? `跳过牌组内已存在 ${res.skipped} 张` : '',
-    res.duplicates ? `跳过文件内重复 ${res.duplicates} 张` : ''
+    res.duplicates ? `跳过文件内重复 ${res.duplicates} 张` : '',
+    res.logsWritten ? `恢复复习日志 ${res.logsWritten} 条` : ''
   ]
     .filter(Boolean)
     .join(' · ');

@@ -24,27 +24,41 @@
     - **英英选择 `eng_eng`**（*建议考研及以上水平使用（需较强英文阅读理解能力）*）：子模式 A「看单词选英文释义」/ 子模式 B「看英文释义猜单词」随机出现，释义取自 GCIDE
     - **多义多选 `multi_sense`**（*建议考研及以上水平使用*）：勾选该词**全部释义**后提交判分，**全对才算对**，漏选 / 多选 / 错选均算错；释义优先取卡组内中文释义（`back` ＋ 多释义），缺失时回退 GCIDE 英文释义
 - **整卡组可配置测试**：题数 **20~150** 可调（快速 20 / 标准 50 / 挑战 150 ＋ 滑块，步长 10），题型按权重分配、词数不足时循环覆盖，错题进优先池，支持中途退出续做
-- **导出词表 / Anki 卡包（v0.4.11，v0.4.13 扩至四种格式，v0.4.16 起带复习进度）**：卡组菜单（⋮）提供五种导出，纯前端下载（离线可用）；列序统一为 `正面 / 背面 / 例句 / 例句翻译 / 音标 / 标签(逗号)`，无正面的卡片不导出
+- **导出词表 / Anki 卡包（v0.4.11，v0.4.13 扩至四种格式，v0.4.16 起带复习进度，v0.5.8 起带复习日志）**：卡组菜单（⋮）提供五种导出，纯前端下载（离线可用）；列序统一为 `正面 / 背面 / 例句 / 例句翻译 / 音标 / 标签(逗号)`，无正面的卡片不导出
   - **标准 txt（TSV）**：UTF-8 带 BOM、制表符分隔、一卡一行，首行为列名；单元格内的制表符与换行会被清洗为空格（保证「一卡一行」）
   - **CSV（带表头）**：UTF-8 带 BOM、逗号分隔、CRLF 行尾，首行为列名；按 **RFC 4180** 转义 —— 含 `,` / `"` / 换行的字段用双引号包裹、内部 `"` 加倍（因此多行释义在 Excel / 表格工具里也不会串行）
   - **Markdown**：`# 卡组名` 标题 ＋ 标准 Markdown 表格（表头 ＋ `|---|---|` 分隔行）；单元格内 `|` 转义为 `\|`、换行转 `<br>`、制表符转空格（可直接贴进笔记 / GitHub）
-  - **JSON（含复习进度）**：`{formatVersion, name, description, tags, levelSize, cards:[…]}`，每张卡含内容 ＋ `state / repetitions / interval / easeFactor / due / lastReview`；结构与**导入侧完全兼容**，可「导出 → 导入」**无损往返**（复习状态、多释义、易混分组一并保留），用于整库备份 / 换设备迁移
-  - **Anki 卡包 `.apkg`**：ZIP（`collection.anki2` + `media` + **`meta`**）内为 **Anki 2.1 schema 的 SQLite**（内置 `vendor/sql.js` WASM 生成），含 `col/notes/cards/revlog/graves` 与 **Basic 笔记模板**；卡组名沿用应用里的名称，正面含音标、背面含其余释义与例句/翻译，标签转为 Anki 标签；**`cards` 表按卡片复习进度写入调度**（`state→type/queue`、`interval→ivl`、`easeFactor→factor`、`repetitions→reps`、`due→相对天数`），导入 Anki 后可直接续学；`meta` 为新版 Anki（≥2.1.50）要求的 **`PackageMetadata` protobuf**（`version = LEGACY_1`，与 `collection.anki2` + schema v11 自洽），**新版 Anki 不再因缺 `meta` 报错，老版 Anki 忽略该条目仍读 `collection.anki2`**；可直接在 Anki「文件 → 导入」打开（注：`revlog` 仍为空——逐次复习历史不迁移，只迁移聚合状态）
+  - **JSON（含复习进度 + 复习日志）**：`{formatVersion, name, description, tags, levelSize, cards:[…]}`，每张卡含内容 ＋ `state / repetitions / interval / easeFactor / due / lastReview`（`formatVersion: 2` 起每张卡还可带 `reviewLog:[…]` 逐次评分明细）；结构与**导入侧完全兼容**，可「导出 → 导入」**无损往返**（复习状态、复习日志、多释义、易混分组一并保留），用于整库备份 / 换设备迁移
+  - **Anki 卡包 `.apkg`**：ZIP（`collection.anki2` + `media` + **`meta`**）内为 **Anki 2.1 schema 的 SQLite**（内置 `vendor/sql.js` WASM 生成），含 `col/notes/cards/revlog/graves` 与 **Basic 笔记模板**；卡组名沿用应用里的名称，正面含音标、背面含其余释义与例句/翻译，标签转为 Anki 标签；**`cards` 表按卡片复习进度写入调度**（`state→type/queue`、`interval→ivl`、`easeFactor→factor`、`repetitions→reps`、`due→相对天数`/学习卡写入**到期时刻秒**与剩余步数 `left`、复习卡写入 `lapses`、`mod` 取 `lastReview`），导入 Anki 后可直接续学；**`revlog` 表写入每次评分明细**（`ease` 1~4 / `ivl`（正数=天、不足 1 天的学习步=负秒数，Anki 约定）/ `lastIvl` / `factor` / `time` 停留毫秒 / `type` 学习·复习·重学），Anki 侧的**复习热力图、记忆保持率、单卡历史**因此有数据；`meta` 为新版 Anki（≥2.1.50）要求的 **`PackageMetadata` protobuf**（`version = LEGACY_1`，与 `collection.anki2` + schema v11 自洽），**新版 Anki 不再因缺 `meta` 报错，老版 Anki 忽略该条目仍读 `collection.anki2`**；可直接在 Anki「文件 → 导入」打开
+- **复习日志（v0.5.8）**：每次在翻转记忆里评分（重来 / 困难 / 记住 / 轻松）都会追加一条明细到 **IndexedDB `revlog`**（库 `mycard` **v3**）——`ease` / 前后间隔 / `easeFactor` / **单卡停留毫秒** / Anki `type`（学习 0 / 复习 1 / 重学 2）；本机**只追加不覆盖**（与 Anki 一致），删卡片 / 删卡组时**级联清理**；导出 `.apkg` 时逐条写入 Anki 的 `revlog` 表，JSON 导出则按卡带上 `reviewLog` 并可**回导还原**（外部日志会重新归属到落库后的卡片、单卡上限 500 条、字段越界一律钳制）
 - **明暗模式（v0.4.10）**：**浅色 / 深色 / 跟随系统** 三档，设置页顶部「外观」区块切换，顶栏右侧一键快捷切换（浅色 ⇄ 深色）；切换即时生效并保存在本机（`localStorage['mycard-mode']`）；跟随系统时监听 `prefers-color-scheme` 自动跟随，`<meta name="theme-color">` 与原生控件（`color-scheme`）一并跟随；`index.html` 首屏前内联读取模式写 `<html data-theme>`，**不会先闪一下深色**
 - **主题色（v0.4.1，v0.4.14/15 补对比度，v0.4.19 覆盖非文字前景）**：设置页可切换主色调（8 个预设 ＋ 自定义取色），按钮 / 进度条 / 徽标 / 氛围光全局跟随（浅色 / 深色下均可用）；**所有「accent 作前景色」的地方都随主色派生**——文字 / 图标 / **焦点环 / 输入与高亮边框 / 原生 `accent-color`** 统一走 `--accent-tx`：保持主色色相与饱和度，**深色底统一提亮一档**（HSL 亮度 +0.12）、浅色底按需加深，再用 **WCAG 相对亮度对 HSL 亮度二分**保证与底色对比度 ≥ 4.5:1，**任意主色（含亮黄、极浅、近黑、灰）都成立（WCAG AA）**；`theme.js` 写入 `--tag-tx-dark`/`--tag-tx-light`，CSS 按 `data-theme` 二选一，故切色 / 切模式互不耦合
 - **首页添加单词 / 词表（v0.6）**：首页顶部只有一个输入框，自动判断三种输入并统一走「查词 → 预览 → 加入『我的生词』」
   - **单个单词**：在线查词典（按字符范围自动判断语种：英 / 德 / 法 / 希腊语走 [Free Dictionary API](https://dictionaryapi.dev/)，日语走 [Jisho](https://jisho.org/api)），预览音标 ＋ 多条释义后一键加入
   - **词表（每行一个，≤1000 词）**：批量查词，进度条显示「已处理 23/100」，请求间隔 ≥ 100ms，未查到的词集中列出
   - **大段文本**：自动分词去重（默认勾选前 50 个）→ 勾选需要的词 → 查词 → 加入
-  - **落库**：统一写入懒创建的「我的生词」卡组（`deck.source='custom'`），按单词去重、不覆盖已有词；首义存 `back`、其余义存 `extraBacks`（因此新词天然支持「多义多选」题型），并记录 `src` / `addedAt`；查询结果缓存进 IndexedDB `lookup` store（key = `${lang}_${word}`），重复查询不再联网，失败自动重试一次
+  - **落库**：统一写入懒创建的「我的生词」卡组（`deck.source='custom'`），按单词去重；首义存 `back`、其余义存 `extraBacks`（因此新词天然支持「多义多选」题型），并记录 `src` / `addedAt`；预览上方可切换 **「重复词自动合并」（v0.5.9，默认开，选择记在本机 `mycard-aw-merge`）** —— 开着时同一词的新释义会**并入已有卡片**（不新建重复卡），关掉则改为**跳过**并在结果里报告跳过数；查询结果缓存进 IndexedDB `lookup` store（key = `${lang}_${word}`），重复查询不再联网，失败自动重试一次
+- **「我的生词」批量整理（v0.5.9，`#/words`）**：**首页顶部**（「我的生词」有词时出现的分层图标按钮）或 **「我的生词」卡组详情页菜单 →「整理生词本（去重 / 标签）」** 进入**整理页**，把「加词时随手攒下的重复词、乱标签、缺释义」一次性收拾干净（纯前端、离线可用）
+  - **概览下钻**：顶部四个数字 —— **生词总数 / 缺释义 / 重复词组 / 未打标签**，点一下即按该条件筛选，再点恢复全部
+  - **去重合并**：同一个词 = 正面去掉首尾空格并忽略大小写后相同（`Time` / `time ` / `TIME` 算一个）；点「合并重复词（N 组）」先弹**合并报告**（每组「N 张 → 1 张 · M 个释义」＋合并后的释义序列），确认后才落库
+    - **保留哪张**：优先保留**已在复习**的卡片（复习进度与复习日志不丢），其余依次看复习次数 / 间隔 / `easeFactor` / 加入时间 / id
+    - **合并结果**：保留卡片的**原释义永远是第一义**，其余卡片的释义追加到「其它释义」（多义多选 / 英英题随即可用）；标签取并集；**复习进度与复习日志完全不变**，被删副卡的日志级联清理
+  - **筛选与排序**：搜索框（命中正面 / 释义 / 其它释义 / 例句 / 例句翻译 / 标签，输入防抖 180ms，重渲染后**焦点与光标自动还原**）＋ 标签 chips（含「未打标签」）＋ 来源 chips（在线查词 / 文件导入 / 内置 …）；排序 **加入时间（新→旧）/ 字母序 / 关卡顺序**；**每页 100 个词**，分页走 URL（`#/words?page=2`，浏览器前进 / 后退可用）
+  - **多选批量**：勾选卡片（含「本页全选」）后出现批量栏 —— **加标签 / 去标签**（弹窗输入并补全已有标签）/ **在线补查** / **删除**（二次确认，连同该词的复习日志一并清理）
+    - **在线补查**：未勾选时批量补「缺释义」的词，勾选后只补勾选的词；词会被填进**首页查词框**并跳回首页，点「添加」在线查词后**释义自动并入原卡片（不会新建重复卡）**
+  - **标签管理**：列出全部标签与词数，可**重命名**（改到已有标签则自动并入）或**删除**（从所有卡片上摘掉），一次生效
 - **本地文件导入词库（v0.6.1；v0.5.0 增 Excel / 多文件 / 历史回滚）**：首页「我的卡组」右上角 **导入** 按钮 / 下方**拖拽区**（拖入文件即可，含拖入高亮），选择本地 **CSV / TSV / JSON / XLSX** 文件（零第三方依赖，自带解析器）
-  - **Excel `.xlsx`**：自写「ZIP 读取 + 最小 XML 扫描」（`js/xlsx.js`，支持 STORED/DEFLATE、共享/内联字符串、数值/布尔/日期），取**第一个工作表** → 走同一套「预览 + 字段映射」；不支持公式求值 / 合并单元格 / 多 sheet 选择（明确限制）
+  - **Excel `.xlsx`（v0.5.7 增强：多工作表 / 公式 / 合并单元格）**：自写「ZIP 读取 + 最小 XML 扫描」（`js/xlsx.js`，支持 STORED/DEFLATE、共享/内联字符串、数值/布尔/日期），零第三方依赖 → 统一走「预览 + 字段映射」
+    - **多工作表**：按 `xl/workbook.xml` + `xl/_rels/workbook.xml.rels` 定位每张表的真实 XML（识别 `state="hidden"` 隐藏表；缺 `workbook.xml` 的文件回退 `sheetN.xml` 排序），导入预览**顶部的「工作表」下拉**可切换要导入的表（只列多张表时出现），字段映射随当前表即时刷新
+    - **公式**：**优先用 Excel 自己写好的缓存值**（`<v>`，与 Excel 显示一致）；缓存缺失时用自写的 tokenizer + 递归下降求值器**当场算**（`SUM/AVERAGE/COUNT/COUNTA/MIN/MAX/ROUND/ABS/INT/MOD/POWER/SQRT/LEN/LEFT/RIGHT/MID/UPPER/LOWER/TRIM/CONCAT/CONCATENATE/IF/IFERROR/AND/OR/NOT/TRUE/FALSE`、算术 `+-*/^`、比较 `= <> < > <= >=`、文本连接 `&`、区域引用、`IF/IFERROR` 惰性求值）；**循环引用**与不支持的函数（如 `VLOOKUP`、跨表 `Sheet1!A1`）自动回退缓存值，绝不猜
+    - **合并单元格**：默认把合并区**左上角的值填充**到整个合并区（Excel 显示效果；区域超出已有行列时自动补齐到表格末尾，已有数据不被覆盖），也可切换为「只保留左上角」；导入预览会提示「已计算 N 个公式 / M 个公式用 Excel 缓存值 / 合并单元格补全 K 格」
+    - **明确限制**：数组公式与自定义名称不参与求值、共享公式的**从属格**（只有 `si` 没有表达式）只能取缓存值、公式不跨表引用
   - **多文件批量导入**：导入按钮可**多选**、拖拽区可**拖入多个**文件 → **每个文件各建一个卡组**（按表头/位置自动映射），完成后弹「批量导入完成」汇总
   - **导入历史 / 回滚（v0.5.0）**：每次导入都记入**导入历史**（首页历史图标进入）：可**撤销**——新建的卡组直接删除；追加进已有卡组的则**只移除本次新增的卡片**（`cardIds` 存 IndexedDB，保留最近 5 次可精确回滚）；「导入完成」弹窗也直接提供「撤销导入」
   - **标准模版下载（v0.5.2；v0.5.4 增 JSON 模版与示例行可选）**：导入栏（拖拽区下方）提供 **「下载 CSV 模版」** 与 **「下载 JSON 模版」**
     - **CSV**：UTF-8 带 BOM（Excel 中文不乱码），首行为标准中文列名 `单词 / 释义 / 例句 / 例句翻译 / 音标 / 标签`（导入时自动对号）；点按钮先弹窗**选示例行**——**仅表头 / 1 行示例 / 多行示例**（多行示例覆盖「一词多义」「无例句」「格子里有逗号需引号」），选完再下载，提示「导入前请删除示例行」
     - **JSON**：`{name, description, tags, words:[…]}`（2 空格缩进），含 1 条完整示例 + 1 条只填必填字段的最简示例，下载后可直接用首页导入回灌
-  - **网页内表格录入（v0.5.3，`#/editor`；v0.5.5 增强录入体验）**：导入栏提供 **「在网页里填表格」**入口，不必先有文件——直接在浏览器里**逐格填写**（列与 CSV 模版**完全同源**：`单词 / 释义 / 例句 / 例句翻译 / 音标 / 标签`），支持 **＋ 添加一行 / 上移 / 下移 / 删除本行 / 清空**、**从文件载入**（CSV / TSV / XLSX / JSON，复用同一套解析器与表头对号）、**下载 CSV**（表头即模版列名，可直接用首页导入）；表格上方实时显示 **已填行数 / 缺单词 / 重复 / 可导入** 统计并**高亮重复行**，确认无误后一次导入为卡组（**新建** 或 **追加**到已有卡组，与文件导入走**完全相同**的校验 / 去重 / 写库链路，因此**同样记入导入历史、可撤销**）；内容**自动保存草稿**在本机（刷新 / 重新进入不丢），点「＋ 新建卡组」可直接命名新卡组
+  - **网页内表格录入（v0.5.3，`#/editor`；v0.5.5 增强录入体验）**：导入栏提供 **「在网页里填表格」**入口，不必先有文件——直接在浏览器里**逐格填写**（列与 CSV 模版**完全同源**：`单词 / 释义 / 例句 / 例句翻译 / 音标 / 标签`），支持 **＋ 添加一行 / 上移 / 下移 / 删除本行 / 清空**、**从文件载入**（CSV / TSV / XLSX / JSON，复用同一套解析器与表头对号；xlsx 默认取第一张表，多表切换在首页导入预览里）、**下载 CSV**（表头即模版列名，可直接用首页导入）；表格上方实时显示 **已填行数 / 缺单词 / 重复 / 可导入** 统计并**高亮重复行**，确认无误后一次导入为卡组（**新建** 或 **追加**到已有卡组，与文件导入走**完全相同**的校验 / 去重 / 写库链路，因此**同样记入导入历史、可撤销**）；内容**自动保存草稿**在本机（刷新 / 重新进入不丢），点「＋ 新建卡组」可直接命名新卡组
     - **粘贴多行（v0.5.5）**：从 Excel / 表格复制一块（Tab 分隔、换行分行）后**在任意单元格 Ctrl/Cmd+V**即可整块铺进表格——行数不够自动补行（上限 `MAX_TABLE_ROWS = 5000`），列数超出模版最后一列会被**截断**并在提示里写明「已截断 N 列 / 已补 N 行」；只有**单个单元格**的粘贴走浏览器默认行为
     - **长文本单元格（v0.5.5）**：每格是**自适应高度的多行输入框**（`rows=1`，随内容长高，封顶 200px，超出内部滚动），例句 / 多义释义不再被压成一行
     - **导入前预览 / 校验报告（v0.5.5）**：点「导入为卡组」先弹**宽版预览**——可导入条数、缺单词行、重复（表内重复去重 / 目标卡组已存在）、前 10 行表格预览、字段提示，确认后才真正写库
@@ -55,9 +69,9 @@
   - **CSV / TSV**：自动嗅探分隔符（`,` / `Tab` / `;`），支持引号包裹、引号内逗号与换行、`""` 转义、BOM；**表头中英文均可**（`word/单词/正面`、`meaning/释义/翻译`、`example/例句`、`exampleZh/例句翻译`、`phonetic/ipa/音标`、`tags/标签`）且列顺序不限；无表头时按 `front,back,example,exampleZh,phonetic,tags` 位置解析
   - **JSON**：兼容词库文件格式 `{name?, description?, tags?, levelSize?, words:[...]}` 与纯单词数组 `[{front|word, back|meaning, example, exampleZh, phonetic, tags}]`（预览显示「单词 / 释义」两列）
   - 整份文件解析后**一次事务批量写入**本地库，按单词去重并报告跳过数；新建牌组时 `source=null` 故可重复导入（各自新建卡组）
-- **数据存储（v0.4）**：卡片正文与学习进度存 **IndexedDB**（库 `mycard` v2，stores：`decks` / `cards` / `meta` / `lookup`），localStorage 只保留设置与卡组清单（key `mycard-meta`）；旧版 `mycard-v1` 整库会在首次启动时**自动迁移**到 IndexedDB 并删除旧键，从而支持万词级词库
+- **数据存储（v0.4，v0.5.8 库升到 v3）**：卡片正文与学习进度存 **IndexedDB**（库 `mycard` v3，stores：`decks` / `cards` / `meta` / `lookup` / **`revlog`**），localStorage 只保留设置与卡组清单（key `mycard-meta`）；旧版 `mycard-v1` 整库会在首次启动时**自动迁移**到 IndexedDB 并删除旧键，v2 → v3 为**增量升级**（只补建 `revlog` store 与其 `byDeck` / `byCard` 索引，既有数据不动），从而支持万词级词库
 - **内置词库**：仅内置「英语高频词（示范）」约 60 词（`data/words.json` ＋ 易混分组 `data/confusables.json`），首次打开**自动导入**并按难度编排 3 关；应用不再内置其它词库，需要时可用首页「导入」按钮导入自己的 CSV / JSON 词表（见上一条）。旧版本曾内置的 10 本考试词库（考研 / 四级 / 六级 / 托福 / 雅思 / 专四 / 专八 / SAT / 初中 / 高中）已下线，浏览器里**遗留的历史卡组会在启动时自动清理**（按 `source` 精确匹配，仅删这些内置卡组，不影响你自建的卡组与「我的生词」）
-- **PWA**：`manifest.json` ＋ `sw.js`；**代码 / 数据走网络优先**（在线总是最新，离线回退缓存），图片走缓存优先；新版本 SW 接管后自动刷新一次，通常**一次刷新即可看到新功能**；顶栏显示当前版本号（当前 `v0.5.6`），设置页另提供「强制刷新到最新版（清理离线缓存）」应对极端缓存情况
+- **PWA**：`manifest.json` ＋ `sw.js`；**代码 / 数据走网络优先**（在线总是最新，离线回退缓存），图片走缓存优先；新版本 SW 接管后自动刷新一次，通常**一次刷新即可看到新功能**；顶栏显示当前版本号（当前 `v0.5.9`），设置页另提供「强制刷新到最新版（清理离线缓存）」应对极端缓存情况
 - **界面**：移动端优先、深色主题、毛玻璃（glassmorphism）卡片；**桌面端自适应** —— `#app` 按 640 / 960 / 1280 / 1600px 断点逐级放宽（600 → 760 → 1080 → 1280 → 1440px），卡组用 `auto-fill` 网格随宽度平铺 2–5 列，宽屏下关卡列表两列平铺
 
 ## 目录结构
@@ -72,8 +86,10 @@
 ├── css/style.css           # 深色毛玻璃样式（移动端优先 + 桌面自适应）
 ├── js/
 │   ├── app.js              # 入口：路由 / 顶栏 / 设置页 / 启动引导（存储初始化 + 迁移）
-│   ├── store.js            # 数据层（IndexedDB 优先，localStorage 回退）+ 示范词库导入 / addWords
-│   ├── idb.js              # IndexedDB 极简封装（decks / cards / meta / lookup）
+│   ├── store.js            # 数据层（IndexedDB 优先，localStorage 回退）+ 示范词库导入 / addWords（含重复词合并）/ 批量合并·改标签
+│   ├── idb.js              # IndexedDB 极简封装（decks / cards / meta / lookup / revlog，库 v3）
+│   ├── revlog.js           # 复习日志（每次评分明细 ↔ Anki revlog 字段映射，纯函数）
+│   ├── wordbook.js         # 生词本整理内核（同词归并 / 保留卡片打分 / 合并 / 标签整理 / 筛选排序 / 多选，纯函数）
 │   ├── scheduler.js        # 艾宾浩斯间隔重复调度（纯函数）
 │   ├── levels.js           # 关卡拆分 / 解锁 / 通关判定 / 关卡分页（纯函数）
 │   ├── difficulty.js       # 难度判定（词频 / 词长 / 音节 / 熟悉度 / 语种特性，纯函数）
@@ -91,8 +107,9 @@
 │   ├── add-words.js        # 首页添加单词/词表：语种检测 / 分词 / 在线查词 / 缓存 / 预览
 │   ├── import-file.js      # 本地文件导入：CSV/TSV/JSON/XLSX 解析（零依赖）+ 预览 + 字段映射 + 多文件批量 + 拖拽区
 │   ├── import-history.js   # 导入历史与回滚（撤销导入：删新建卡组 / 移除追加卡片）
+│   ├── wordbook-view.js    # 生词本整理页 #/words（概览下钻 / 合并报告 / 多选批量 / 标签管理 / 在线补查）
 │   ├── table-editor.js     # 表格编辑页 #/editor（按模版列逐格录入 / 从文件载入 / 下载 CSV / 草稿 / 导入为卡组）
-│   └── xlsx.js             # 极简 .xlsx 读取器（自写 ZIP 读取 + 最小 XML 扫描）
+│   └── xlsx.js             # 极简 .xlsx 读取器（自写 ZIP 读取 + 最小 XML 扫描；多工作表 / 公式求值 / 合并单元格）
 ├── vendor/
 │   └── sql.js/             # 内置 sql.js（MIT）：WASM 版 SQLite，用于导出 .apkg（含 package.json 声明 CommonJS）
 ├── data/
@@ -109,6 +126,7 @@
     ├── split-gcide.mjs     # 把本地 GCIDE 语料重打包为 3~4 个 <25MB 的文本分卷（一次性）
     ├── fake-idb.mjs        # Node 测试用的最小 IndexedDB 桩
     ├── test-core.mjs       # 核心逻辑（调度 / 关卡，43 项断言）
+    ├── test-revlog.mjs     # 复习日志（ease/type 映射 / 清洗截断 / Anki 负秒换算，58 项断言）
     ├── test-difficulty.mjs # 难度判定维度（39 项断言）
     ├── test-arrange.mjs    # 关卡编排（22 项断言）
     ├── test-pagination.mjs # 关卡分页（25 项断言）
@@ -124,15 +142,16 @@
     ├── test-deck-test.mjs  # 整卡组可配置测试（抽题/优先池/优先池快路径/权重/续做，92 项断言）
     ├── test-eng-eng.mjs    # 英英选择题型（34 项断言）
     ├── test-multi-sense.mjs# 多义多选题型（39 项断言）
-    ├── test-idb-store.mjs  # 存储层（迁移 / 写穿 / 重载水合 / 重排 / 旧内置词库清理，42 项断言）
-    ├── test-add-words.mjs  # 首页添加单词 / 词表（82 项断言）
-    ├── test-import-file.mjs# 本地文件导入（解析/表头映射/预览/字段映射/目标牌组/追加/大词表/进度还原/XLSX/批量/历史回滚/CSV·JSON 模版，299 项断言）
-    ├── test-xlsx.mjs       # 极简 .xlsx 读取器（ZIP STORED/DEFLATE、共享字符串、日期、端到端，33 项断言）
-    ├── test-table-editor.mjs # 表格编辑页 #/editor（模版列一致性 / 表格内核 / 草稿 / 载入 / 粘贴多行 / 预览报告 / 渲染 / 事件 / 导入为卡组，219 项断言）
-    ├── test-export.mjs     # 导出 txt/CSV/Markdown/JSON/Anki apkg（RFC4180、meta protobuf、Anki 调度、ZIP+CRC32、Python sqlite3 校验产物，133 项断言）
-    ├── smoke-dom.mjs       # 无头 DOM 冒烟（各界面渲染 + 分页 + 明暗切换 + 导出/导入入口 + 表格编辑页，170 项断言）
+    ├── test-idb-store.mjs  # 存储层（v2→v3 升级 / 迁移 / 写穿 / 重载水合 / 复习日志 / 重排 / 旧内置词库清理 / 批量整理写穿，80 项断言）
+    ├── test-add-words.mjs  # 首页添加单词 / 词表（含重复词处理偏好 / 预填查词框，110 项断言）
+    ├── test-import-file.mjs# 本地文件导入（解析/表头映射/预览/字段映射/目标牌组/追加/大词表/进度与日志还原/XLSX 多表切换/批量/历史回滚/CSV·JSON 模版，336 项断言）
+    ├── test-xlsx.mjs       # 极简 .xlsx 读取器（ZIP STORED/DEFLATE、共享字符串、日期、多工作表/公式求值/合并单元格，125 项断言）
+    ├── test-table-editor.mjs # 表格编辑页 #/editor（模版列一致性 / 表格内核 / 草稿 / 载入 / 粘贴多行 / 预览报告 / 渲染 / 事件 / 导入为卡组 / xlsx 指定工作表，223 项断言）
+    ├── test-export.mjs     # 导出 txt/CSV/Markdown/JSON/Anki apkg（RFC4180、meta protobuf、Anki 调度、revlog 日志、ZIP+CRC32、Python sqlite3 校验产物，155 项断言）
+    ├── smoke-dom.mjs       # 无头 DOM 冒烟（各界面渲染 + 分页 + 明暗切换 + 导出/导入入口 + 表格编辑页 + 生词本整理页，199 项断言）
     ├── test-perf.mjs       # 大卡组（1 万词 / 500 关）规模：统计/分组/抽题（含优先池读取次数）正确性 + 耗时金丝雀（29 项）
-    └── verify-assets.mjs   # 资源完整性校验（301 项）
+    ├── test-wordbook.mjs   # 生词本整理（同词归并 / 保留卡片优先级 / 合并语义 / 标签整理 / 筛选排序 / 多选批量 / 页面渲染与分页，124 项断言）
+    └── verify-assets.mjs   # 资源完整性校验（374 项）
 ```
 
 ## 本地运行
@@ -151,12 +170,13 @@ python3 -m http.server 8080
 
 ```bash
 node scripts/test-core.mjs            # 核心逻辑（调度 / 关卡，43 项断言）
+node scripts/test-revlog.mjs          # 复习日志（ease/type 映射 / 清洗截断 / 排序汇总 / Anki 负秒换算，58 项）
 node scripts/test-difficulty.mjs      # 难度判定维度（词频/词长/音节/熟悉度/语种/缓存，39 项）
 node scripts/test-arrange.mjs         # 关卡编排（平缓进阶 / 错峰间隔 / 动态调序，22 项）
 node scripts/test-pagination.mjs      # 关卡分页（> 15 关 → 第 2/X 页，25 项）
 node scripts/test-resplit-levels.mjs  # 修改每关词数后旧关卡自动重新分组（26 项）
 node scripts/test-review-complete.mjs # 翻转完成页「进入测试 · 冲刺通关」可跳转（11 项）
-node scripts/test-review-interaction.mjs # 翻转记忆键盘 / 手势交互链路（12 项）
+node scripts/test-review-interaction.mjs # 翻转记忆键盘 / 手势交互链路 + 评分落日志（18 项）
 node scripts/test-theme.mjs           # 明暗模式（浅色/深色/跟随系统）+ 主题色 + 强调文字对比度（150 项）
 node scripts/test-confusables.mjs     # 干扰项 + 三种题型（释义/同组/兜底/单词池/挖空，82 项）
 node scripts/test-hardwords.mjs       # 整卡组翻转循环 / 困难词标记（26 项）
@@ -166,19 +186,20 @@ node scripts/test-listen.mjs          # 听音辨意（出题 / TTS 播放与降
 node scripts/test-deck-test.mjs       # 整卡组可配置测试（抽题/循环/优先池/优先池快路径/权重/续做，92 项）
 node scripts/test-eng-eng.mjs         # 英英选择题型（子模式 A/B、选项构成、回退，34 项）
 node scripts/test-multi-sense.mjs     # 多义多选题型（中文优先→GCIDE 回退、多选判分，39 项）
-node scripts/test-idb-store.mjs       # 存储层（迁移 / 写穿 / 重载水合 / 重排 / 旧内置词库清理，42 项）
-node scripts/test-add-words.mjs       # 首页添加单词/词表（语种/分词/查词/缓存/限速/去重落库，82 项）
-node scripts/test-import-file.mjs     # 本地文件导入（解析/预览/字段映射/目标牌组/追加/大词表/进度还原/XLSX/批量/历史回滚/CSV·JSON 模版，299 项）
-node scripts/test-xlsx.mjs            # 极简 .xlsx 读取器（ZIP STORED/DEFLATE、共享字符串、日期、端到端，33 项）
-node scripts/test-table-editor.mjs    # 表格编辑页 #/editor（模版列一致性 / 表格内核 / 草稿 / 载入 / 粘贴多行 / 预览报告 / 导入为卡组，219 项）
-node scripts/test-export.mjs          # 导出 txt / CSV / Markdown / JSON / Anki apkg（RFC4180·meta protobuf·Anki 调度·ZIP·CRC32，Python sqlite3 校验，133 项）
-node scripts/smoke-dom.mjs            # 无头 DOM 冒烟（各界面渲染 + 分页 + 明暗切换 + 导出/导入入口 + 表格编辑页，170 项）
+node scripts/test-idb-store.mjs       # 存储层（v2→v3 升级 / 迁移 / 写穿 / 重载水合 / 复习日志 / 重排 / 旧内置词库清理 / 批量整理写穿，80 项）
+node scripts/test-add-words.mjs       # 首页添加单词/词表（语种/分词/查词/缓存/限速/去重落库/重复词处理偏好，110 项）
+node scripts/test-import-file.mjs     # 本地文件导入（解析/预览/字段映射/目标牌组/追加/大词表/进度与日志还原/XLSX 多表切换/批量/历史回滚/CSV·JSON 模版，336 项）
+node scripts/test-xlsx.mjs            # 极简 .xlsx 读取器（ZIP STORED/DEFLATE、共享字符串、日期、多工作表/公式求值/合并单元格，125 项）
+node scripts/test-table-editor.mjs    # 表格编辑页 #/editor（模版列一致性 / 表格内核 / 草稿 / 载入 / 粘贴多行 / 预览报告 / 导入为卡组 / xlsx 指定工作表，223 项）
+node scripts/test-export.mjs          # 导出 txt / CSV / Markdown / JSON / Anki apkg（RFC4180·meta protobuf·Anki 调度·revlog 日志·ZIP·CRC32，Python sqlite3 校验，155 项）
+node scripts/smoke-dom.mjs            # 无头 DOM 冒烟（各界面渲染 + 分页 + 明暗切换 + 导出/导入入口 + 表格编辑页 + 生词本整理页，199 项）
 node scripts/test-perf.mjs            # 大卡组（1 万词）规模：单遍统计 / 复用关卡分组 / 抽题快路径（含优先池）× 读取次数 + 耗时（29 项）
-node scripts/verify-assets.mjs        # PWA 资源完整性 + 字段映射 / 明暗模式 / 导出 / 导入增强 / 表格编辑 / 性能校验（301 项）
+node scripts/test-wordbook.mjs        # 生词本整理（同词归并 / 保留卡片优先级 / 合并语义 / 标签整理 / 筛选排序 / 多选批量 / 页面渲染与分页，124 项）
+node scripts/verify-assets.mjs        # PWA 资源完整性 + 字段映射 / 明暗模式 / 导出（含 revlog）/ 导入增强（xlsx 多表·公式·合并）/ 表格编辑 / 生词本整理 / 性能校验（374 项）
 node --check js/*.js                  # 语法检查
 ```
 
-当前合计 **2093 条校验**（各套件输出的 `✓`）**全部通过、0 失败**（含纯函数单测、无头 DOM 冒烟、IndexedDB 存储、大词表导入、Anki 卡包产物与万级性能金丝雀）。
+当前合计 **2604 条校验**（27 个脚本，各套件输出的 `✓`）**全部通过、0 失败**（含纯函数单测、无头 DOM 冒烟、IndexedDB 存储与 v2→v3 升级、大词表导入、Anki 卡包产物（含 `revlog`）与万级性能金丝雀）。
 
 ## 部署：Cloudflare Pages
 
@@ -192,7 +213,7 @@ node --check js/*.js                  # 语法检查
 
 ## 数据说明
 
-- 卡片正文与学习进度保存在浏览器 **IndexedDB**（库 `mycard` v2：`decks` / `cards` / `meta` / `lookup`），全部在本机、不上传任何服务器；
+- 卡片正文与学习进度保存在浏览器 **IndexedDB**（库 `mycard` v3：`decks` / `cards` / `meta` / `lookup` / `revlog`），全部在本机、不上传任何服务器；
 - localStorage 只保留**设置与卡组清单**（key `mycard-meta`）以及少量本机状态，见下表；
 - 旧版本数据（整库存在 `localStorage["mycard-v1"]`）在首次启动时**自动迁移到 IndexedDB** 并删除旧键，以释放 localStorage 配额；
 - 设置页可一键清空全部数据，并显示当前存储方式、卡组 / 卡片数量与元数据占用；
@@ -206,12 +227,14 @@ node --check js/*.js                  # 语法检查
 | IndexedDB `mycard` | stores `decks` / `cards` | 卡组元信息、卡片正文与复习进度 |
 | IndexedDB `mycard` | store `meta` | 迁移标记等少量元数据 |
 | IndexedDB `mycard` | store `lookup` | 在线查词缓存（`${lang}_${word}` → 卡片） |
+| IndexedDB `mycard` | store `revlog` | 复习日志（每次评分明细；导出 .apkg 时写入 Anki 的 `revlog` 表） |
 | localStorage | `mycard-meta` | 设置 ＋ 卡组清单（精简元数据） |
 | localStorage | `mycard-v1` | **旧版整库**（仅迁移用，迁移完成后自动删除） |
 | localStorage | `mycard-accent` | 主题色（主色调） |
 | localStorage | `mycard-mode` | 明暗模式（`light` / `dark` / `system`） |
 | localStorage | `mycard-active-tag` | 首页标签筛选 |
 | localStorage | `mycard-hard-words` | 困难词标记 |
+| localStorage | `mycard-aw-merge` | 首页添加单词的「重复词自动合并」偏好（v0.5.9，默认开） |
 | localStorage | `mycard-test-config` | 测试配置（题数 / 题型权重 / 可选题型开关） |
 | localStorage | `mycard-test-priority` | 错题优先池 |
 | localStorage | `test_progress_{deckId}` / `test_progress_{deckId}__wrong` | 测试进度（常规 / 错题专项） |
@@ -247,7 +270,66 @@ node --check js/*.js                  # 语法检查
 - 手机端若当前面内容超长，纵向拖拽会**优先滚动内容**，到达边界后继续拖拽才触发上 / 下滑评分。
 - 反馈按钮右上角显示对应方向键提示（触摸设备自动隐藏）。
 
-## 整卡组翻转记忆（顶部「翻转记忆」按钮）
+## 复习日志（v0.5.8）
+
+每次在翻转记忆里评分都会**追加一条日志**（IndexedDB `revlog`，库 `mycard` v3），字段与 Anki 的 `revlog` 表一一对应：
+
+| 字段 | 含义 | 落到 Anki `revlog` |
+| --- | --- | --- |
+| `ts` | 评分时刻（毫秒） | `id`（毫秒主键，同毫秒自动去重递增） |
+| `cardId` | 卡片 id | `cid`（映射为卡包内 `cards.id`） |
+| `ease` | 1 重来 / 2 困难 / 3 记住 / 4 轻松 | `ease` |
+| `ivl` | 评分后的间隔（**天**，浮点） | `ivl`（≥1 天 = 正数天；不足 1 天的学习步 = **负数秒**，Anki 约定） |
+| `lastIvl` | 评分前的间隔（天） | `lastIvl`（同上换算） |
+| `factor` | 评分后的 easeFactor | `factor`（×1000 存整数） |
+| `time` | 该卡**停留毫秒**（上限 1 小时） | `time` |
+| `type` | 0 学习 / 1 复习 / 2 重学（遗忘） | `type` |
+
+- **只追加、不覆盖**（与 Anki 一致）；本机不设条数上限，删卡片 / 删卡组时**级联清理**对应日志。
+- 导出 `.apkg` 时逐条写入 Anki 的 `revlog` 表 → Anki 侧的**复习热力图、记忆保持率、单卡历史**都有数据；`cards.lapses` 也由日志里的「重学」次数推导。
+- JSON 导出（`formatVersion: 2`）把每张卡的日志放在该卡的 `reviewLog` 字段里，**回导时按单词重新归属到落库后的卡片**（单卡上限 500 条、字段越界一律钳制，避免脏数据撑爆存储）。
+- 说明：「跳过翻面 · 直接测试」通关时卡片会被直接记为「已学」，这**不是一次评分**，因此不写日志。
+
+
+## 生词本批量整理（`#/words`，v0.5.9）
+
+入口：**首页顶部**的分层图标按钮（「我的生词」有词时才出现）或 **「我的生词」卡组详情页菜单 →「整理生词本（去重 / 标签）」**。路由 `#/words?page=N`（浏览器前进 / 后退可用）。整页只处理**「我的生词」这一个卡组**，所有计算都在本机（纯函数内核 `js/wordbook.js`，页面逻辑 `js/wordbook-view.js`）。
+
+| 能力 | 说明 |
+| --- | --- |
+| 概览下钻 | 生词总数 / 缺释义 / 重复词组 / 未打标签 四个数字，点一下即筛选，再点恢复全部 |
+| 去重合并 | 「合并重复词（N 组）」→ **先出合并报告**（每组「N 张 → 1 张 · M 个释义」＋合并后的释义序列），确认后才写库 |
+| 筛选 | 搜索框（正面 / 释义 / 其它释义 / 例句 / 例句翻译 / 标签）＋ 标签 chips（含「未打标签」）＋ 来源 chips |
+| 排序 | 加入时间（新→旧）/ 字母序 / 关卡顺序 |
+| 分页 | 每页 **100** 个词，翻页走 URL（`#/words?page=2`） |
+| 多选 | 单卡勾选 ＋「本页全选」；选中后出现批量栏：**加标签 / 去标签 / 在线补查 / 删除 / 清除选择** |
+| 标签管理 | 列出标签与词数，可**重命名**（目标标签已存在则并入）或**删除**（从所有卡片上摘掉） |
+
+### 「同一个词」与「保留哪张」
+
+- **同一个词**：正面去掉首尾空格并忽略大小写后相同（`Time` / `time ` / `TIME` 视为同一词；`ice cream` 与 `icecream` 不算同一个词）。
+- **保留优先级**（`wordbook.keepScore`，从高到低）：**已在复习**（`state` 复习 > 学习中 > 新卡）→ 复习次数多 → 间隔长 → `easeFactor` 高 → **加入更早** → id 更小（兜底，保证结果稳定可复现）。
+
+### 合并时改了什么、没改什么
+
+- **改**：保留卡片的释义序列（原 `back` 仍是第一义，其余卡的释义追加进 `extraBacks`，自动去重）、标签（取并集）、多释义带来的「多义多选 / 英英题」可用性；被合并掉的副卡**连同它们的复习日志**从库里删除（`store.mergeCards` 级联清理）。
+- **不改**：保留卡片的**复习进度与复习日志**（`state` / `repetitions` / `interval` / `easeFactor` / `due` / `lastReview` 原样保留）——所以「整理」不会让你已经学过的词变成新词。
+- 报告弹窗里的保留规则提示就是上面两条；合并结果会 toast 汇总（「已合并 N 组重复词：删除 M 张」）。
+
+### 在线补查（缺释义一键补齐）
+
+- **未勾选任何卡片**：批量补「缺释义」的词（概览里的「缺释义」数字下钻即可看到是哪些词）。
+- **已勾选**：只补勾选的词（已有的释义不会被覆盖，**只补空缺**）。
+- 流程：把这些词填进**首页查词框**并跳回首页（复用「添加单词」的查词 / 缓存 / 预览链路）→ 点「添加」→ 查到的释义按单词匹配**并入原卡片**（沿用「重复词自动合并」逻辑，**不会新建重复卡**）；切回 `#/words` 就能看到补全结果。
+
+### 与「首页添加单词」的重复词偏好联动
+
+- 「重复词自动合并」开关（v0.5.9）在**首页添加单词预览上方**，默认**开**，选择记在本机 `localStorage['mycard-aw-merge']`。
+- **开**：同一个词的新释义并入已有卡片（首义保留、其余追加），报告「合并 N 张」；
+- **关**：同一个词直接**跳过**（保持旧行为），报告「跳过 N 张」。
+- 整理页的「在线补查」固定按**合并**方式回填，因此补查不会产生新的重复卡。
+
+
 
 进入卡组后，顶部按钮可进入**整卡组循环翻转**模式（路由 `#/review/{deck}`）：
 

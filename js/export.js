@@ -15,10 +15,11 @@
 //           `meta` 为新版 Anki（≥2.1.50）要求的 PackageMetadata protobuf：
 //           version = LEGACY_1(1)，与 collection.anki2 + schema v11 自洽；
 //           新版 Anki 读到 meta 不再报错，老版 Anki 忽略该条目仍读 collection.anki2。
-//   - json：内容 + 复习进度 + 卡组元信息（与导入侧 parseImportJson 结构兼容，
-//           可「导出 → 导入」无损往返；见 deckToJson）
+//   - json：内容 + 复习进度 + 复习日志 + 卡组元信息（与导入侧 parseImportJson 结构兼容，
+//           可「导出 → 导入」无损往返；见 deckToJson / js/revlog.js）
 //   - 复习进度：txt/csv/md 为「词表」不含调度；apkg 的 cards 表按 cardToAnkiSched
-//           映射 state/repetitions/interval/easeFactor/due（Anki 侧可直接续学）
+//           映射 state/repetitions/interval/easeFactor/due（Anki 侧可直接续学），
+//           并按 revlog 表写入每次评分明细（Anki 侧热力图 / 记忆保持率 / 单卡历史）
 //   - 浏览器里首次导出时才懒加载 sql.js（不阻塞启动、离线可用）。
 //
 // 导出 API：downloadBlob / deckToTxt / deckToCsv / deckToMarkdown / deckToJson /
@@ -27,6 +28,7 @@
 // ============================================================================
 
 import * as store from './store.js';
+import * as revlog from './revlog.js';
 import { on, toast } from './ui.js';
 
 export const SQL_VENDOR_DIR = 'vendor/sql.js/';
@@ -189,36 +191,50 @@ export function deckToMarkdown(deck, { header = true, title = true } = {}) {
 /* ------------------------------ JSON（完整导出，含复习进度） ------------------------------ */
 
 /**
- * 卡组 → JSON 文本（内容 + 复习进度 + 卡组元信息）。
+ * 卡组 → JSON 文本（内容 + 复习进度 + 复习日志 + 卡组元信息）。
  * 结构与导入侧 `parseImportJson` 兼容（`{ name, description, tags, levelSize, cards:[…] }`），
- * 因此可「导出 → 导入」无损往返：复习状态、多释义、易混分组一并保留。
+ * 因此可「导出 → 导入」无损往返：复习状态、多释义、易混分组、**每次评分明细**一并保留。
  * @param {object} deck
- * @param {{ pretty?: boolean }} opts pretty=true 输出缩进
+ * @param {{ pretty?: boolean, revlogs?: Array }} opts
+ *        pretty=true 输出缩进；revlogs=该卡组的复习日志（缺省时取 deck.revlogs）
  */
-export function deckToJson(deck, { pretty = true } = {}) {
+export function deckToJson(deck, { pretty = true, revlogs } = {}) {
   const d = deck || {};
+  const logList = Array.isArray(revlogs) ? revlogs : Array.isArray(d.revlogs) ? d.revlogs : [];
+  const logsByCard = new Map();
+  for (const e of revlog.sortEntries(logList)) {
+    const list = logsByCard.get(e.cardId);
+    if (list) list.push(e);
+    else logsByCard.set(e.cardId, [e]);
+  }
   const cards = (d.cards || [])
     .filter((c) => String(c.front || '').trim())
-    .map((c, i) => ({
-      front: c.front,
-      back: c.back ?? '',
-      example: c.example ?? '',
-      exampleZh: c.exampleZh ?? '',
-      phonetic: c.phonetic ?? '',
-      tags: Array.isArray(c.tags) ? c.tags : [],
-      extraBacks: Array.isArray(c.extraBacks) ? c.extraBacks : [],
-      groups: Array.isArray(c.groups) ? c.groups : [],
-      level: Number.isInteger(c.level) && c.level >= 0 ? c.level : i,
-      // 复习进度（导入时由 store.pickScheduling 校验；缺省 = 新卡）
-      state: c.state || 'new',
-      repetitions: Number(c.repetitions) || 0,
-      interval: Number(c.interval) || 0,
-      easeFactor: Number.isFinite(c.easeFactor) ? c.easeFactor : 2.5,
-      due: Number(c.due) || 0,
-      lastReview: c.lastReview ?? null
-    }));
+    .map((c, i) => {
+      const out = {
+        front: c.front,
+        back: c.back ?? '',
+        example: c.example ?? '',
+        exampleZh: c.exampleZh ?? '',
+        phonetic: c.phonetic ?? '',
+        tags: Array.isArray(c.tags) ? c.tags : [],
+        extraBacks: Array.isArray(c.extraBacks) ? c.extraBacks : [],
+        groups: Array.isArray(c.groups) ? c.groups : [],
+        level: Number.isInteger(c.level) && c.level >= 0 ? c.level : i,
+        // 复习进度（导入时由 store.pickScheduling 校验；缺省 = 新卡）
+        state: c.state || 'new',
+        repetitions: Number(c.repetitions) || 0,
+        interval: Number(c.interval) || 0,
+        easeFactor: Number.isFinite(c.easeFactor) ? c.easeFactor : 2.5,
+        due: Number(c.due) || 0,
+        lastReview: c.lastReview ?? null
+      };
+      // 复习日志（v0.5.8，formatVersion 2 新增）：单位与存储一致（ivl = 天）
+      const logs = logsByCard.get(c.id);
+      if (logs && logs.length) out.reviewLog = logs;
+      return out;
+    });
   const payload = {
-    formatVersion: 1,
+    formatVersion: 2,
     name: d.name || 'Mycard',
     description: d.description || '',
     tags: Array.isArray(d.tags) ? d.tags : [],
@@ -568,18 +584,24 @@ export function colConfJson(mid, deckId) {
 export const ANKI_DAY_MS = 86400000;
 
 /**
- * 卡片 → Anki `cards` 表的调度列（type/queue/due/ivl/factor/reps）。
+ * 卡片 → Anki `cards` 表的调度列（type/queue/due/ivl/factor/reps/lapses/left/mod）。
  * 把 Mycard 的 state / repetitions / interval(天) / easeFactor / due(毫秒时间戳)
- * 映射为 Anki 2.1 调度字段；`due` 用「相对集合创建日的天数」近似（Anki 本身即日粒度）。
+ * 映射为 Anki 2.1 调度字段：
+ *   - 复习卡：`due` 用「相对集合创建日的天数」（Anki 本身即日粒度）
+ *   - 学习卡：Anki 的 due 是**到期时刻（epoch 秒）**、ivl 是**剩余秒数**、left 为剩余步数，
+ *     因此按 `lastReview + interval` 精确还原（Anki 打开后按同一步骤继续）
  * @param {object} card        卡片
  * @param {number} position    新卡在队列中的位置（1 起）
  * @param {number} now         当前时间戳（毫秒）
  * @param {number} todayNumber 今天相对 crt 的日数（通常为 0，见 buildCollection）
+ * @param {{ lapses?: number }} [extra] lapses = 复习日志里的遗忘次数（Anki cards.lapses）
  */
-export function cardToAnkiSched(card, position, now = Date.now(), todayNumber = 0) {
+export function cardToAnkiSched(card, position, now = Date.now(), todayNumber = 0, extra = {}) {
   const c = card || {};
   const ef = Number.isFinite(c.easeFactor) ? c.easeFactor : 2.5;
   const factor = Math.max(1300, Math.min(3000, Math.round(ef * 1000)));
+  const lapses = Math.max(0, Math.round(Number(extra.lapses) || 0));
+  const lastSecs = c.lastReview != null ? Math.floor(Number(c.lastReview) / 1000) : 0;
   if (c.state === 'review' && c.lastReview != null) {
     const ivl = Math.max(1, Math.round(Number(c.interval) || 0)); // Anki 复习间隔为整天
     const daysUntil = Math.max(0, Math.round((Number(c.due) - now) / ANKI_DAY_MS) || 0);
@@ -589,20 +611,26 @@ export function cardToAnkiSched(card, position, now = Date.now(), todayNumber = 
       due: todayNumber + daysUntil,
       ivl,
       factor,
-      reps: Math.max(0, Math.round(Number(c.repetitions) || 0))
+      reps: Math.max(0, Math.round(Number(c.repetitions) || 0)),
+      lapses,
+      left: 0,
+      mod: lastSecs
     };
   }
   if (c.state === 'learning') {
-    return { type: 1, queue: 1, due: todayNumber, ivl: 0, factor, reps: 0 };
+    // 学习步（Anki：due = epoch 秒 / ivl = 秒 / left = 剩余步数）
+    const ivlSecs = Math.max(0, Math.round((Number(c.interval) || 0) * ANKI_DAY_MS / 1000));
+    const dueSecs = lastSecs ? lastSecs + ivlSecs : Math.floor(now / 1000);
+    return { type: 1, queue: 1, due: dueSecs, ivl: ivlSecs, factor, reps: 1, lapses, left: 1, mod: lastSecs || Math.floor(now / 1000) };
   }
   // 新卡：沿用 Anki 惯例（due = 队列位置、factor = 2500）
-  return { type: 0, queue: 0, due: position, ivl: 0, factor: 2500, reps: 0 };
+  return { type: 0, queue: 0, due: position, ivl: 0, factor: 2500, reps: 0, lapses, left: 0, mod: Math.floor(now / 1000) };
 }
 
 /* ------------------------------ 生成 collection.anki2 / .apkg ------------------------------ */
 
-/** 用 sql.js 生成 collection.anki2 字节（Anki 2.1 可导入，含复习进度） */
-export async function buildCollection(deck, { SQL, deckName, now = Date.now() } = {}) {
+/** 用 sql.js 生成 collection.anki2 字节（Anki 2.1 可导入，含复习进度 + revlog 复习日志） */
+export async function buildCollection(deck, { SQL, deckName, now = Date.now(), revlogs } = {}) {
   if (!SQL || typeof SQL.Database !== 'function') throw new Error('sql.js 未就绪');
   const cards = ((deck && deck.cards) || []).filter((c) => String(c.front || '').trim());
   const name = safeFileName(deckName || (deck && deck.name) || 'Mycard', 'Mycard');
@@ -612,6 +640,23 @@ export async function buildCollection(deck, { SQL, deckName, now = Date.now() } 
   const todayNumber = Math.max(0, Math.floor((now - crt * 1000) / ANKI_DAY_MS));
   const mid = 1650000000000 + (now % 100000000);
   const deckId = 1;
+
+  // 复习日志：按卡片分组（导出前由 store.revlogsOfDeck 读入；缺省取 deck.revlogs）
+  const logList = revlog.sortEntries(Array.isArray(revlogs) ? revlogs : ((deck && deck.revlogs) || []));
+  const logsByCard = new Map();
+  for (const e of logList) {
+    const list = logsByCard.get(e.cardId);
+    if (list) list.push(e);
+    else logsByCard.set(e.cardId, [e]);
+  }
+  // revlog.id 为毫秒主键且不可重复（同毫秒多次评分时顺序探测 +1，保持时间序）
+  const usedRevIds = new Set();
+  const nextRevId = (ts) => {
+    let v = Math.round(ts) * 1000;
+    while (usedRevIds.has(v)) v += 1;
+    usedRevIds.add(v);
+    return v;
+  };
 
   const db = new SQL.Database();
   db.run(ANKI_SCHEMA);
@@ -655,27 +700,31 @@ export async function buildCollection(deck, { SQL, deckName, now = Date.now() } 
       0,
       ''
     ]);
-    const sched = cardToAnkiSched(c, i + 1, now, todayNumber);
+    const sched = cardToAnkiSched(c, i + 1, now, todayNumber, { lapses: revlog.lapsesOf(logsByCard.get(c.id)) });
     db.run('INSERT INTO cards VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)', [
       cardId,
       noteId,
       deckId,
       0, // ord
-      secs, // mod
+      sched.mod, // mod：最后一次改动时刻（有复习记录时取 lastReview）
       0, // usn
       sched.type, // type：0 新卡 / 1 学习 / 2 复习
       sched.queue, // queue：0 新 / 1 学习 / 2 复习
-      sched.due, // due：新卡=队列位置；学习=今天；复习=今天 + 剩余天数
-      sched.ivl, // ivl：复习间隔（天）
+      sched.due, // due：新卡=队列位置；学习=到期时刻(秒)；复习=今天 + 剩余天数
+      sched.ivl, // ivl：复习间隔（天）/ 学习步剩余（秒）
       sched.factor, // factor：easeFactor × 1000
       sched.reps, // reps：成功回忆次数
-      0, // lapses
-      0, // left
+      sched.lapses, // lapses：遗忘（重学）次数 —— 取自复习日志
+      sched.left, // left：学习步剩余次数
       0, // odue
       0, // odid
       0, // flags
       '' // data
     ]);
+    // revlog：每次评分一行（Anki 的复习热力图 / 记忆保持率 / 单卡历史都读这张表）
+    for (const e of logsByCard.get(c.id) || []) {
+      db.run('INSERT INTO revlog VALUES (?,?,?,?,?,?,?,?,?)', revlog.toAnkiRow(e, cardId, nextRevId(e.ts)));
+    }
   }
   db.run('COMMIT');
 
@@ -780,9 +829,10 @@ export function exportDeckMarkdown(deckId) {
   return exportDeckText(deckId, deckToMarkdown, '.md', 'text/markdown;charset=utf-8');
 }
 
-/** 导出卡组为 JSON（含复习进度，可无损回导）并触发下载 */
-export function exportDeckJson(deckId) {
-  return exportDeckText(deckId, deckToJson, '.json', 'application/json;charset=utf-8');
+/** 导出卡组为 JSON（含复习进度 + 复习日志，可无损回导）并触发下载 */
+export async function exportDeckJson(deckId) {
+  const revlogs = await store.revlogsOfDeck(deckId).catch(() => []);
+  return exportDeckText(deckId, (deck) => deckToJson(deck, { revlogs }), '.json', 'application/json;charset=utf-8');
 }
 
 /** 导出卡组为 Anki 卡包（.apkg）并触发下载 */
@@ -790,12 +840,13 @@ export async function exportDeckApkg(deckId) {
   const deck = resolveExportDeck(deckId);
   if (!deck) return null;
   const n = (deck.cards || []).length;
+  const revlogs = await store.revlogsOfDeck(deckId).catch(() => []);
   toast(`正在打包「${deck.name}」（${n} 张）…`);
   try {
-    const bytes = await deckToApkg(deck);
+    const bytes = await deckToApkg(deck, { revlogs });
     const filename = safeFileName(deck.name, 'mycard') + '.apkg';
     const res = downloadBlob(filename, bytes, 'application/octet-stream');
-    toast(`已导出 Anki 卡包 ${filename}（${n} 张）`, 'good');
+    toast(`已导出 Anki 卡包 ${filename}（${n} 张${revlogs.length ? ` · 复习日志 ${revlogs.length} 条` : ''}）`, 'good');
     return { filename, bytes, size: res ? res.size : bytes.length };
   } catch (e) {
     console.error(e);
