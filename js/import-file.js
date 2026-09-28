@@ -637,8 +637,29 @@ export const CSV_TEMPLATE_COLUMNS = ['单词', '释义', '例句', '例句翻译
  * 音标带斜杠、标签用逗号分隔（因此该项在 CSV 中会被引号包裹）。
  */
 export const CSV_TEMPLATE_EXAMPLE = ['apple', '苹果', 'This is an apple.', '这是一个苹果。', '/ˈæpl/', '水果,基础'];
+/**
+ * 多行示例（演示常见的「不整齐」情形，**导入前请删除**）：
+ *   - bank：多义词（释义用「；」分隔多个义项）、无例句 / 无音标（对应列留空即可）
+ *   - note：例句含逗号 → 该格自动被引号包裹（CSV 转义示例）
+ *   - pear：只填必填的「单词 / 释义」两列，可选列全空
+ */
+export const CSV_TEMPLATE_EXAMPLES = [
+  CSV_TEMPLATE_EXAMPLE,
+  ['bank', '银行；河岸', '', '', '', '金融,地理'],
+  ['note', '笔记；便条', 'Take notes, please.', '请做笔记。', '', '学习,基础'],
+  ['pear', '梨', '', '', '', '']
+];
 /** 模版文件名 */
 export const CSV_TEMPLATE_FILENAME = 'Mycard-CSV模版.csv';
+/**
+ * 模版变体（下载前可选）：仅表头 / 表头 + 1 行示例（默认，与旧版一致）/ 表头 + 多行示例。
+ * `label` 用于弹窗选项展示，`note` 说明适用场景。
+ */
+export const CSV_TEMPLATE_VARIANTS = [
+  { value: 'head', label: '仅表头', note: '不带示例行 —— 下载后可直接开始填写' },
+  { value: 'single', label: '表头 + 1 行示例', note: '与旧版一致：apple 的完整示例（导入前请删除示例行）' },
+  { value: 'multi', label: '表头 + 多行示例', note: '额外演示多义词、无例句、无音标、例句含逗号、只填必填列' }
+];
 
 /** CSV 单元格转义（含 , " 换行时用双引号包裹，内部 " 加倍） */
 function csvQuote(v) {
@@ -651,9 +672,21 @@ export function csvText(rows) {
   return '\uFEFF' + (rows || []).map((r) => (r || []).map(csvQuote).join(',')).join('\r\n') + '\r\n';
 }
 
-/** 标准 CSV 模版文本（UTF-8 BOM + 表头 + 1 行示例；CRLF 行尾，Excel 友好） */
-export function csvTemplateText() {
-  return csvText([CSV_TEMPLATE_COLUMNS, CSV_TEMPLATE_EXAMPLE]);
+/** 变体名 → 示例行数组（head 不带示例；未知变体按 single 处理） */
+export function csvTemplateExampleRows(variant = 'single') {
+  if (variant === 'head') return [];
+  if (variant === 'multi') return CSV_TEMPLATE_EXAMPLES.map((r) => r.slice());
+  return [CSV_TEMPLATE_EXAMPLE.slice()];
+}
+
+/** CSV 模版二维数组（表头 + 按变体附带的示例行），供模版下载与预览复用 */
+export function csvTemplateRows({ variant = 'single' } = {}) {
+  return [CSV_TEMPLATE_COLUMNS.slice(), ...csvTemplateExampleRows(variant)];
+}
+
+/** 标准 CSV 模版文本（UTF-8 BOM + 表头 + 示例行；CRLF 行尾，Excel 友好）；默认 1 行示例 */
+export function csvTemplateText({ variant = 'single' } = {}) {
+  return csvText(csvTemplateRows({ variant }));
 }
 
 /** 触发浏览器下载文本文件；非浏览器环境返回 null（便于测试） */
@@ -684,15 +717,55 @@ function downloadTextFile(filename, text, mime = 'text/csv;charset=utf-8') {
   return { filename, size: blob.size, url };
 }
 
-/** 下载标准 CSV 模版（含表头与 1 行示例） */
-export function downloadCsvTemplate() {
-  const text = csvTemplateText();
+/** 下载标准 CSV 模版（默认含 1 行示例；variant = head / single / multi） */
+export function downloadCsvTemplate({ variant = 'single' } = {}) {
+  const text = csvTemplateText({ variant });
   const res = downloadTextFile(CSV_TEMPLATE_FILENAME, text);
+  const tip = variant === 'head' ? '（仅表头，不含示例行）' : `（含 ${
+    csvTemplateExampleRows(variant).length
+  } 行示例，导入前请删除）`;
   toast(
-    res ? `已下载模版 ${CSV_TEMPLATE_FILENAME}（示例行请于导入前删除）` : '当前环境不支持下载，请手动新建 CSV',
+    res ? `已下载模版 ${CSV_TEMPLATE_FILENAME}${tip}` : '当前环境不支持下载，请手动新建 CSV',
     res ? 'good' : 'warn'
   );
-  return { filename: CSV_TEMPLATE_FILENAME, text, size: res ? res.size : text.length };
+  return { filename: CSV_TEMPLATE_FILENAME, text, size: res ? res.size : text.length, variant };
+}
+
+/**
+ * 「下载 CSV 模版」弹窗 HTML（纯函数，便于测试）：
+ * 说明标准列 + 变体选择（仅表头 / 1 行示例 / 多行示例）以及各自适用场景。
+ */
+export function csvTemplateDialogHtml() {
+  const opts = CSV_TEMPLATE_VARIANTS.map(
+    (v) => `<option value="${esc(v.value)}"${v.value === 'single' ? ' selected' : ''}>${esc(v.label)}</option>`
+  ).join('');
+  const notes = CSV_TEMPLATE_VARIANTS.map((v) => `<li><b>${esc(v.label)}</b>：${esc(v.note)}</li>`).join('');
+  return (
+    `<p class="csv-hint">标准列：${CSV_TEMPLATE_COLUMNS.map(esc).join(' / ')}（列名会自动对号，顺序不限）</p>` +
+    `<div class="dt-row"><select class="dt-select" name="variant" aria-label="模版示例行">${opts}</select></div>` +
+    `<ul class="tpl-notes">${notes}</ul>` +
+    `<p class="csv-hint">示例行只是「怎么填」的演示，导入时按真实行解析 —— 记得先删掉示例行。</p>`
+  );
+}
+
+/** 打开「下载 CSV 模版」弹窗（先选变体，再下载） */
+export function openCsvTemplateDialog() {
+  const overlay = openModal({
+    title: '下载 CSV 模版',
+    body: csvTemplateDialogHtml(),
+    actions: [
+      { label: '取消', cls: 'btn-ghost' },
+      {
+        label: '下载',
+        cls: 'btn-primary',
+        onClick: () => {
+          const picked = readForm(overlay).variant;
+          downloadCsvTemplate({ variant: picked || 'single' });
+        }
+      }
+    ]
+  });
+  return overlay;
 }
 
 /** 下载任意二维数组为 CSV（表格编辑页「下载 CSV」用） */
@@ -703,9 +776,59 @@ export function downloadCsvRows(filename, rows) {
   return { filename: String(filename || 'Mycard.csv'), text, size: res ? res.size : text.length };
 }
 
-/** 首页「下载 CSV 模版」链接 */
+/** 首页「下载 CSV 模版」链接（点击后先选示例行变体） */
 export function csvTemplateButtonHtml() {
-  return `<button class="btn-link" data-action="download-csv-template" title="下载标准 CSV 模版（表头 + 1 行示例，导入前请删除示例行）">下载 CSV 模版</button>`;
+  return `<button class="btn-link" data-action="download-csv-template" title="下载标准 CSV 模版（可选仅表头 / 1 行示例 / 多行示例）">下载 CSV 模版</button>`;
+}
+
+/* ------------------------------ 标准 JSON 模版 ------------------------------ */
+
+/** JSON 模版文件名 */
+export const JSON_TEMPLATE_FILENAME = 'Mycard-JSON模版.json';
+/**
+ * JSON 模版内容（下载后可直接用首页「导入词库」导入）：
+ * 顶层 `{ name, description, tags, levelSize, words: [...] }`；词条字段 front / back 必填，
+ * example / exampleZh / phonetic / tags / extraBacks（多义词的其他释义）可选。
+ * 第二条只填必填项，说明可选字段可以整块省略。
+ */
+export const JSON_TEMPLATE_SAMPLE = {
+  name: '我的词库',
+  description: 'JSON 模版：第一条为完整示例，第二条只填必填的单词 / 释义',
+  tags: ['导入'],
+  levelSize: 20,
+  words: [
+    {
+      front: 'apple',
+      back: '苹果',
+      example: 'This is an apple.',
+      exampleZh: '这是一个苹果。',
+      phonetic: '/ˈæpl/',
+      tags: ['水果', '基础'],
+      extraBacks: ['苹果树']
+    },
+    { front: 'pear', back: '梨' }
+  ]
+};
+
+/** JSON 模版文本（2 空格缩进 + 末尾换行，便于手工编辑） */
+export function jsonTemplateText() {
+  return JSON.stringify(JSON_TEMPLATE_SAMPLE, null, 2) + '\n';
+}
+
+/** 下载标准 JSON 模版 */
+export function downloadJsonTemplate() {
+  const text = jsonTemplateText();
+  const res = downloadTextFile(JSON_TEMPLATE_FILENAME, text, 'application/json;charset=utf-8');
+  toast(
+    res ? `已下载模版 ${JSON_TEMPLATE_FILENAME}（改完即可用首页「导入词库」导入）` : '当前环境不支持下载，请手动新建 JSON',
+    res ? 'good' : 'warn'
+  );
+  return { filename: JSON_TEMPLATE_FILENAME, text, size: res ? res.size : text.length };
+}
+
+/** 首页「下载 JSON 模版」链接 */
+export function jsonTemplateButtonHtml() {
+  return `<button class="btn-link" data-action="download-json-template" title="下载标准 JSON 模版（含 1 个完整示例 + 1 个最简示例，可直接导入）">下载 JSON 模版</button>`;
 }
 
 /** 首页「导入词库」按钮（CSV / TSV / JSON / XLSX，可多选批量导入） */
@@ -1167,7 +1290,12 @@ on('import-file', () => {
   openFilePicker();
 });
 
-/* 下载标准 CSV 模版（首页导入栏） */
+/* 下载标准 CSV 模版（首页导入栏 → 先选「示例行变体」） */
 on('download-csv-template', () => {
-  downloadCsvTemplate();
+  openCsvTemplateDialog();
+});
+
+/* 下载标准 JSON 模版（首页导入栏） */
+on('download-json-template', () => {
+  downloadJsonTemplate();
 });

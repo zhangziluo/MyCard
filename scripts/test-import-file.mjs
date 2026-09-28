@@ -723,6 +723,106 @@ console.log('\n[标准 CSV 模版（下载）]');
   ok(res.words === 1 && res.name === 'Mycard-CSV模版', '模版可被直接导入（示例行 = 1 张卡）', res.words);
 }
 
+console.log('\n[模版变体：仅表头 / 多行示例]');
+{
+  ok(imp.CSV_TEMPLATE_VARIANTS.length === 3, '变体共 3 种（仅表头 / 1 行示例 / 多行示例）');
+  ok(
+    imp.CSV_TEMPLATE_VARIANTS.map((v) => v.value).join(',') === 'head,single,multi',
+    '变体取值',
+    imp.CSV_TEMPLATE_VARIANTS.map((v) => v.value)
+  );
+  ok(imp.CSV_TEMPLATE_EXAMPLES.length === 4, '多行示例共 4 行', imp.CSV_TEMPLATE_EXAMPLES.length);
+  ok(imp.csvTemplateExampleRows('head').length === 0, 'head → 0 行示例');
+  ok(imp.csvTemplateExampleRows('single').length === 1, 'single → 1 行示例');
+  ok(imp.csvTemplateExampleRows('multi').length === 4, 'multi → 4 行示例');
+  ok(imp.csvTemplateExampleRows('未定义的变体').length === 1, '未知变体回退到 1 行示例（稳健）');
+
+  const head = imp.csvTemplateText({ variant: 'head' });
+  ok(head.charCodeAt(0) === 0xfeff, '仅表头：仍带 UTF-8 BOM（Excel 友好）');
+  ok(head.slice(1).replace(/\r\n$/, '').split('\r\n').length === 1, '仅表头：只有表头 1 行');
+  ok(imp.csvTemplateRows({ variant: 'head' }).length === 1, 'csvTemplateRows 可复用得二维数组');
+
+  const multi = imp.csvTemplateText({ variant: 'multi' });
+  const mrows = imp.parseCsv(multi);
+  ok(mrows.length === 5 && imp.isHeaderRow(mrows[0]), '多行示例：表头 + 4 行示例', mrows.length);
+  ok(multi.includes('"Take notes, please."'), '含逗号的单元格被引号包裹（转义示例）', multi.split('\r\n')[3]);
+  const mwords = imp.rowsToWords(mrows);
+  ok(mwords.length === 4, '多行示例解析出 4 个词条', mwords.map((w) => w.front));
+  const bank = mwords.find((w) => w.front === 'bank');
+  ok(!!bank && bank.back === '银行；河岸' && !bank.example && !bank.phonetic, '多义词行：释义含「；」、无例句 / 无音标', bank);
+  const note = mwords.find((w) => w.front === 'note');
+  ok(!!note && note.example === 'Take notes, please.' && note.exampleZh === '请做笔记。', '例句含逗号的行仍被完整解析', note);
+  const pear = mwords.find((w) => w.front === 'pear');
+  ok(!!pear && pear.back === '梨' && !pear.example && !pear.tags, '只填必填两列的行也能解析', pear);
+
+  // 变体模版同样可直接导入（与 1 行示例走同一解析链路）
+  const resMulti = await imp.importDeckFromFile(makeFile('Mycard-CSV模版.csv', multi));
+  ok(resMulti.words === 4, '多行示例模版可被直接导入（4 张卡）', resMulti.words);
+}
+
+console.log('\n[模版下载弹窗（先选示例行变体）]');
+{
+  const html = imp.csvTemplateDialogHtml();
+  ok(html.includes('name="variant"'), '含变体下拉选择');
+  for (const v of imp.CSV_TEMPLATE_VARIANTS) {
+    ok(html.includes(`value="${v.value}"`) && html.includes(v.label), `变体选项「${v.label}」`);
+  }
+  ok(/value="single" selected/.test(html), '默认选中「表头 + 1 行示例」（与旧版一致）');
+  ok(html.includes('单词 / 释义 / 例句 / 例句翻译 / 音标 / 标签'), '说明标准列');
+  for (const v of imp.CSV_TEMPLATE_VARIANTS) ok(html.includes(v.note.split('：')[0].slice(0, 6)), `变体说明：${v.label}`);
+
+  body.children.length = 0; // 先清空历史弹窗，便于计数
+  const before = modalCount();
+  const overlay = imp.openCsvTemplateDialog();
+  ok(modalCount() === before + 1, '点「下载 CSV 模版」→ 打开选择弹窗', modalCount());
+  ok(!!overlay && overlay.innerHTML.includes('name="variant"'), '弹窗内即变体选择表单');
+  ok(modalCount() === 1, '再次打开不会叠加弹窗（openModal 先关旧的）');
+
+  const dlHead = imp.downloadCsvTemplate({ variant: 'head' });
+  ok(
+    dlHead.filename === imp.CSV_TEMPLATE_FILENAME && dlHead.variant === 'head' && dlHead.text === imp.csvTemplateText({ variant: 'head' }),
+    'downloadCsvTemplate 支持变体参数',
+    dlHead.variant
+  );
+  const dlDefault = imp.downloadCsvTemplate();
+  ok(dlDefault.variant === 'single' && dlDefault.text === imp.csvTemplateText(), '不传参 → 与旧版行为完全一致');
+  body.children.length = 0; // 关闭弹窗
+}
+
+console.log('\n[标准 JSON 模版（下载）]');
+{
+  const text = imp.jsonTemplateText();
+  ok(text.endsWith('\n'), 'JSON 模版：末尾换行（便于手工编辑）');
+  ok(text.includes('\n  "words"') && text.includes('\n    {\n      "front"'), 'JSON 模版：2 空格缩进', text.split('\n')[1]);
+
+  // 往返：模版文本走真实导入解析器
+  const payload = imp.parseImportJson(text);
+  ok(payload.name === '我的词库' && payload.words.length === 2, '模版可被 parseImportJson 解析（2 个词条）', payload.name);
+  ok(payload.tags.join('|') === '导入' && payload.levelSize === 20, 'tags / levelSize 透传', { tags: payload.tags, levelSize: payload.levelSize });
+  const apple = payload.words[0];
+  ok(
+    apple.front === 'apple' && apple.back === '苹果' && apple.example === 'This is an apple.' && apple.exampleZh === '这是一个苹果。' && apple.phonetic === '/ˈæpl/',
+    '第一条：完整示例字段齐全',
+    apple
+  );
+  ok(apple.tags.join('|') === '水果|基础' && apple.extraBacks.join('|') === '苹果树', '第一条：标签 + 多义词释义（extraBacks）', apple);
+  ok(
+    payload.words[1].front === 'pear' && payload.words[1].back === '梨' && !payload.words[1].example && !payload.words[1].phonetic,
+    '第二条：只填必填项（可选字段可整块省略）',
+    payload.words[1]
+  );
+
+  // 下载入口
+  const btn = imp.jsonTemplateButtonHtml();
+  ok(btn.includes('data-action="download-json-template"') && btn.includes('下载 JSON 模版'), '「下载 JSON 模版」按钮');
+  const dl = imp.downloadJsonTemplate();
+  ok(dl.filename === imp.JSON_TEMPLATE_FILENAME && dl.text === text, 'downloadJsonTemplate 返回文件名与内容', dl.filename);
+
+  // 端到端：把 JSON 模版当文件导入
+  const res = await imp.importDeckFromFile(makeFile('Mycard-JSON模版.json', text));
+  ok(res.words === 2 && res.name === '我的词库', 'JSON 模版可被直接导入为卡组', { words: res.words, name: res.name });
+}
+
 console.log('\n[多文件批量导入 + 导入历史 / 回滚]');
 {
   const hist = await import('../js/import-history.js');

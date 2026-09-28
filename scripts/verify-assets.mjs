@@ -177,6 +177,34 @@ console.log('\n[本地文件导入词库（js/import-file.js）]');
   );
   must(impSrc.includes('CSV_TEMPLATE_COLUMNS') && impSrc.includes("'单词'"), '模版列名为中文规范名（可自动对号）');
   must(readFileSync(rel('js/decks.js'), 'utf8').includes('csvTemplateButtonHtml'), '首页导入栏渲染「下载 CSV 模版」');
+  // 模版增强（v0.5.4）：CSV 模版可选示例行 + JSON 模版下载
+  must(
+    impSrc.includes('export function csvTemplateDialogHtml') && impSrc.includes('export function openCsvTemplateDialog'),
+    'CSV 模版下载前可选示例行（csvTemplateDialogHtml / openCsvTemplateDialog）'
+  );
+  must(
+    impSrc.includes("value: 'head'") && impSrc.includes("value: 'single'") && impSrc.includes("value: 'multi'"),
+    'CSV 模版三档变体（仅表头 / 1 行示例 / 多行示例）'
+  );
+  must(
+    impSrc.includes('CSV_TEMPLATE_EXAMPLES') && impSrc.includes('return [CSV_TEMPLATE_EXAMPLE.slice()];'),
+    '不传变体时仍是 1 行示例（兼容旧行为）'
+  );
+  must(impSrc.includes('export function csvTemplateRows'), '模版二维数组可复用（csvTemplateRows）');
+  must(
+    impSrc.includes('JSON_TEMPLATE_FILENAME') &&
+      impSrc.includes('export function jsonTemplateText') &&
+      impSrc.includes('export function downloadJsonTemplate'),
+    '标准 JSON 模版（jsonTemplateText / downloadJsonTemplate）'
+  );
+  must(
+    impSrc.includes("on('download-json-template'") && impSrc.includes('data-action="download-json-template"'),
+    '注册「下载 JSON 模版」动作与入口'
+  );
+  must(impSrc.includes('extraBacks') && impSrc.includes('levelSize: 20'), 'JSON 模版示例覆盖多义词（extraBacks）与 levelSize');
+  must(impSrc.includes('JSON_TEMPLATE_SAMPLE') && impSrc.includes("words: ["), 'JSON 模版结构 = 导入格式（name / tags / words）');
+  must(readFileSync(rel('js/decks.js'), 'utf8').includes('jsonTemplateButtonHtml'), '首页导入栏渲染「下载 JSON 模版」');
+  must(css.includes('.tpl-notes'), '模版弹窗样式（.tpl-notes）');
   must(impSrc.includes('.xlsx') && impSrc.includes('spreadsheetml.sheet'), 'ACCEPT 含 .xlsx 扩展名与 MIME');
   // 多文件批量导入 + 导入历史 / 回滚
   must(existsSync(rel('js/import-history.js')), 'js/import-history.js 存在（导入历史 / 回滚）');

@@ -12,7 +12,7 @@ import { renderReview, clearReviewSession } from './review.js';
 import { renderTest, clearTestSession } from './test.js';
 import { renderTableEditor } from './table-editor.js';
 
-const APP_VERSION = 'v0.5.3';
+const APP_VERSION = 'v0.5.4';
 
 /* ------------------------------ 路由解析 ------------------------------ */
 
