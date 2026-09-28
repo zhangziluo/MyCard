@@ -3,7 +3,8 @@
 // test-deck-test.mjs — 整卡组可配置测试（20~150 题）测试
 //   运行: node scripts/test-deck-test.mjs
 // 覆盖：配置（题数/档位/权重）、抽题（无重复 / 循环覆盖 / 间隔 / 优先换题型）、
-//       优先池 50% 配额、判分与通关、进度续做、边界（<20 词禁用）、结果页与错题列表。
+//       优先池 50% 配额、优先池快路径（词数 ≥ 题数时不变量）、判分与通关、进度续做、
+//       边界（<20 词禁用）、结果页与错题列表。
 // ============================================================================
 
 const mem = {};
@@ -165,6 +166,59 @@ const prioHit = planPrio.filter((p) => wrongPool.includes(p.cardId)).length;
 ok(prioHit >= 40, `优先池题目约占 50%（实际 ${prioHit}/100）`);
 engine.clearPriority(deck20.id);
 ok(engine.priorityCount(deck20.id) === 0, '优先池可清空');
+
+console.log('\n[优先池快路径：词数 ≥ 题数（非优先槽位走部分洗牌）]');
+{
+  const big = makeDeck(300);
+  const prioIds = big.cards.slice(0, 20).map((c) => c.id);
+  const prioSet = new Set(prioIds);
+  const lcg = (seed) => () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296);
+  const COUNT = 100;
+  const seq = engine.buildCardSequence(big.cards, COUNT, prioSet, lcg(21));
+  ok(seq.length === COUNT, `生成 ${COUNT} 题`);
+  const counts = new Map();
+  for (const id of seq) counts.set(id, (counts.get(id) || 0) + 1);
+  const prioHit = seq.filter((id) => prioSet.has(id)).length;
+  // 引擎的优先槽位配额：min(floor(n/2), n)（不因池小于配额而减少，池小时重复出题）
+  const prioCap = Math.min(Math.floor(COUNT / 2), COUNT); // 50
+  ok(prioHit >= prioCap, `优先槽位全部命中错题池（${prioHit} ≥ ${prioCap}）`);
+  ok(
+    prioHit <= prioCap + prioIds.length,
+    `错题命中 ≤ 优先槽位 + 池内词数（${prioHit} ≤ ${prioCap + prioIds.length}；非优先槽位最多再各带 1 个错题）`
+  );
+  const repeated = [...counts].filter(([, c]) => c > 1).map(([id]) => id);
+  ok(repeated.every((id) => prioSet.has(id)), '只有优先池的词可能重复（非优先槽位永远取未用过的词）');
+
+  const s1 = engine.buildCardSequence(big.cards, COUNT, prioSet, lcg(21));
+  ok(JSON.stringify(s1) === JSON.stringify(seq), '同一随机源 → 序列完全一致（可复现）');
+
+  // 池内仅 1 词：该词被 10 个优先槽位重复取用（10 次），其余 10 个非优先槽位各取一个未用过的词
+  const soloId = big.cards[0].id;
+  const solo = new Set([soloId]);
+  const s3 = engine.buildCardSequence(big.cards, 20, solo, lcg(9));
+  const soloCount = s3.filter((id) => id === soloId).length;
+  const soloPrioCap = Math.min(Math.floor(20 / 2), 20); // 10
+  ok(s3.length === 20, '池内仅 1 词：仍取满 20 题');
+  ok(
+    soloCount >= soloPrioCap && soloCount <= soloPrioCap + 1,
+    `唯一错题出现 ${soloCount} 次（≈ 优先槽位数 ${soloPrioCap}，非优先槽位最多再取 1 次）`
+  );
+  ok(
+    s3.filter((id) => id !== soloId).every((id) => s3.filter((x) => x === id).length === 1),
+    '其余词各出现且仅出现一次'
+  );
+
+  const small = big.cards.slice(0, 20);
+  const sp = new Set(small.slice(0, 8).map((c) => c.id));
+  const s4 = engine.buildCardSequence(small, 20, sp, lcg(11));
+  ok(s4.length === 20 && new Set(s4).size >= 20 - 10, `词数 === 题数（带 8 题优先池）→ 取满 20 题，重复只可能来自错题（不同词 ${new Set(s4).size}）`);
+
+  const planFast = engine.samplePlan(big, { count: COUNT, weights: cfg.DEFAULT_WEIGHTS, priorityIds: prioSet, random: lcg(31) });
+  const hitFast = planFast.filter((p) => prioSet.has(p.cardId)).length;
+  ok(planFast.length === COUNT, `samplePlan 生成 ${COUNT} 题`);
+  ok(hitFast >= prioCap && hitFast <= prioCap + prioIds.length, `优先池配额仍约 50%（实际 ${hitFast}/${COUNT}，优先槽位 ${prioCap}）`);
+  engine.clearPriority(big.id);
+}
 
 console.log('\n[判分与通关]');
 ok(engine.isPassed(85) === true && engine.isPassed(80) === true, '≥80% 通关');

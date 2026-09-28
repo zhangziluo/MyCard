@@ -3,7 +3,7 @@
 // test-perf.mjs — 大卡组（1 万词 / 500 关）规模下的正确性与耗时
 //   运行: node scripts/test-perf.mjs
 // 覆盖：deckStats 单遍统计 / deckLevels 分组 / levelStates 复用 levels /
-//       buildCardSequence 抽题（覆盖率、间隔）/ samplePlan（含优先池）
+//       buildCardSequence 抽题（覆盖率、间隔、优先池快路径读取次数）/ samplePlan（含优先池）
 // 说明：仅设「宽松上限 2s」作为「切勿回归成 O(n²)」的金丝雀（并打印实测量级），
 //       避免不同机器上的抖动导致 CI 误报。
 // ============================================================================
@@ -128,6 +128,27 @@ console.log('\n[整卡组抽题 · 带优先池（错题提前）]');
   ok(fromPrio > 0 && fromPrio <= 75, '错题占用一部分槽位（≤ 50%）', fromPrio);
   console.log(`    带 40 题优先池：${dt.toFixed(2)} ms，其中错题 ${fromPrio} 道`);
   ok(dt < 2000, '带优先池 < 2000ms（宽松金丝雀）', dt.toFixed(2));
+}
+
+console.log('\n[整卡组抽题 · 带优先池且词数 ≥ 题数：非优先槽位走部分洗牌]');
+{
+  // 用 Proxy 统计「读了多少次卡组元素」：慢路径每个非优先槽位都要全量扫一遍卡组
+  // （75 × 1 万 ≈ 75 万次），快路径只建一次候选池（≈ 3 万次），相差一个数量级，
+  // 该断言与机器快慢无关，能稳定拦住「快路径被退回全量扫描」的回归。
+  let reads = 0;
+  const counted = new Proxy(deck.cards, {
+    get(t, p) {
+      if (typeof p === 'string' && /^\d+$/.test(p)) reads++;
+      return t[p];
+    }
+  });
+  const prio = new Set(Array.from({ length: 40 }, (_, i) => 'c' + i * 7));
+  const seq = engine.buildCardSequence(counted, 150, prio, rng(15));
+  ok(seq.length === 150, '带优先池且 1 万词 ≥ 150 题 → 生成 150 题', seq.length);
+  ok(reads < 100000, '带优先池不做 O(题数×词数) 全量扫描（退回慢路径约 75 万次读取）', reads);
+  const prioHit = seq.filter((id) => prio.has(id)).length;
+  ok(prioHit > 0 && prioHit <= 75, '错题仍占一部分槽位（≤ 50%）', prioHit);
+  console.log(`    卡组元素读取次数：${reads}（慢路径约 ${(75 * 10000).toLocaleString()}）`);
 }
 
 console.log('\n[少词多题（20 词 × 150 题）覆盖率与间隔]');

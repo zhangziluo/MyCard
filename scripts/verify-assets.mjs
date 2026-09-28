@@ -487,11 +487,28 @@ console.log('\n[大卡组性能（单遍统计 / 复用 levels / 抽题快路径
   must(/export function levelStates\(deck, levels = deckLevels\(deck\)\)/.test(lvSrc), 'levelStates 支持复用已算好的 levels');
   must(/levelStates\(deck, levels\)/.test(decksSrc2), 'decks.js 渲染时复用 levels（避免重复整卡组遍历）');
   must(/部分 Fisher-Yates/.test(engineSrc) && /words >= n/.test(engineSrc), '抽题「词数 ≥ 题数」走 O(n) 快路径');
+  must(
+    /prio\.length && words >= n/.test(engineSrc) && /交换删除/.test(engineSrc) && /takeAt/.test(engineSrc),
+    '带优先池且「词数 ≥ 题数」也走部分洗牌（非优先槽位 O(1) 取未用过的词）'
+  );
+  must(
+    /const posOf = new Map/.test(engineSrc) && /posOf\.delete\(ci\)/.test(engineSrc),
+    '优先槽位取走的词从候选池 O(1) 摘除（不重复扫描卡组）'
+  );
+  must(/快路径 A/.test(engineSrc) && /快路径 B/.test(engineSrc), '两条抽题快路径（无优先池 / 带优先池）注释清晰');
   must(!/Math\.min\(\.\.\.gapOk/.test(engineSrc), 'pickLeastUsed 已合并为单趟扫描（去掉 spread 全量 Math.min）');
   must(/export const CARDS_PER_PAGE = 100/.test(decksSrc2), '卡片管理分页常量 CARDS_PER_PAGE = 100');
   must(/data-action="cards-page"/.test(decksSrc2) && /on\('cards-page'/.test(decksSrc2), '卡片分页条 + cards-page 动作');
   must(/all\.slice\(page \* CARDS_PER_PAGE/.test(decksSrc2), '卡片管理只渲染当前页（不再一次性塞入全部）');
   must(existsSync(rel('scripts/test-perf.mjs')), '存在 scripts/test-perf.mjs（万级性能金丝雀）');
+  must(
+    readFileSync(rel('scripts/test-deck-test.mjs'), 'utf8').includes('优先池快路径：词数 ≥ 题数'),
+    'test-deck-test 覆盖优先池快路径不变量（只错题可能重复 / 配额 / 可复现）'
+  );
+  must(
+    readFileSync(rel('scripts/test-perf.mjs'), 'utf8').includes('new Proxy(deck.cards'),
+    'test-perf 用 Proxy 计数卡组读取次数（拦住快路径被退回全量扫描的回归）'
+  );
 }
 
 console.log(failed ? `\n共 ${failed} 项校验失败` : '\n全部资源校验通过 ✔');

@@ -32,8 +32,11 @@ index.html ──► js/app.js（入口：路由 / 顶栏 / 设置页 / boot）
 5. **懒加载重资源**：`engdefs.js`（2.6MB 英文释义）与 `export.js` 的 sql.js 都是首次使用时才加载；启动不阻塞。
 6. **渲染即重建**：视图函数把 `root.innerHTML` 整体重写，再绑定/重算；需要保留状态的用模块级变量（如 `add-words.js` 的面板状态、`decks.js` 的标签筛选）。
 7. **降级优先**：任何外部能力（IndexedDB / fetch / matchMedia / crypto.subtle / TTS / URL.createObjectURL）都必须有安全回退，保证 Node 测试与老浏览器不炸。
-8. **大卡组（万级）性能**（v0.4.17/18）：渲染前**只算一次 `deckLevels` 并复用**（`levelStates(deck, levels)`）；统计一律**单遍遍历**；列表类视图**分页**（关卡 15/页、卡片管理 `CARDS_PER_PAGE = 100`），避免一次性写入上万 DOM 节点；抽题在「词数 ≥ 题数且无优先池」走 **O(n) 部分洗牌快路径**（分布等价于逐次「最少用量」）。`scripts/test-perf.mjs` 是万级金丝雀（正确性 + 宽松耗时上限，防回归成 O(n²)）。
+8. **大卡组（万级）性能**（v0.4.17/18）：渲染前**只算一次 `deckLevels` 并复用**（`levelStates(deck, levels)`）；统计一律**单遍遍历**；列表类视图**分页**（关卡 15/页、卡片管理 `CARDS_PER_PAGE = 100`），避免一次性写入上万 DOM 节点；抽题在「词数 ≥ 题数」时**一律走 O(词数 + 题数) 的部分洗牌快路径**（v0.5.6 补齐带优先池一侧：非优先槽位用「交换删除」取未用过的词并从候选池 O(1) 摘除优先槽位已取走的词，优先槽位仍取「最少用量」；分布等价于逐次「最少用量」）。`scripts/test-perf.mjs` 是万级金丝雀——**用 Proxy 计数卡组元素读取次数**（与机器速度无关）＋ 宽松耗时上限，防回归成 O(n²)
 9. **导入只有一条落库链路**（v0.5.3）：文件导入与 `#/editor` 表格录入都收敛到 `import-file.js` 的 `importWordsToDeck(words, { mode, deckName, deckId })` → `validatePayload` → `seedBuiltinDeck`（新建）/ `addManyCards`（追加）→ `recordImport` → `importSuccessHtml`。**新增导入入口时不要另写写库逻辑**，直接调它即可自动获得相同的校验 / 去重 / 关卡编排 / 导入历史 / 撤销。
+10. **导入模版与表格页同源**（v0.5.2 / v0.5.4）：`CSV_TEMPLATE_COLUMNS` 是唯一列定义（模版下载、文件导入的表头对号、`#/editor` 表格列都读它）。模版**无法写注释** → 「示例行」只是普通行，故下载 toast / 按钮 title / 弹窗说明**三处**提示「导入前请删除」；示例行可选（仅表头 / 1 行 / 多行示例，`head`/`single`/`multi`），JSON 模版另给「1 完整 + 1 最简」两条示例。
+11. **表格页的输入增强走纯函数内核**（v0.5.5）：粘贴解析 `gridFromPaste`（Tab/换行，**单格返回空 → 不拦截浏览器默认粘贴**）与铺开 `applyPaste`（自动补行至 `MAX_TABLE_ROWS`、超列**截断**并由 UI 提示）都是纯函数，可被 `test-table-editor.mjs` 直接单测；文档级 paste 监听用 `bindPasteOnce()` 惰性绑定且**只绑一次**（视图重渲染不重复绑定）。
+12. **写库前先出预览 / 校验报告**（v0.5.5）：`#/editor` 点「导入为卡组」先 `openTableImportPreview()`（宽版弹窗：可导入条数 / 缺单词 / 表内重复去重 / 目标卡组已存在的**唯一单词数** / 前 `PREVIEW_ROWS` 行预览），**确认后才**调 `importWordsToDeck`。同类「不可逆操作前先给报告」是本项目的既定交互模式。
 
 ## 数据模型（store.js）
 - **Card**：`id, front, back, example, exampleZh, phonetic, tags[], groups[], extraBacks[], createdAt, level, state('new'|'learning'|'review'), repetitions, interval, easeFactor, due, lastReview, src, addedAt`

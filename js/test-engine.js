@@ -1,6 +1,8 @@
 // ============================================================================
 // test-engine.js — 整卡组测试引擎（纯逻辑，无 DOM）
 //   抽题：N 题从卡组抽取；词数≥N 不重复；词数<N 循环（首轮每词一次、间隔≥floor(N/词数)）
+//   抽题快路径：词数 ≥ 题数 时用部分洗牌（O(词数+题数)），无优先池与带优先池各一条；
+//              带优先池时仅优先槽位走错题池，非优先槽位同样走部分洗牌
 //   题型：按权重分配数量，同词重复出现时优先换题型
 //   优先池：错题优先占用 50% 配额（并保证可行时仍覆盖全部词）
 //   进度：localStorage['test_progress_{deckId}']（中途退出可续做）
@@ -93,33 +95,7 @@ export function buildCardSequence(cards, n, priorityIds = new Set(), random = Ma
     prio = prioIds.map((id) => byId.get(id)).filter(Boolean);
   }
 
-  // 快路径：词数 ≥ 题数 且无优先池 —— 此时「最少用量 + 冷却」退化为「取 n 个互不相同的词」，
-  // 用部分 Fisher-Yates 直接取（分布等价，随机调用次数一致），复杂度 O(n)。
-  // 万级卡组 + 150 题走此路径，避免 O(题数×词数) 的全量扫描。
-  if (!prio.length && words >= n) {
-    const idx = cards.map((_, i) => i);
-    const fastSeq = [];
-    for (let i = 0; i < n; i++) {
-      const j = i + Math.floor(random() * (words - i));
-      const tmp = idx[i];
-      idx[i] = idx[j];
-      idx[j] = tmp;
-      fastSeq.push(cards[idx[i]].id);
-    }
-    return fastSeq;
-  }
-
-  // 优先槽位数量（能覆盖全部词时优先保证覆盖）
-  const coverAll = words < n;
-  const prioCap = prio.length
-    ? Math.max(0, Math.min(Math.floor(n / 2), coverAll ? Math.max(0, n - words) : n))
-    : 0;
-  const wantPrio = new Array(n).fill(false);
-  if (prioCap > 0) {
-    const step = n / prioCap;
-    for (let k = 0; k < prioCap; k++) wantPrio[Math.min(n - 1, Math.floor(k * step))] = true;
-  }
-
+  // 共享状态：用量 / 最近使用（两条快路径与慢路径共用同一套语义）
   const lastUse = new Map();
   const used = new Map();
   const seq = [];
@@ -150,6 +126,71 @@ export function buildCardSequence(cards, n, priorityIds = new Set(), random = Ma
     return earliest || pool[0];
   };
 
+  // 快路径 A：词数 ≥ 题数 且无优先池 —— 此时「最少用量 + 冷却」退化为「取 n 个互不相同的词」，
+  // 用部分 Fisher-Yates 直接取（分布等价，随机调用次数一致），复杂度 O(n)。
+  // 万级卡组 + 150 题走此路径，避免 O(题数×词数) 的全量扫描。
+  if (!prio.length && words >= n) {
+    const idx = cards.map((_, i) => i);
+    const fastSeq = [];
+    for (let i = 0; i < n; i++) {
+      const j = i + Math.floor(random() * (words - i));
+      const tmp = idx[i];
+      idx[i] = idx[j];
+      idx[j] = tmp;
+      fastSeq.push(cards[idx[i]].id);
+    }
+    return fastSeq;
+  }
+
+  // 优先槽位数量（能覆盖全部词时优先保证覆盖）
+  const coverAll = words < n;
+  const prioCap = prio.length
+    ? Math.max(0, Math.min(Math.floor(n / 2), coverAll ? Math.max(0, n - words) : n))
+    : 0;
+  const wantPrio = new Array(n).fill(false);
+  if (prioCap > 0) {
+    const step = n / prioCap;
+    for (let k = 0; k < prioCap; k++) wantPrio[Math.min(n - 1, Math.floor(k * step))] = true;
+  }
+
+  // 快路径 B：词数 ≥ 题数 且有优先池 —— minGap 恒为 1 且「未用过的词总还存在」，
+  // 于是非优先槽位（占多数）只需「取一个未用过的词」：用「交换删除」的部分洗牌 O(1) 取词，
+  // 与慢路径「在所有未用过的词里均匀抽」分布等价；优先槽位仍走错题池的「用量最少」逻辑，
+  // 被优先槽位取走的词从候选池里 O(1) 摘除。整体复杂度 O(词数 + 题数)。
+  if (prio.length && words >= n) {
+    const pool = cards.map((_, i) => i); // 候选池：pool[0, cursor) 均为尚未取用的词
+    const posOf = new Map(); // 卡下标 → 在候选池中的位置
+    for (let i = 0; i < words; i++) posOf.set(i, i);
+    let cursor = words;
+    const idxOf = new Map(); // cardId → 卡下标（优先槽位返回卡对象，需反查以摘除）
+    cards.forEach((c, i) => idxOf.set(c.id, i));
+    /** 取出候选池第 p 个（交换删除，O(1)），返回卡下标 */
+    const takeAt = (p) => {
+      const ci = pool[p];
+      cursor--;
+      const last = pool[cursor];
+      pool[p] = last;
+      posOf.set(last, p);
+      posOf.delete(ci);
+      return ci;
+    };
+    for (let i = 0; i < n; i++) {
+      let card;
+      if (wantPrio[i]) {
+        card = pickLeastUsed(prio);
+        const p = posOf.get(idxOf.get(card.id)); // 仍未被取走时才需要摘除
+        if (p !== undefined) takeAt(p);
+      } else {
+        card = cards[takeAt(Math.floor(random() * cursor))];
+      }
+      seq.push(card.id);
+      lastUse.set(card.id, i);
+      used.set(card.id, (used.get(card.id) || 0) + 1);
+    }
+    return seq;
+  }
+
+  // 慢路径：词数 < 题数（需循环重复出词 + 控间隔）
   for (let i = 0; i < n; i++) {
     const pool = wantPrio[i] && prio.length ? prio : cards;
     const card = pickLeastUsed(pool);

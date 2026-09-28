@@ -1,6 +1,6 @@
 # Progress — 完成度与遗留
 
-> 更新时间：2026-09-28 ｜ APP `v0.5.3` / SW `v1.8.3` ｜ **1936 条校验全绿**
+> 更新时间：2026-09-28 ｜ APP `v0.5.6` / SW `v1.8.6` ｜ **2093 条校验全绿**
 
 ## 已交付（按版本）
 
@@ -94,18 +94,40 @@
 - 入口与路由：`decks.js` 导入栏新增「在网页里填表格」（`tableEditorLinkHtml` + `open-table-editor`），`app.js` 解析 `#/editor` 并设顶栏标题「表格编辑」；`css/style.css` 新增 `.te-*`（全部走既有 CSS 变量）；`sw.js` 预缓存 + `APP_VERSION`/`SW VERSION` 递增
 - 顺带修复：新建卡组导入结果的**重复条数**不再恒为 0（`duplicates: payload.duplicates || duplicates || 0`）
 
-## 测试资产（23 个 test-*.mjs + `smoke-dom` + `verify-assets` = 25 个脚本 / 1936 条断言）
+**v0.5.4** 模版增强（导入栏）：JSON 模版 + CSV 模版示例行可选
+- `js/import-file.js`：新增 **JSON 模版**——`jsonTemplate()`（`{name, description, tags, words:[…]}`，words 含 1 条完整示例 + 1 条只填 `front`/`back` 的最简示例）、`jsonTemplateText()`（2 空格缩进 + 末尾换行）、`downloadJsonTemplate()`（复用 `downloadTextFile`，`text/json`）、`jsonTemplateButtonHtml()` + `on('download-json-template')`
+- **CSV 模版变体**：`CSV_TEMPLATE_VARIANTS`（`head` 仅表头 / `single` 1 行示例 / `multi` 多行示例）与 `CSV_TEMPLATE_EXAMPLES`（覆盖「一词多义」「无例句」「格子里有逗号需引号」）；`csvTemplateExampleRows(variant)` / `csvTemplateRows({variant})` / `csvTemplateText({variant})` / `downloadCsvTemplate({variant})` 全部参数化，**默认仍是 1 行示例**（不破坏既有行为）
+- **下载前先选**：`csvTemplateDialogHtml()` + `openCsvTemplateDialog()`（`ui.openModal` + `readForm` 读下拉），按钮文案/title/toast 都按变体给出「含 N 行示例，导入前请删除」提示
+- `js/decks.js` 导入栏提示同步为「CSV（示例行可选）＋ JSON（name / tags / words）」；`css/style.css` 新增 `.tpl-notes` 说明列表
+- 决策：**JSON 示例行不删也能导入吗？**——JSON 模版必须自带示例（否则用户看不出结构），故模版文案明确提示「示例条会被一起导入」，导入前请删
+
+**v0.5.5** 表格编辑页增强（粘贴多行 / 长文本单元格 / 导入前预览报告）
+- **粘贴多行**（纯函数内核，可单测）：`gridFromPaste(text)`（Tab = 列分隔、换行 = 行分隔、`\r\n` 归一化；**只有单个单元格时返回 `[]`** → 交给浏览器默认粘贴）+ `applyPaste(rows, startRow, startCol, grid)`（从落点铺开，行数不足自动补行至 `MAX_TABLE_ROWS = 5000`，列数超出 6 列模版**截断**，返回 `{ rows, last, added, truncated }`，非法落点/空网格返回 `null`）
+- **绑定一次**：`bindPasteOnce()`（`document.addEventListener('paste', …, true)`）在 `renderTableEditor` 里惰性绑定；命中表格单元格才 `preventDefault`，单格粘贴不拦截 → 不破坏原有体验
+- **单元格改 `<textarea rows="1">`**：`autoGrow` / `autoGrowAll` 随内容长高（封顶 `TE_CELL_MAX_H = 200`，超出内部滚动），保留「输入只 `refreshStats()` 不整页重渲染」的光标策略
+- **导入前预览 / 校验报告**：`importPreviewRows(rows)`（去重 + 只留合法行）、`importReport(rows, deck)`（可导入条数 / 缺单词 / 表内重复去重 / 目标卡组已存在的**唯一单词数**）、`importPreviewHtml(rows, deck)`（复用 `import-file.previewTableHtml` 显示前 `PREVIEW_ROWS` 行）、`openTableImportPreview()`——`te-import-deck` 先弹宽版预览，**确认后才**调 `importTableToDeck`
+- 测试：`scripts/test-table-editor.mjs` 新增粘贴内核 / 扩行截断 / 预览报告 / 事件链路断言；`smoke-dom.mjs` 断言 18 个 `textarea.te-cell` + 文档级 paste 绑定；`verify-assets.mjs` 断言内核 / 绑定 / 预览报告 / CSS
+
+**v0.5.6** 抽题快路径补全（带优先池且词数 ≥ 题数，`js/test-engine.js`）
+- 旧状：只有「词数 ≥ 题数且**无**优先池」才走 O(n) 部分洗牌；**带优先池**时即使词多题少也退回 O(题数×词数) 全量扫描（万级 1 万词 / 150 题实测 ~47ms，v0.4.17 起记录的已知技术债）
+- 新增**快路径 B**（`prio.length && words >= n`）：非优先槽位用**「交换删除」的部分洗牌**——候选池 `pool[0, cursor)` 恒为「尚未被取用的词」，取词 = `pool[random*cursor]` 后与末尾交换、`cursor--`（O(1)）；**优先槽位仍走错题池的 `pickLeastUsed`**，被优先槽位取走的词用 `posOf`（卡下标 → 池中位置）**O(1) 摘除**；`pickLeastUsed` 与 `lastUse`/`used`/`seq` 提升为两条快路径与慢路径**共享**（语义完全一致）
+- **分布等价性**（关键）：`words >= n` 时 `minGap` 恒为 1 且「未用过的词总还存在」，故慢路径的非优先槽位等价于「在所有未用过的词里均匀抽」——新快路径用交换删除的部分洗牌给出同一分布；用 4 组配置 × 各 2 万次采样的对比脚本验证：错题命中率/平均不同词数相对偏差 **< 0.1%**，且「非优先槽位取到的词永不重复」不变量 0 反例
+- 复杂度：O(词数 + 题数)（万级 1 万词 / 150 题 + 40 题优先池实测 **~4ms**）
+- 测试：`test-perf.mjs` 新增「带优先池且词数 ≥ 题数」段落——用 **Proxy 计数卡组元素读取次数**（快路径 ~3 万次 vs 慢路径 ~75 万次，断言 < 10 万），这是与机器速度无关的回归守卫；`test-deck-test.mjs` 新增「优先池快路径」不变量（优先槽位全部命中 / 错题命中 ≤ 优先槽位 + 池内词数 / **只有错题可能重复** / 同随机源可复现 / 词数 = 题数仍取满）
+- 注意（语义澄清，非 bug）：`prioCap = min(floor(n/2), n)` **不按优先池大小收敛**——池比配额小时优先槽位会重复取错题（这是「错题占 50% 配额」的既有语义），新快路径**保持**该行为
+
+## 测试资产（23 个 test-*.mjs + `smoke-dom` + `verify-assets` = 25 个脚本 / 2093 条断言）
 | 分类 | 脚本 |
 | --- | --- |
 | 核心纯函数 | `test-core`(43) `test-difficulty`(39) `test-arrange`(22) `test-pagination`(25) `test-resplit-levels`(26) |
-| 学习与题型 | `test-confusables`(82) `test-hardwords`(26) `test-level-retry`(78) `test-fill`(85) `test-listen`(21) `test-deck-test`(81) `test-eng-eng`(34) `test-multi-sense`(39) `test-review-complete`(11) `test-review-interaction`(12) |
+| 学习与题型 | `test-confusables`(82) `test-hardwords`(26) `test-level-retry`(78) `test-fill`(85) `test-listen`(21) `test-deck-test`(92) `test-eng-eng`(34) `test-multi-sense`(39) `test-review-complete`(11) `test-review-interaction`(12) |
 | 存储与主题 | `test-idb-store`(42) `test-theme`(150) |
-| 新功能 | `test-add-words`(82) `test-import-file`(258) `test-table-editor`(149) `test-export`(133) `test-xlsx`(33) |
-| DOM / 资源 | `smoke-dom`(164) `verify-assets`(275) |
-| 性能金丝雀 | `test-perf`(26，1 万词 / 500 关：统计/分组/抽题 + 耗时) |
+| 新功能 | `test-add-words`(82) `test-import-file`(299) `test-table-editor`(219) `test-export`(133) `test-xlsx`(33) |
+| DOM / 资源 | `smoke-dom`(170) `verify-assets`(301) |
+| 性能金丝雀 | `test-perf`(29，1 万词 / 500 关：统计/分组/抽题（含优先池读取次数）+ 耗时) |
 
 ## 已知问题 / 技术债
-- **带优先池的抽题**：优先池非空时仍走 O(题数×词数) 全量扫描（万级 ~110ms，暂无感）。方案已记录：词数 ≥ 题数时，非优先槽位同样用**部分 Fisher-Yates** 取「尚未出现的词」，优先槽位从 `prio` 取 → O(n)
+- （v0.5.6 已清偿）~~**带优先池的抽题**：优先池非空时仍走 O(题数×词数) 全量扫描~~ → 已实现快路径 B（词数 ≥ 题数时非优先槽位也走部分洗牌，O(词数 + 题数)），见 v0.5.6
 - **注意**：`refs/cline/checkpoints/*` 已被清理（v0.4.18）；Cline 扩展在后续会话中可能**重建**同类检查点并再次持有大对象——若 `.git` 再度膨胀，用同样方式（`for-each-ref refs/cline` → `update-ref -d` → `gc --prune=now`）回收即可
 
 ## 刻意决定 / 已知限制（非技术债）
