@@ -86,6 +86,8 @@ function fakeEl(tag = 'div') {
 }
 
 const body = fakeEl('body');
+/** 文档级监听表（type → handlers[]），用于验证粘贴绑定 */
+const docListeners = {};
 /** 稳定的 #view 元素：让页内 rerender() 有落点（与浏览器一致） */
 const viewEl = fakeEl('section');
 /** 统计条元素：验证「输入单元格 → 只刷新统计，不整页重渲染」 */
@@ -95,7 +97,9 @@ viewEl.querySelector = (sel) => (sel === '.te-stats' ? statsEl : null);
 globalThis.document = {
   body,
   documentElement: fakeEl('html'),
-  addEventListener() {},
+  addEventListener(type, fn) {
+    (docListeners[type] = docListeners[type] || []).push(fn); // 记录文档级监听（粘贴处理用）
+  },
   removeEventListener() {},
   querySelector() {
     return null;
@@ -525,6 +529,203 @@ console.log('\n[导入为卡组：追加到已有卡组（跳过已存在 / 精�
   te.renderTableEditor(viewEl);
   ok((await te.importTableToDeck()) === null, '空表格导入 → 返回 null');
 
+  await hist.clearHistory();
+}
+
+console.log('\n[粘贴多行：自动铺开 + 自动补行（v0.5.5）]');
+{
+  ok(te.gridFromPaste('').length === 0 && te.gridFromPaste('   ').length === 0, '空剪贴板 → 不处理');
+  ok(te.gridFromPaste('apple').length === 0, '单格文本不拦截（交给浏览器默认插入）');
+  ok(te.gridFromPaste('apple\t苹果\npear\t梨\n').length === 2, '制表符分列 / 换行分行（末尾空行忽略）');
+  const g = te.gridFromPaste('apple\t苹果\tAn apple.\npear\t梨\tA pear.');
+  ok(g.length === 2 && g[0].length === 3 && g[1][1] === '梨' && g[0][2] === 'An apple.', '解析出二维数组', g);
+  ok(te.gridFromPaste('  a \t b  ')[0].join('|') === 'a|b', '单元格首尾空白裁掉');
+  ok(te.gridFromPaste('a\r\nb').length === 2, 'CRLF（Windows 复制）也能分行');
+
+  const base = [te.blankRow(), te.blankRow()];
+  const p = te.applyPaste(base, 0, 1, [['苹果', 'An apple.', '一个苹果。', '/ˈæpl/', '水果'], ['梨']]);
+  ok(p.rows.length === 2, '2 行粘进 2 行：行数不变');
+  ok(p.rows[0].join('|') === '|苹果|An apple.|一个苹果。|/ˈæpl/|水果', '从第 2 列起向右铺开（单词列留空）', p.rows[0]);
+  ok(p.rows[1][1] === '梨' && p.rows[1][2] === '', '第二行只铺 1 格，其余保持原样');
+  ok(p.added === 0 && p.truncated === false, '无需补行 / 未截断', { added: p.added, truncated: p.truncated });
+  ok(p.last.row === 1 && p.last.col === 1, '返回落点坐标（末格）', p.last);
+
+  const grown = te.applyPaste([te.blankRow()], 0, 0, [['a'], ['b'], ['c'], ['d']]);
+  ok(grown.rows.length === 4 && grown.added === 3, '行不够 → 自动补 3 行（替代「＋ 添加一行」）', { rows: grown.rows.length, added: grown.added });
+  ok(grown.rows.map((r) => r[0]).join('') === 'abcd', '新行内容写入正确');
+  ok(grown.last.row === 3 && grown.last.col === 0, '落点 = 最后一个粘贴格');
+
+  const keep = te.applyPaste([['apple', '苹果'], ['pear', '梨']], 0, 0, [['x']]);
+  ok(keep.rows[1][1] === '梨', '只覆盖粘贴到的格子，其它行内容不动');
+
+  const wide = te.applyPaste([te.blankRow()], 0, 4, [['x', 'y', 'z']]);
+  ok(wide.rows[0].join('|') === '||||x|y', '超出模版列数的单元格舍弃（第 6 列后截断）', wide.rows[0]);
+
+  ok(te.applyPaste(base, -1, 0, [['a']]) === null, '行下标越界 → null（不抛错）');
+  ok(te.applyPaste(base, 0, 6, [['a']]) === null, '列下标越界 → null');
+  ok(te.applyPaste(base, 0, 0, []) === null, '空粘贴板 → null');
+  const maxed = te.applyPaste([te.blankRow()], te.MAX_TABLE_ROWS - 1, 0, [['a'], ['b'], ['c']]);
+  ok(maxed.rows.length === te.MAX_TABLE_ROWS && maxed.truncated === true, '超出行上限：截断并标记 truncated', maxed.rows.length);
+}
+
+console.log('\n[粘贴事件绑定（document 级 paste）]');
+{
+  te.resetEditorState();
+  te.renderTableEditor(viewEl);
+  const pasteList = docListeners.paste || [];
+  ok(pasteList.length >= 1, '渲染编辑页时注册 document paste 监听', pasteList.length);
+  te.renderTableEditor(viewEl);
+  ok((docListeners.paste || []).length === pasteList.length, '反复渲染不会重复绑定（只绑一次）');
+
+  const cell = {
+    dataset: { action: 'te-cell', row: '0', col: '1' },
+    closest: (sel) => (sel === '[data-action="te-cell"]' ? cell : null)
+  };
+  let prevented = 0;
+  pasteList[0]({
+    target: { closest: (sel) => (sel === '[data-action="te-cell"]' ? cell : null) },
+    clipboardData: { getData: (t) => (t === 'text/plain' ? '苹果\tAn apple.\n梨\tA pear.\n葡萄\tGrapes.' : '') },
+    preventDefault() {
+      prevented++;
+    }
+  });
+  const now = te.currentTableRows();
+  ok(prevented === 1, '多行粘贴被拦截（阻止把整块文本塞进一个格）');
+  ok(now.length === 3, '列数/行数规整：仍是 3 行（初始 3 行够用）', now.length);
+  ok(now[0].slice(0, 3).join('|') === '|苹果|An apple.', '第 1 行从「释义」列起铺开', now[0]);
+  ok(now[0].slice(3).every((c) => c === ''), '未粘贴到的列保持为空', now[0]);
+  ok(now[2][1] === '葡萄' && now[2][2] === 'Grapes.', '第 3 行铺到第 2~3 列', now[2]);
+  ok(te.tableStats(now).importable === 0, '单词列仍为空 → 统计如实反映不可导入');
+
+  // 粘到第 3 行的「单词」列 → 2 行内容需要补 1 行
+  const cell3 = { dataset: { action: 'te-cell', row: '2', col: '0' }, closest: () => cell };
+  let prevented2 = 0;
+  pasteList[0]({
+    target: { closest: () => cell3 },
+    clipboardData: { getData: () => 'pear\t梨\nplum\t李子' },
+    preventDefault() {
+      prevented2++;
+    }
+  });
+  const grown2 = te.currentTableRows();
+  ok(prevented2 === 1 && grown2.length === 4, '从末行粘贴 2 行 → 自动补 1 行', grown2.length);
+  ok(grown2[3].slice(0, 2).join('|') === 'plum|李子', '补出的新行内容正确', grown2[3]);
+  ok(te.importReport().importable === 2, '补行后可导入条数随之增加', te.importReport().importable);
+
+  let prevented3 = 0;
+  pasteList[0]({
+    target: { closest: () => cell3 },
+    clipboardData: { getData: () => 'apple' },
+    preventDefault() {
+      prevented3++;
+    }
+  });
+  ok(prevented3 === 0, '单格粘贴不拦截（保持浏览器默认行为）');
+
+  pasteList[0]({
+    target: { closest: () => null },
+    clipboardData: { getData: () => 'a\tb' },
+    preventDefault() {
+      throw new Error('不该拦截');
+    }
+  });
+  ok(true, '非单元格目标：忽略（不拦截、不抛错）');
+  pasteList[0](null);
+  ok(true, '异常事件对象：静默忽略（不抛错）');
+}
+
+console.log('\n[单元格：长文本用 textarea + 自动增高（v0.5.5）]');
+{
+  te.resetEditorState();
+  te.renderTableEditor(viewEl);
+  const html = viewEl.innerHTML;
+  ok(html.includes('<input class="te-cell"') === false, '单元格不再是单行 <input>（长文本不再受限）');
+  ok((html.match(/<textarea class="te-cell"/g) || []).length === 18, '每个单元格都是 textarea（3 行 × 6 列）');
+  ok(/<textarea class="te-cell"[^>]*rows="1"/.test(html), 'rows=1（高度交给自适应逻辑）');
+  ok(html.includes('placeholder="word"') && html.includes('aria-label="第 1 行 单词"'), '保留 placeholder / aria-label（可访问性）');
+  ok(te.TE_CELL_MAX_H === 200, '单元格最大高度常量（200px，超过则格内滚动）');
+
+  // 多行 / HTML 内容转义：不会破坏表格结构
+  await fire('te-cell', { row: '0', col: '0' }, 'input', 'line1\nline2');
+  await fire('te-cell', { row: '0', col: '1' }, 'input', '</textarea><b>x</b>');
+  te.renderTableEditor(viewEl);
+  ok(viewEl.innerHTML.includes('>line1\nline2</textarea>'), '多行文本原样写回 textarea');
+  ok(viewEl.innerHTML.includes('&lt;/textarea&gt;&lt;b&gt;x&lt;/b&gt;'), '内容被转义（不会注入 HTML）');
+  ok(viewEl.innerHTML.includes('<b>x</b>') === false, '原始标签不会出现在页面里');
+  ok(te.currentTableRows()[0][0] === 'line1\nline2', '多行内容完整保存在表格状态');
+
+  // 自适应高度：有 scrollHeight 时会按内容设高
+  const cellEl = { style: {}, scrollHeight: 58 };
+  te.renderTableEditor({ innerHTML: '', querySelectorAll: () => [cellEl] });
+  ok(cellEl.style.height === '60px', '重渲染后按内容设置高度（58 + 2）', cellEl.style.height);
+  const tallEl = { style: {}, scrollHeight: 9999 };
+  te.renderTableEditor({ innerHTML: '', querySelectorAll: () => [tallEl] });
+  ok(tallEl.style.height === `${te.TE_CELL_MAX_H}px`, '超长内容限制在最大高度内（格内滚动）', tallEl.style.height);
+  ok(te.renderTableEditor(null) === undefined, '无 root 时不抛错（容错）');
+}
+
+console.log('\n[导入前预览 / 校验报告（v0.5.5）]');
+{
+  await hist.clearHistory();
+  te.resetEditorState();
+  te.renderTableEditor(viewEl);
+  ok(te.openTableImportPreview() === null, '空表格点「导入为卡组」→ 不弹预览（toast 提示）');
+
+  await fire('te-add-row'); // 3 行 → 5 行，方便演示「空白行 / 缺单词行」
+  await fire('te-add-row');
+  ok(te.currentTableRows().length === 5, '先补到 5 行（两个空行待填）', te.currentTableRows().length);
+
+  const fill = [
+    ['0', 'apple', '苹果', 'An apple.', '一个苹果。', '/ˈæpl/', '水果,基础'],
+    ['1', 'Apple', '大小写重复'],
+    ['2', '', '只有释义没有单词'],
+    ['4', 'pear', '梨']
+  ];
+  for (const [row, ...cells] of fill) {
+    for (let col = 0; col < cells.length; col++) await fire('te-cell', { row, col: String(col) }, 'input', cells[col]);
+  }
+  // 第 4 行（index 3）保持整行空白 → 应被忽略
+
+  const rep = te.importReport(te.currentTableRows());
+  ok(rep.total === 5, '报告：总行数 5', rep.total);
+  ok(rep.importable === 2 && rep.duplicates === 2 && rep.skippedMissing === 1 && rep.skippedBlank === 1, '报告：2 条可导入（重复 2 行 / 缺单词 1 行 / 空白 1 行）', rep);
+  ok(rep.existing === false && rep.deckName === '表格导入', '默认目标 = 新建卡组', { existing: rep.existing, name: rep.deckName });
+  ok(rep.preview.length === 2 && rep.preview.map((r) => r[0]).join(',') === 'apple,pear', '预览 = 真正会导入的行（去重后）', rep.preview.map((r) => r[0]));
+  ok(rep.notes.length === 1 && rep.notes[0].includes('第 3 行：缺「单词」'), '逐行问题清单带行号', rep.notes);
+
+  const html = te.importPreviewHtml();
+  ok(html.includes('目标：') && html.includes('新建卡组「<b>表格导入</b>」'), '报告含目标卡组');
+  ok(html.includes('将导入：<b>2</b> 条') && html.includes('表内重复去重 2 行'), '报告含条数与去重说明');
+  ok(html.includes('跳过缺少 / 超长单词的行：<b>1</b> 行'), '报告含跳过明细');
+  ok(html.includes('忽略整行空白：<b>1</b> 行'), '报告含空白行统计');
+  ok(html.includes('第 3 行：缺「单词」'), '报告列出问题行号');
+  ok(html.includes('csv-table') && html.includes('<th>单词</th>') && html.includes('>pear<'), '报告含数据预览表（表头 = 模版列）');
+  ok(html.includes('前 2 行，共 5 行'), '数据预览标注取行范围', html.slice(-120));
+
+  const decksBefore = store.getDb().decks.length;
+  body.children.length = 0;
+  const overlay = te.openTableImportPreview();
+  ok(!!overlay && overlay.innerHTML.includes('导入前预览'), '点「导入为卡组」→ 先弹预览弹窗');
+  ok(overlay.innerHTML.includes('确认导入 2 条') && overlay.innerHTML.includes('返回修改'), '弹窗动作：确认导入 / 返回修改');
+  ok(store.getDb().decks.length === decksBefore, '只看预览：还没写库（确认后才写）');
+
+  const res = await te.importTableToDeck();
+  ok(!!res && res.added === 2, '确认后写库：2 条（与文件导入同链路）', res && res.added);
+  ok(store.getDb().decks.length === decksBefore + 1, '卡组数 +1');
+
+  // 追加模式：报告要标出「目标卡组已有多少条会被跳过」
+  const host = store.createDeck({ name: '报告目标' });
+  store.addManyCards(host.id, [{ front: 'apple', back: '旧苹果' }]);
+  await fire('te-target', {}, 'change', host.id);
+  const rep2 = te.importReport();
+  ok(rep2.existing === true && rep2.deckName === '报告目标' && rep2.deckCount === 1, '追加模式：报告带目标卡组信息', rep2);
+  ok(rep2.already === 1, '目标卡组已存在 1 条（表内大小写重复只算一次）', rep2.already);
+  const html2 = te.importPreviewHtml();
+  ok(html2.includes('追加到已有卡组「<b>报告目标</b>」（现有 1 张）'), '追加目标文案');
+  ok(html2.includes('目标卡组已存在 <b>1</b> 条 → 导入时自动跳过'), '已存在条数提示（不覆盖原卡片）');
+  ok(te.importReport([['ok', '可导入']]).importable === 1, 'importReport 可对任意表格计算（便于测试 / 复用）');
+
+  store.deleteDeck(host.id);
   await hist.clearHistory();
 }
 

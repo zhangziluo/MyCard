@@ -302,6 +302,31 @@ console.log('\n[表格编辑页（js/table-editor.js）]');
   must(teSrc.includes('DOWNLOAD') || teSrc.includes('downloadCsvRows(TABLE_CSV_FILENAME'), '下载 CSV（表头 = 模版列名）');
   must(teSrc.includes('confirmDialog('), '载入 / 清空前二次确认（防误丢手填内容）');
 
+  // v0.5.5：粘贴多行自动扩行 / 单元格 textarea 自适应 / 导入前预览报告
+  must(
+    teSrc.includes('export function gridFromPaste') && teSrc.includes('export function applyPaste'),
+    '粘贴板二维数组内核（gridFromPaste / applyPaste）'
+  );
+  must(
+    teSrc.includes("document.addEventListener('paste'") && teSrc.includes('bindPasteOnce'),
+    '文档级 paste 绑定（只绑一次，多行粘贴自动扩行）'
+  );
+  must(teSrc.includes('added++') && teSrc.includes('truncated'), '粘贴自动补行 + 超上限截断标记');
+  must(teSrc.includes('evt.preventDefault') && teSrc.includes('gridFromPaste'), '多行粘贴拦截默认行为（单格不拦截）');
+  must(teSrc.includes('<textarea class="te-cell"') && teSrc.includes('rows="1"'), '单元格改为 textarea（长文本 / 多行可编辑）');
+  must(teSrc.includes('function autoGrow') && teSrc.includes('TE_CELL_MAX_H'), '单元格高度按内容自适应（带上限）');
+  must(
+    teSrc.includes('export function importPreviewRows') &&
+      teSrc.includes('export function importReport') &&
+      teSrc.includes('export function importPreviewHtml') &&
+      teSrc.includes('export function openTableImportPreview'),
+    '导入前预览 / 校验报告（importReport / importPreviewHtml / openTableImportPreview）'
+  );
+  must(teSrc.includes("on('te-import-deck', () => openTableImportPreview())"), '「导入为卡组」先出预览报告，确认后才写库');
+  must(teSrc.includes('previewTableHtml') && teSrc.includes('PREVIEW_ROWS'), '预览表格复用文件导入的 previewTableHtml / PREVIEW_ROWS');
+  must(teSrc.includes('目标卡组已存在') && teSrc.includes('表内重复去重'), '报告含「已存在跳过 / 表内去重」提示');
+  must(css.includes('.te-preview-list') && css.includes('resize: none') && css.includes('.tpl-notes'), '预览报告 / textarea / 模版弹窗样式齐备');
+
   // import-file.js 新增的复用导出
   must(impSrc.includes('export function csvText') && impSrc.includes('export function csvTemplateText'), 'csvText 抽取 + 模版复用');
   must(impSrc.includes('export function downloadCsvRows'), 'downloadCsvRows（通用 CSV 下载）');

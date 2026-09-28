@@ -10,10 +10,11 @@
 // ============================================================================
 
 import * as store from './store.js';
-import { on, toast, esc, navigate, confirmDialog } from './ui.js';
+import { on, toast, esc, navigate, openModal, confirmDialog } from './ui.js';
 import {
   ACCEPT,
   CSV_TEMPLATE_COLUMNS,
+  PREVIEW_ROWS,
   applyMapping,
   csvText,
   downloadCsvRows,
@@ -24,6 +25,7 @@ import {
   mapHeader,
   parseByFilename,
   parseCsv,
+  previewTableHtml,
   readFileAsArrayBuffer,
   readFileAsText,
   showImportSuccess,
@@ -155,6 +157,52 @@ export function moveRow(rows, i, delta) {
   const [row] = grid.splice(i, 1);
   grid.splice(j, 0, row);
   return grid;
+}
+
+/* ------------------------------ 粘贴（多行 / 多列） ------------------------------ */
+
+/**
+ * 剪贴板文本 → 二维数组（制表符分列、换行分行；Excel / 表格软件复制出来的即是这种格式）。
+ * 单格文本（既无换行也无制表符）返回 `[]` —— 交给浏览器默认插入行为，不打断逐格输入。
+ */
+export function gridFromPaste(text) {
+  const src = String(text == null ? '' : text).replace(/\r\n?/g, '\n');
+  if (!src.trim()) return [];
+  const lines = src.replace(/\n+$/, '').split('\n');
+  if (lines.length === 1 && !lines[0].includes('\t')) return [];
+  return lines.map((line) => line.split('\t').map((c) => c.trim()));
+}
+
+/**
+ * 把粘贴板二维数组从 (row, col) 起向右下铺开：行不够时自动补空行（上限 MAX_TABLE_ROWS），
+ * 超出模版列数的单元格舍弃。
+ * @returns {{rows:string[][], last:{row:number, col:number}, added:number, truncated:boolean}|null}
+ */
+export function applyPaste(rows, row, col, grid) {
+  if (!Array.isArray(grid) || !grid.length) return null;
+  if (!Number.isInteger(row) || !Number.isInteger(col) || row < 0 || col < 0 || col >= TABLE_COL_COUNT) return null;
+  const out = normalizeTable(rows).slice(0, MAX_TABLE_ROWS);
+  let added = 0;
+  let truncated = false;
+  let last = { row, col };
+  grid.forEach((line, r) => {
+    const ri = row + r;
+    if (ri >= MAX_TABLE_ROWS) {
+      truncated = true;
+      return;
+    }
+    while (out.length <= ri) {
+      out.push(blankRow());
+      added++;
+    }
+    (Array.isArray(line) ? line : []).forEach((v, c) => {
+      const ci = col + c;
+      if (ci >= TABLE_COL_COUNT) return;
+      out[ri][ci] = v == null ? '' : String(v);
+      last = { row: ri, col: ci };
+    });
+  });
+  return { rows: out, last, added, truncated };
 }
 
 /**
@@ -319,9 +367,9 @@ function targetHtml() {
 function rowHtml(r, i, st) {
   const cells = TABLE_COLUMNS.map(
     (label, c) =>
-      `<td class="te-cell-td"><input class="te-cell" type="text" data-action="te-cell" data-row="${i}" data-col="${c}"
-        value="${esc(r[c])}" placeholder="${esc(TABLE_COL_HINTS[c] || '')}" title="${esc(r[c])}"
-        aria-label="第 ${i + 1} 行 ${esc(label)}" autocomplete="off" spellcheck="false" /></td>`
+      `<td class="te-cell-td"><textarea class="te-cell" rows="1" data-action="te-cell" data-row="${i}" data-col="${c}"
+        placeholder="${esc(TABLE_COL_HINTS[c] || '')}" title="${esc(r[c])}"
+        aria-label="第 ${i + 1} 行 ${esc(label)}" autocomplete="off" spellcheck="false">${esc(r[c])}</textarea></td>`
   ).join('');
   const dup = st.dupeRows.has(i);
   const bad = rowNeedsFront(r);
@@ -377,7 +425,7 @@ export function tableEditorHtml() {
 
     <section class="panel glass te-panel">
       ${tableHtml()}
-      <p class="csv-hint">提示：单词列必填（超长或为空的整行会被跳过）；标签列用逗号分隔（如「水果,基础」）；重复单词会标黄，导入时自动去重。手填的列顺序与「下载 CSV 模版」完全一致，导出的 CSV 可直接用首页导入。</p>
+      <p class="csv-hint">提示：单词列必填（超长或为空的整行会被跳过）；标签列用逗号分隔（如「水果,基础」）；重复单词会标黄，导入时自动去重。<b>从 Excel / 表格软件复制后直接粘贴到单元格</b>可一次铺开多行多列（行不够会自动补行）；单元格可多行文本，输入时自动增高。点「导入为卡组」会先给出<b>预览 / 校验报告</b>，确认后才写库。手填的列顺序与「下载 CSV 模版」完全一致，导出的 CSV 可直接用首页导入。</p>
     </section>
   </div>`;
 }
@@ -385,8 +433,10 @@ export function tableEditorHtml() {
 /** 渲染表格编辑页（app.js 路由 #/editor 调用） */
 export function renderTableEditor(root) {
   ensureState();
+  bindPasteOnce();
   if (!root) return;
   root.innerHTML = tableEditorHtml();
+  autoGrowAll(root); // 多行内容 → 逐个修正高度
 }
 
 /** 首页「在网页里填表格」入口（导入栏） */
@@ -418,12 +468,220 @@ function refreshStats() {
   if (host) host.innerHTML = statsHtml();
 }
 
+/* ------------------------------ 单元格高度（自适应） ------------------------------ */
+
+/** 单元格最大高度（超过就在格内滚动，避免一行撑满整屏） */
+export const TE_CELL_MAX_H = 200;
+
+/** 让单元格随内容增高（textarea 不出现内部滚动条）；无布局信息时跳过 */
+function autoGrow(el) {
+  if (!el || !el.style || typeof el.scrollHeight !== 'number' || !el.scrollHeight) return;
+  el.style.height = 'auto';
+  el.style.height = Math.min(TE_CELL_MAX_H, el.scrollHeight + 2) + 'px';
+}
+
+/** 重渲染后按内容修正所有单元格高度 */
+function autoGrowAll(root) {
+  if (!root || typeof root.querySelectorAll !== 'function') return 0;
+  const list = root.querySelectorAll('.te-cell');
+  const each = list && typeof list.forEach === 'function' ? list : Array.from(list || []);
+  let n = 0;
+  each.forEach((el) => {
+    autoGrow(el);
+    n++;
+  });
+  return n;
+}
+
+/* ------------------------------ 粘贴（DOM 绑定） ------------------------------ */
+
+let pasteBound = false;
+
+/** 找到并聚焦某个单元格（重渲染后定位光标） */
+function focusCell(pos) {
+  const el = viewEl();
+  if (!el || typeof el.querySelector !== 'function' || !pos) return null;
+  const cell = el.querySelector(`.te-cell[data-row="${pos.row}"][data-col="${pos.col}"]`);
+  if (cell && typeof cell.focus === 'function') cell.focus();
+  return cell || null;
+}
+
+/**
+ * 单元格粘贴：多行（← Excel / 表格软件复制的制表符分隔文本）→ 从当前格向右下自动铺开，
+ * 行不够时自动补行。单格文本不拦截，保持浏览器默认插入行为。
+ */
+function onCellPaste(evt) {
+  try {
+    const el = evt && evt.target && evt.target.closest ? evt.target.closest('[data-action="te-cell"]') : null;
+    if (!el || !el.dataset) return;
+    const data = (evt && evt.clipboardData) || (typeof window !== 'undefined' ? window.clipboardData : null);
+    const text = data && typeof data.getData === 'function' ? data.getData('text/plain') || data.getData('text') : '';
+    const grid = gridFromPaste(text);
+    if (!grid.length) return;
+    const res = applyPaste(rows, rowIndex(el), Number(el.dataset.col), grid);
+    if (!res) return;
+    if (evt.preventDefault) evt.preventDefault();
+    rows = res.rows;
+    saveDraftSoon();
+    rerender();
+    focusCell(res.last);
+    toast(
+      res.truncated
+        ? `已粘贴 ${grid.length} 行（超出 ${MAX_TABLE_ROWS} 行的部分已舍弃）`
+        : `已粘贴 ${grid.length} 行 × ${grid[0].length} 列${res.added ? `，自动补 ${res.added} 行` : ''}`,
+      res.truncated ? 'warn' : 'good'
+    );
+  } catch (e) {
+    console.error('[mycard] 表格粘贴失败', e);
+  }
+}
+
+/**
+ * 绑定文档级 paste 监听（ui.js 的 data-action 只覆盖 click/input/change）。
+ * 只需绑一次：表格重渲染不会影响该监听。
+ */
+function bindPasteOnce() {
+  if (pasteBound) return false;
+  if (typeof document === 'undefined' || typeof document.addEventListener !== 'function') return false;
+  pasteBound = true;
+  document.addEventListener('paste', onCellPaste, true);
+  return true;
+}
+
 /* ------------------------------ 交互逻辑 ------------------------------ */
 
 /** 读取 data-row 下标 */
 function rowIndex(el, fallback = -1) {
   const i = el && el.dataset ? Number(el.dataset.row) : NaN;
   return Number.isInteger(i) ? i : fallback;
+}
+
+/* ------------------------------ 导入前预览 / 校验报告 ------------------------------ */
+
+/** 逐行问题清单（缺单词 / 超长；整行空白的行无需提示） */
+export function importSkipNotes(rowsInput = rows) {
+  const grid = normalizeTable(rowsInput);
+  const notes = [];
+  grid.forEach((r, i) => {
+    if (!r.some((c) => c.trim() !== '')) return;
+    const front = r[0].trim();
+    if (!front) notes.push(`第 ${i + 1} 行：缺「单词」`);
+    else if (front.length > 80) notes.push(`第 ${i + 1} 行：单词超长（${front.length} 字）`);
+  });
+  return notes;
+}
+
+/** 预览行（= 真正会导入的行：有单词、未超长、表内去重后取前 PREVIEW_ROWS 行） */
+export function importPreviewRows(rowsInput = rows, { limit = PREVIEW_ROWS } = {}) {
+  const grid = normalizeTable(rowsInput);
+  const seen = new Set();
+  const out = [];
+  for (const r of grid) {
+    const front = r[0].trim();
+    if (!front || front.length > 80) continue;
+    const key = front.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(r);
+    if (out.length >= limit) break;
+  }
+  return out;
+}
+
+/** 导入报告数据（目标卡组 / 条数 / 跳过明细），供 HTML 与测试共用 */
+export function importReport(rowsInput = rows) {
+  const grid = normalizeTable(rowsInput);
+  const st = tableStats(grid);
+  const kept = cleanRows(grid);
+  const words = tableToWords(grid);
+  const addToExisting = !!target && target !== '__new__';
+  const deck = addToExisting ? store.getDeck(target) : null;
+  const existing = new Set(((deck && deck.cards) || []).map((c) => String(c.front || '').toLowerCase()));
+  // 只统计「去重后」仍在目标卡组里的条数（表内重复会先被去掉，不能重复计数）
+  const uniqueFronts = new Set();
+  words.forEach((w) => uniqueFronts.add(String(w.front).toLowerCase()));
+  const already = existing.size ? Array.from(uniqueFronts).filter((f) => existing.has(f)).length : 0;
+  return {
+    target: addToExisting ? target : '__new__',
+    existing: addToExisting,
+    deckName: addToExisting ? (deck ? deck.name : '') : String(deckName || '').trim() || TABLE_DEFAULT_DECK_NAME,
+    deckCount: deck ? (deck.cards || []).length : 0,
+    total: st.total,
+    importable: st.importable,
+    skippedBlank: st.total - kept.length,
+    skippedMissing: st.missing,
+    duplicates: st.duplicates,
+    already,
+    notes: importSkipNotes(grid),
+    preview: importPreviewRows(grid)
+  };
+}
+
+/** 导入前预览 / 校验报告 HTML（纯函数，便于测试） */
+export function importPreviewHtml(rowsInput = rows) {
+  const r = importReport(rowsInput);
+  const items = [
+    `<li>目标：${
+      r.existing
+        ? `追加到已有卡组「<b>${esc(r.deckName)}</b>」（现有 ${r.deckCount} 张）`
+        : `新建卡组「<b>${esc(r.deckName)}</b>」`
+    }</li>`,
+    `<li>将导入：<b>${r.importable}</b> 条${r.duplicates ? `（表内重复去重 ${r.duplicates} 行）` : ''}</li>`
+  ];
+  if (r.already) items.push(`<li>目标卡组已存在 <b>${r.already}</b> 条 → 导入时自动跳过（不覆盖原有卡片）</li>`);
+  if (r.skippedMissing) items.push(`<li>跳过缺少 / 超长单词的行：<b>${r.skippedMissing}</b> 行</li>`);
+  if (r.skippedBlank) items.push(`<li>忽略整行空白：<b>${r.skippedBlank}</b> 行</li>`);
+  if (!r.importable) items.push(`<li class="te-preview-warn">没有可导入的内容：每行至少要填「单词」列</li>`);
+  const notes = r.notes.length
+    ? `<ul class="te-preview-list te-preview-warn">${r.notes
+        .slice(0, 8)
+        .map((n) => `<li>${esc(n)}</li>`)
+        .join('')}${r.notes.length > 8 ? `<li>…共 ${r.notes.length} 行有问题</li>` : ''}</ul>`
+    : '';
+  return (
+    `<ul class="te-preview-list">${items.join('')}</ul>` +
+    notes +
+    `<p class="csv-meta">数据预览（前 ${Math.min(PREVIEW_ROWS, r.preview.length)} 行，共 ${r.total} 行）</p>` +
+    previewTableHtml({
+      kind: 'table',
+      delimiter: null,
+      header: TABLE_COLUMNS.slice(),
+      rows: r.preview,
+      cols: TABLE_COL_COUNT,
+      totalRows: r.total
+    })
+  );
+}
+
+/**
+ * 「导入为卡组」→ 先弹预览 / 校验报告，确认后才写库（真正的写库仍走 importTableToDeck，
+ * 与文件导入同链路：校验 / 去重 / 导入历史 / 可撤销）。
+ */
+export function openTableImportPreview() {
+  const st = tableStats(rows);
+  if (!st.importable) {
+    toast('表格里还没有可导入的内容：每行至少要填「单词」列', 'warn');
+    return null;
+  }
+  if (target && target !== '__new__' && !store.getDeck(target)) {
+    toast('目标卡组已不存在，请重新选择', 'warn');
+    return null;
+  }
+  return openModal({
+    title: '导入前预览',
+    wide: true,
+    body: importPreviewHtml(),
+    actions: [
+      { label: '返回修改', cls: 'btn-ghost' },
+      {
+        label: `确认导入 ${st.importable} 条`,
+        cls: 'btn-primary',
+        onClick: () => {
+          importTableToDeck(); // 异步写库（弹窗在返回后立即关闭，成功后另弹「导入完成」）
+        }
+      }
+    ]
+  });
 }
 
 /** 提交导入：表格 → 词条 → 与文件导入完全一致的链路（校验 / 去重 / 写库 / 历史） */
@@ -514,12 +772,13 @@ export async function loadFileIntoTable(file) {
 /** 首页入口 → 跳到表格编辑页 */
 on('open-table-editor', () => navigate('#/editor'));
 
-/** 单元格输入：只更新状态与统计，不整页重渲染（保住光标） */
+/** 单元格输入：只更新状态与统计，不整页重渲染（保住光标）；顺带自适应高度 */
 on(
   'te-cell',
   (el) => {
     if (!el || !el.dataset) return;
     rows = setCell(rows, rowIndex(el), Number(el.dataset.col), el.value);
+    autoGrow(el);
     refreshStats();
     saveDraftSoon();
   },
@@ -606,8 +865,8 @@ on('te-download', () => {
 /** 从文件载入 */
 on('te-load-file', () => openTableFilePicker({ onFile: loadFileIntoTable }));
 
-/** 导入为卡组 */
-on('te-import-deck', () => importTableToDeck());
+/** 导入为卡组（先弹出预览 / 校验报告，确认后才写库） */
+on('te-import-deck', () => openTableImportPreview());
 
 
 

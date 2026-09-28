@@ -71,12 +71,16 @@ const fakeBody = fakeEl();
 const appViewEl = fakeEl();
 const appbarSideEl = fakeEl();
 const htmlEl = fakeEl();
+/** 文档级监听表（type → handlers[]），用于验证粘贴绑定 */
+const docListeners = {};
 globalThis.localStorage = storage;
 globalThis.sessionStorage = { ...storage };
 globalThis.document = {
   body: fakeBody,
   documentElement: htmlEl,
-  addEventListener() {},
+  addEventListener(type, fn) {
+    (docListeners[type] = docListeners[type] || []).push(fn); // 记录文档级监听（粘贴处理用）
+  },
   removeEventListener() {},
   querySelector() {
     return null;
@@ -437,6 +441,10 @@ console.log('\n[表格编辑页 #/editor]');
   );
   ok(html.includes('value="表格导入"'), '默认新卡组名「表格导入」');
   ok(html.includes('＋ 新建卡组'), '默认目标为「新建卡组」');
+  ok((html.match(/<textarea class="te-cell"/g) || []).length === 18, '单元格为自适应 textarea（长文本可编辑，v0.5.5）');
+  ok(html.includes('<input class="te-cell"') === false && html.includes('rows="1"'), '不再用单行 <input>（rows=1 + 自动增高）');
+  ok(html.includes('粘贴到单元格') && html.includes('预览 / 校验报告'), '页面提示含「粘贴多行」与「导入前预览」');
+  ok((docListeners.paste || []).length >= 1, '编辑页注册文档级 paste 监听（多行粘贴自动扩行）');
 
   await fire('te-add-row');
   ok((appViewEl.innerHTML.match(/class="te-cell"/g) || []).length === 24, '点「＋ 添加一行」→ 4 行（24 格）');
