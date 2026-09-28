@@ -14,6 +14,8 @@ index.html ──► js/app.js（入口：路由 / 顶栏 / 设置页 / boot）
                  │     └─ export.js（导出 txt / CSV / Markdown / JSON / Anki .apkg；
                  │           内置 ZIP 写出器 + meta protobuf + sql.js +
                  │           复习进度映射 cardToAnkiSched）
+                 ├─ table-editor.js（#/editor 表格编辑页：模版列同源 + 表格内核 +
+                 │           草稿 + 从文件载入 + 下载 CSV；导入复用 import-file.js 链路）
                  ├─ review.js（翻转记忆）· test.js（测试）+ test-engine.js + test-config.js
                  ├─ levels.js（关卡/分页）· levelstats.js · hardwords.js
                  ├─ difficulty.js（难度判定）· arrange.js（关卡编排）· engdefs.js（GCIDE 释义）
@@ -31,6 +33,7 @@ index.html ──► js/app.js（入口：路由 / 顶栏 / 设置页 / boot）
 6. **渲染即重建**：视图函数把 `root.innerHTML` 整体重写，再绑定/重算；需要保留状态的用模块级变量（如 `add-words.js` 的面板状态、`decks.js` 的标签筛选）。
 7. **降级优先**：任何外部能力（IndexedDB / fetch / matchMedia / crypto.subtle / TTS / URL.createObjectURL）都必须有安全回退，保证 Node 测试与老浏览器不炸。
 8. **大卡组（万级）性能**（v0.4.17/18）：渲染前**只算一次 `deckLevels` 并复用**（`levelStates(deck, levels)`）；统计一律**单遍遍历**；列表类视图**分页**（关卡 15/页、卡片管理 `CARDS_PER_PAGE = 100`），避免一次性写入上万 DOM 节点；抽题在「词数 ≥ 题数且无优先池」走 **O(n) 部分洗牌快路径**（分布等价于逐次「最少用量」）。`scripts/test-perf.mjs` 是万级金丝雀（正确性 + 宽松耗时上限，防回归成 O(n²)）。
+9. **导入只有一条落库链路**（v0.5.3）：文件导入与 `#/editor` 表格录入都收敛到 `import-file.js` 的 `importWordsToDeck(words, { mode, deckName, deckId })` → `validatePayload` → `seedBuiltinDeck`（新建）/ `addManyCards`（追加）→ `recordImport` → `importSuccessHtml`。**新增导入入口时不要另写写库逻辑**，直接调它即可自动获得相同的校验 / 去重 / 关卡编排 / 导入历史 / 撤销。
 
 ## 数据模型（store.js）
 - **Card**：`id, front, back, example, exampleZh, phonetic, tags[], groups[], extraBacks[], createdAt, level, state('new'|'learning'|'review'), repetitions, interval, easeFactor, due, lastReview, src, addedAt`
@@ -41,7 +44,7 @@ index.html ──► js/app.js（入口：路由 / 顶栏 / 设置页 / boot）
 
 ## 存储与迁移
 - IndexedDB 库 `mycard` **v2**：`decks`(id) / `cards`(id, 索引 byDeck=deckId) / `meta`(key) / `lookup`(key=`${lang}_${word}`)
-- localStorage：`mycard-meta`（设置+卡组清单）、`mycard-accent`、`mycard-mode`、`mycard-active-tag`、`mycard-hard-words`、`mycard-test-config`、`mycard-test-priority`、`mycard-import-history`（导入历史摘要，最近 20 条）、`test_progress_{deckId}[__wrong]`；IndexedDB `meta` 另存 `import-rollback:{id}`（追加导入的 cardIds，最近 5 次可精确回滚）；sessionStorage：`mycard-level-stats`、`mycard-review-session`、`mycard-review-all-session`、`mycard-test-session`
+- localStorage：`mycard-meta`（设置+卡组清单）、`mycard-accent`、`mycard-mode`、`mycard-active-tag`、`mycard-hard-words`、`mycard-test-config`、`mycard-test-priority`、`mycard-import-history`（导入历史摘要，最近 20 条）、`mycard-table-draft`（`#/editor` 表格草稿，防抖写入，≤5000 行）、`test_progress_{deckId}[__wrong]`；IndexedDB `meta` 另存 `import-rollback:{id}`（追加导入的 cardIds，最近 5 次可精确回滚）；sessionStorage：`mycard-level-stats`、`mycard-review-session`、`mycard-review-all-session`、`mycard-test-session`
 - 旧库 `localStorage['mycard-v1']` 首启自动迁移到 IndexedDB 并删键
 - **下线词库清理**：`store.purgeRemovedBuiltins()` 按 `REMOVED_BUILTIN_SOURCES`（kaoyan/cet4/… 共 10 本）删除旧版自动导入的内置卡组，启动时执行、幂等；只删 source 命中的，不影响 demo/custom/自建
 

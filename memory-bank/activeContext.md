@@ -1,21 +1,22 @@
 # Active Context — 当前焦点
 
-> 更新时间：2026-09-18 ｜ APP `v0.5.2` / SW `v1.8.2` ｜ HEAD `39370ca`（== `origin/main`，工作区干净）｜ v0.4.13 ~ v0.5.2 已交付，**1716 条校验全绿**
+> 更新时间：2026-09-28 ｜ APP `v0.5.3` / SW `v1.8.3` ｜ v0.4.13 ~ v0.5.3 已交付，**1936 条校验全绿**
 
 ## 当前状态
-**v0.4.13（导出扩展）→ v0.5.2（导入增强 + 关卡测试题型收敛 + CSV 模版）连续多轮功能均已实现、校验全绿，并全部提交推送**（`39370ca` == `origin/main`，工作区干净）。**没有进行中的功能**。
+**v0.4.13（导出扩展）→ v0.5.3（表格编辑页 `#/editor`）连续多轮功能均已实现、校验全绿**。**没有进行中的功能**。
 
 ## 最近完成（倒序）
-1. **v0.5.2 标准 CSV 模版**：导入栏（拖拽区下方）新增「下载 CSV 模版」——`csvTemplateText()`（UTF-8 BOM + 中文规范列名 `单词/释义/例句/例句翻译/音标/标签`（可自动对号）+ **1 行示例**）、`downloadCsvTemplate()`、`csvTemplateButtonHtml()`；UI/README 均提示「导入前请删除示例行」
-2. **v0.5.1 关卡测试题型收敛**：`js/test.js` 的 `typesForRetry()` 改用 `cfg.QUESTION_TYPES`（基础 5 种），**关卡测试不再混入 `eng_eng`/`multi_sense`**；整卡组可配置测试不受影响（仍按配置启用可选题型）
-3. **v0.5.0 导入增强**：新增 **`.xlsx`**（`js/xlsx.js` 零依赖：自写 ZIP 读取 + 最小 XML 扫描 → 同一套预览/字段映射）、**多文件批量**（选择器/拖拽多选 → 每文件各建一卡组 + 批量汇总）、**导入历史 / 回滚**（`js/import-history.js`：撤销 = 删新建卡组 / 只移除追加的新增卡片，cardIds 存 IDB）
-4. **v0.4.19 非文字前景随主色**：CSS 8 处非文字 `var(--accent)` → `var(--accent-tx)`（焦点环 / 输入与高亮边框 / `.q-blank` 下划线 / 原生 `accent-color`），浅色系主色下同样醒目
-5. **v0.4.18 卡片管理分页**：`CARDS_PER_PAGE = 100` + `cards-page`，万级卡组不再一次性塞入上万 DOM 节点；并做仓库瘦身（删 `backup-before-rewrite` 与 Cline 检查点 refs + gc → `.git` 49M → 2.4M）
-6. **v0.4.17 大卡组性能**：`deckStats` 单遍遍历、`levelStates(deck, levels)` 复用分组、抽题 O(n) 快路径（万级 150 题 ~400ms → ~10ms）；新增 `test-perf.mjs`
-7. **v0.4.16 复习进度迁移**：`.apkg` `cards` 表按进度写调度（`cardToAnkiSched`）+ **JSON 完整导出/导入**（无损往返，含多释义/分组）
-8. **v0.4.15 对比度求解 + `--accent-tx`**：WCAG 相对亮度二分（任意自定义色两底色都 ≥4.5:1）+ 深色底提亮一档
-9. **v0.4.14 主题对比度**：`--tag-tx` 随 accent 派生（深/浅二档）
-10. **v0.4.13 导出扩展**：新增 CSV（RFC 4180）与 Markdown 导出 + `.apkg` 补 `meta` protobuf
+1. **v0.5.3 表格编辑页 `#/editor`（导入流程的「网页内录入」入口）**：新增 `js/table-editor.js`（列 = `CSV_TEMPLATE_COLUMNS` 同源；纯函数内核 `normalizeTable`/`cleanRows`/`tableToWords`/`wordsToTable`/`tableStats`/`setCell`/`addRow`/`removeRow`/`moveRow`/`alignToTemplate`/`tableCsvRows`/`tableCsvText`；UI = 表格 ＋ 统计条 ＋ 工具栏）；支持逐格录入、**从文件载入**（CSV/TSV/XLSX/JSON）、**下载 CSV**、**草稿**（`mycard-table-draft`）、**导入为卡组**（新建 / 追加）。导入复用新抽出的 `import-file.importWordsToDeck` → `validatePayload` → `seedBuiltinDeck`/`addManyCards` → `recordImport` → `importSuccessHtml`，**导入历史 / 撤销 / 去重与文件导入完全一致**；首页导入栏新增「在网页里填表格」入口
+2. **v0.5.2 标准 CSV 模版**：导入栏（拖拽区下方）新增「下载 CSV 模版」——`csvTemplateText()`（UTF-8 BOM + 中文规范列名 `单词/释义/例句/例句翻译/音标/标签`（可自动对号）+ **1 行示例**）、`downloadCsvTemplate()`、`csvTemplateButtonHtml()`；UI/README 均提示「导入前请删除示例行」
+3. **v0.5.1 关卡测试题型收敛**：`js/test.js` 的 `typesForRetry()` 改用 `cfg.QUESTION_TYPES`（基础 5 种），**关卡测试不再混入 `eng_eng`/`multi_sense`**；整卡组可配置测试不受影响（仍按配置启用可选题型）
+4. **v0.5.0 导入增强**：新增 **`.xlsx`**（`js/xlsx.js` 零依赖：自写 ZIP 读取 + 最小 XML 扫描 → 同一套预览/字段映射）、**多文件批量**（选择器/拖拽多选 → 每文件各建一卡组 + 批量汇总）、**导入历史 / 回滚**（`js/import-history.js`：撤销 = 删新建卡组 / 只移除追加的新增卡片，cardIds 存 IDB）
+5. **v0.4.19 非文字前景随主色**：CSS 8 处非文字 `var(--accent)` → `var(--accent-tx)`（焦点环 / 输入与高亮边框 / `.q-blank` 下划线 / 原生 `accent-color`），浅色系主色下同样醒目
+6. **v0.4.18 卡片管理分页**：`CARDS_PER_PAGE = 100` + `cards-page`，万级卡组不再一次性塞入上万 DOM 节点；并做仓库瘦身（删 `backup-before-rewrite` 与 Cline 检查点 refs + gc → `.git` 49M → 2.4M）
+7. **v0.4.17 大卡组性能**：`deckStats` 单遍遍历、`levelStates(deck, levels)` 复用分组、抽题 O(n) 快路径（万级 150 题 ~400ms → ~10ms）；新增 `test-perf.mjs`
+8. **v0.4.16 复习进度迁移**：`.apkg` `cards` 表按进度写调度（`cardToAnkiSched`）+ **JSON 完整导出/导入**（无损往返，含多释义/分组）
+9. **v0.4.15 对比度求解 + `--accent-tx`**：WCAG 相对亮度二分（任意自定义色两底色都 ≥4.5:1）+ 深色底提亮一档
+10. **v0.4.14 主题对比度**：`--tag-tx` 随 accent 派生（深/浅二档）
+11. **v0.4.13 导出扩展**：新增 CSV（RFC 4180）与 Markdown 导出 + `.apkg` 补 `meta` protobuf
 （更早版本见 `progress.md`）
 
 ## 关键决策（近期）
@@ -28,6 +29,8 @@
 - 复习进度迁移走两条路：**`.apkg`（→Anki，日粒度近似 due）** 与 **JSON（↔Mycard，无损往返）**；txt/CSV/Markdown 刻意保持纯「词表」。导入侧进度校验统一走 `store.pickScheduling`（state 白名单 / easeFactor 1.3–3.0 / 数值钳制），非法值回退新卡
 - 大卡组性能约定（v0.4.17）：渲染前**只算一次 `deckLevels` 并复用**（`levelStates(deck, levels)`）；统计一律**单遍遍历**；抽题在「词数 ≥ 题数且无优先池」时走 **O(n) 部分洗牌快路径**（与逐次「最少用量」分布等价），避免 O(题数×词数)
 - CSV 模版（v0.5.2）：表头用**中文规范列名**（全部命中 `FIELD_ALIASES` → 导入自动对号）；**含 1 行示例**（用户要求，演示音标写法与「标签用逗号分隔需引号」）——因 CSV 无法写注释，故在**下载 toast / 按钮 title / 页面文案**三处提示「导入前请删除示例行」
+- 表格编辑页（v0.5.3）：**列以模版为准**（`TABLE_COLUMNS = CSV_TEMPLATE_COLUMNS`，一处改列三处生效：模版下载 / 文件导入对号 / 表格页）；**导入只留一条落库链路**——抽出 `importWordsToDeck`，文件导入与表格录入共用（校验 / 去重 / 新建或追加 / 导入历史 / 撤销行为必然一致，`systemPatterns.md` 第 9 条）
+- 表格单元格输入**只刷新统计**（`refreshStats()`），不整页重渲染 → 保住光标与输入法候选框；对比 `te-add-row` 等结构性操作才 `rerender()`
 - 考试词库**不入库**（用户确认），本地保留仅供测试
 
 ## 下一步候选（未排期，需用户确认）
@@ -36,6 +39,7 @@
 - [ ] 「我的生词」与在线查词的批量管理（去重合并、按标签整理）
 - [ ] 可访问性：键盘焦点环、`aria-*` 补全、`prefers-reduced-motion`
 - [ ] 模版增强：JSON 模版下载 / CSV 模版可选多行示例（演示多义词、无例句等情形）
+- [ ] 表格编辑增强候选：整行**粘贴多行文本自动多行**（当前需点「＋ 添加一行」）、单元格内长文本编辑体验（受 `<input>` 限制）、导入前**预览/校验报告**（当前统计条已给出「重复 / 缺单词」）
 - [ ] 带优先池的抽题：词数 ≥ 题数时非优先槽位也走部分洗牌快路径（方案已记入 progress，当前万级 ~110ms 暂无感）
 
 ## 待决问题

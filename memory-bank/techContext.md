@@ -33,6 +33,7 @@ node scripts/verify-assets.mjs                # 资源/一致性校验（含 CSS
 node scripts/test-export.mjs                  # 会调用 python3（zipfile+sqlite3）校验 .apkg 产物（含 meta protobuf 字节）
 node scripts/test-perf.mjs                    # 1 万词 / 500 关规模：统计·分组·抽题正确性 + 耗时金丝雀
 node scripts/test-xlsx.mjs                    # 极简 .xlsx 读取器（ZIP STORED/DEFLATE、共享字符串、日期）
+node scripts/test-table-editor.mjs            # 表格编辑页 #/editor（模版列一致性 / 表格内核 / 草稿 / 载入 / 渲染 / 事件 / 导入为卡组）
 
 # 数据准备（可选，需本地具备 gcide-0.51/）
 node scripts/split-gcide.mjs
@@ -44,7 +45,7 @@ node scripts/gen-examples.mjs --data data/words.json --sample 8
 
 ## 版本号约定
 - **两处必须同步递增**：`sw.js` 的 `VERSION`（缓存键）与 `js/app.js` 的 `APP_VERSION`（顶栏显示）
-- 当前：`APP v0.5.2` / `SW v1.8.2`
+- 当前：`APP v0.5.3` / `SW v1.8.3`
 
 ## 测试工程要点（写新测试时照抄）
 - 每个测试是独立 `.mjs`，自建浏览器桩（localStorage/document/window/location/requestAnimationFrame/HashChangeEvent）

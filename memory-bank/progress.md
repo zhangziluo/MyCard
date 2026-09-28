@@ -1,6 +1,6 @@
 # Progress — 完成度与遗留
 
-> 更新时间：2026-09-18 ｜ APP `v0.5.2` / SW `v1.8.2` ｜ **1716 条校验全绿**
+> 更新时间：2026-09-28 ｜ APP `v0.5.3` / SW `v1.8.3` ｜ **1936 条校验全绿**
 
 ## 已交付（按版本）
 
@@ -83,14 +83,25 @@
 - `js/decks.js`：首页拖拽区下方渲染「没有模版？下载 CSV 模版（…含 1 行示例，导入前请删除）」
 - 决策：**带 1 行示例**（用户要求），并在 UI/README 明确提示「导入前请删除示例行」
 
-## 测试资产（22 个 test-*.mjs + `smoke-dom` + `verify-assets` = 24 个脚本 / 1716 条断言）
+**v0.5.3** 表格编辑页 `#/editor`（导入流程的「网页内录入」入口）：
+- 新增 `js/table-editor.js`：**列以模版为准**——`TABLE_COLUMNS = CSV_TEMPLATE_COLUMNS`（`单词/释义/例句/例句翻译/音标/标签`，不再重复维护列名），`TABLE_FIELDS` 按序映射到 `front/back/example/exampleZh/phonetic/tags`
+- **纯函数内核**（可单测、不碰 DOM/存储）：`normalizeTable`/`cleanRows`/`tableToWords`/`wordsToTable`/`tableStats`/`setCell`/`addRow`/`removeRow`/`moveRow`/`alignToTemplate`/`tableCsvRows`/`tableCsvText`；`alignToTemplate` 支持**无表头按位置**与**有表头按别名（任意顺序）**两种对齐
+- **薄 UI**：`tableEditorHtml` + `renderTableEditor`（路由 `#/editor`）；模块级状态 `rows/target/deckName` 跨重渲染保留；单元格输入走 `input` 事件 + `refreshStats()` **只刷新统计与重复行高亮**（不整页重建 → 光标不丢）；行为动作 `te-cell`/`te-target`/`te-deck-name`/`te-add-row`/`te-move-up`/`te-move-down`/`te-del-row`/`te-clear`/`te-download`/`te-load-file`/`te-import-deck`
+- **草稿**：`mycard-table-draft`（localStorage，防抖写入，最多 5000 行 `MAX_TABLE_ROWS`）；重新进入 / 刷新自动恢复；「清空」与「从文件载入」前 `confirmDialog` 确认
+- **从文件载入**：复用 `parseByFilename`/`parseCsv`/`parseXlsxRows`（CSV / TSV / XLSX / JSON，含内容嗅探），自动识别表头并 `alignToTemplate` 对号
+- **下载 CSV**：`downloadCsvRows`（从 import-file 抽出的通用下载器，`csvText` 亦抽为内部复用），文件名 `Mycard-表格.csv`，表头即模版列名 → **可直接用首页导入回灌**
+- **导入为卡组**：新增 `importWordsToDeck(words, { mode, deckName, deckId, fileName })`（`js/import-file.js`）——复用同一套 `validatePayload` → `seedBuiltinDeck`（新建）/ `addManyCards`（追加）→ `recordImport` → `importSuccessHtml`，因此**导入历史 / 撤销 / 去重语义与文件导入完全一致**；卡片 `src: 'table_editor'`
+- 入口与路由：`decks.js` 导入栏新增「在网页里填表格」（`tableEditorLinkHtml` + `open-table-editor`），`app.js` 解析 `#/editor` 并设顶栏标题「表格编辑」；`css/style.css` 新增 `.te-*`（全部走既有 CSS 变量）；`sw.js` 预缓存 + `APP_VERSION`/`SW VERSION` 递增
+- 顺带修复：新建卡组导入结果的**重复条数**不再恒为 0（`duplicates: payload.duplicates || duplicates || 0`）
+
+## 测试资产（23 个 test-*.mjs + `smoke-dom` + `verify-assets` = 25 个脚本 / 1936 条断言）
 | 分类 | 脚本 |
 | --- | --- |
 | 核心纯函数 | `test-core`(43) `test-difficulty`(39) `test-arrange`(22) `test-pagination`(25) `test-resplit-levels`(26) |
 | 学习与题型 | `test-confusables`(82) `test-hardwords`(26) `test-level-retry`(78) `test-fill`(85) `test-listen`(21) `test-deck-test`(81) `test-eng-eng`(34) `test-multi-sense`(39) `test-review-complete`(11) `test-review-interaction`(12) |
 | 存储与主题 | `test-idb-store`(42) `test-theme`(150) |
-| 新功能 | `test-add-words`(82) `test-import-file`(258) `test-export`(133) `test-xlsx`(33) |
-| DOM / 资源 | `smoke-dom`(146) `verify-assets`(222) |
+| 新功能 | `test-add-words`(82) `test-import-file`(258) `test-table-editor`(149) `test-export`(133) `test-xlsx`(33) |
+| DOM / 资源 | `smoke-dom`(164) `verify-assets`(275) |
 | 性能金丝雀 | `test-perf`(26，1 万词 / 500 关：统计/分组/抽题 + 耗时) |
 
 ## 已知问题 / 技术债
