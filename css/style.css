@@ -772,8 +772,8 @@ body.modal-open { overflow: hidden; }
 .level-card-foot .btn { flex: 1; min-width: 140px; }
 .manage-btn { margin-top: 2px; }
 
-/* ------------------------------ 明牌配对（v0.5.11） ------------------------------ */
-/* 卡组详情页入口横幅（通关 ≥ 3 关后出现；<button> 保证键盘可达） */
+/* ------------------------------ 明牌配对（v0.5.12） ------------------------------ */
+/* 卡组详情页入口横幅（通关 ≥ 1 关后出现；<button> 保证键盘可达） */
 .match-banner {
   display: flex;
   align-items: center;
@@ -810,6 +810,8 @@ body.modal-open { overflow: hidden; }
 .view-match { gap: 12px; }
 .match-head { padding: 15px 16px; border-radius: var(--r-lg); display: flex; flex-direction: column; gap: 12px; }
 .match-title-row { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+/* 轮次进度（第 R/T 轮 · 本轮还剩 N 对） */
+.match-round { font-size: 12.5px; font-weight: 700; color: var(--amber-tx); font-variant-numeric: tabular-nums; }
 .match-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
 .match-stat { display: flex; flex-direction: column; align-items: center; gap: 2px; border-radius: var(--r-sm); }
 .match-stat b { font-size: 17px; font-weight: 800; font-variant-numeric: tabular-nums; }
@@ -828,14 +830,20 @@ body.modal-open { overflow: hidden; }
 }
 .match-lv.is-active { color: var(--accent-tx); border-color: rgba(var(--accent-rgb), 0.42); background: var(--accent-soft); }
 
-/* 棋盘：2 列 →（≥640px）3 列 →（≥960px）4 列 */
-.match-board { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+/* 棋盘：**固定两列**（间距 / 牌高 / 字号随屏宽 clamp 自适应 → 移动端不挤也不空） */
+.match-board-wrap { position: relative; }
+.match-board {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: clamp(8px, 2.6vw, 16px);
+  align-content: start;
+}
 .match-tile {
   position: relative;
   display: flex;
   align-items: center;
-  min-height: 76px;
-  padding: 12px;
+  min-height: clamp(62px, 17vw, 92px);
+  padding: clamp(9px, 2.6vw, 14px);
   border-radius: var(--r-md);
   border: 1px solid var(--glass-brd);
   background: var(--glass-bg);
@@ -843,7 +851,7 @@ body.modal-open { overflow: hidden; }
   backdrop-filter: blur(12px) saturate(140%);
   color: var(--tx);
   font: inherit;
-  font-size: 14.5px;
+  font-size: clamp(13px, 3.5vw, 15px);
   line-height: 1.35;
   text-align: left;
   overflow-wrap: anywhere;
@@ -879,7 +887,14 @@ body.modal-open { overflow: hidden; }
   border-radius: inherit;
   pointer-events: none;
   background: radial-gradient(circle at 50% 50%, rgba(255, 214, 130, 0.62), rgba(255, 214, 130, 0) 62%);
-  animation: match-burst 0.6s var(--ease-out) both;
+  animation: match-burst 0.42s var(--ease-out) both;
+}
+/* 配对成功 → 金色闪光 + 爆炸：两张牌缩放透明（0.42s 后由 JS 从棋盘移除，不再显示） */
+.match-tile.is-boom,
+.match-tile.is-boom:hover {
+  transform: none;
+  cursor: default;
+  animation: match-goldflash 0.16s var(--ease-out) both, match-boom 0.26s 0.16s var(--ease-out) both;
 }
 @keyframes match-goldflash {
   0% { box-shadow: 0 0 0 0 rgba(255, 200, 100, 0.75); filter: brightness(1.55); }
@@ -890,6 +905,12 @@ body.modal-open { overflow: hidden; }
   0% { opacity: 0.9; transform: scale(0.4); }
   70% { opacity: 0.32; transform: scale(1.12); }
   100% { opacity: 0; transform: scale(1.3); }
+}
+/* 爆炸消除：先微微涨一下再缩没（与 match-goldflash 串起来 = 金光一闪 + 炸开消失） */
+@keyframes match-boom {
+  0% { transform: scale(1); }
+  35% { transform: scale(1.08); filter: brightness(1.45); }
+  100% { transform: scale(0.34); opacity: 0; filter: brightness(1.15); }
 }
 @keyframes match-shake {
   0%, 100% { transform: translateX(0); }
@@ -902,6 +923,36 @@ body.modal-open { overflow: hidden; }
   0% { transform: scale(1); }
   40% { transform: scale(1.28); color: var(--amber-tx); }
   100% { transform: scale(1); }
+}
+/* 连击提示：combo✖️N 浮在棋盘正中（连续配对成功才出现；改文字 + 重放抖动动画） */
+.match-combo {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  z-index: 2;
+  padding: 6px 16px;
+  border-radius: 999px;
+  transform: translate(-50%, -50%);
+  font-size: clamp(19px, 6vw, 26px);
+  font-weight: 900;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+  color: var(--amber-tx);
+  background: var(--panel-top);
+  border: 1px solid rgba(255, 190, 90, 0.44);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+  pointer-events: none;
+}
+.match-combo[hidden] { display: none; }
+.match-combo.is-pop { animation: combo-kick 0.46s var(--ease-out) both; }
+/* 文字震动：弹一下 + 左右小抖（一次性动画 → 被 prefers-reduced-motion 收敛） */
+@keyframes combo-kick {
+  0% { transform: translate(-50%, -50%) scale(0.62) rotate(-4deg); opacity: 0; }
+  35% { transform: translate(-50%, -50%) scale(1.16) rotate(2.5deg); opacity: 1; }
+  55% { transform: translate(calc(-50% - 4px), -50%) scale(1.02) rotate(-1.5deg); }
+  72% { transform: translate(calc(-50% + 4px), -50%) scale(1) rotate(1deg); }
+  86% { transform: translate(calc(-50% - 2px), -50%) scale(1); }
+  100% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
 }
 
 /* 结算面板（全部配对完成） */
@@ -927,12 +978,7 @@ body.modal-open { overflow: hidden; }
 .match-done-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; width: 100%; }
 .match-done-actions .btn { flex: 1; min-width: 130px; }
 
-@media (min-width: 640px) {
-  .match-board { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-}
-@media (min-width: 960px) {
-  .match-board { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-}
+/* 棋盘始终两列（v0.5.12 起不再随屏宽加列；间距 / 字号已用 clamp 自适应） */
 
 /* ------------------------------ 卡片管理 ------------------------------ */
 .cards-list { display: flex; flex-direction: column; gap: 10px; }

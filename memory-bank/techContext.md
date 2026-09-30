@@ -26,7 +26,7 @@
 # 本地运行（必须 http(s)，file:// 下模块与 SW 受限）
 python3 -m http.server 8080
 
-# 全量校验（27 个 test-*.mjs + smoke-dom + verify-assets = 29 个脚本，2886 条断言）
+# 全量校验（27 个 test-*.mjs + smoke-dom + verify-assets = 29 个脚本，3008 条断言）
 for f in scripts/test-*.mjs scripts/smoke-dom.mjs scripts/verify-assets.mjs; do node "$f"; done
 node --check js/*.js sw.js scripts/*.mjs      # 语法检查
 node scripts/verify-assets.mjs                # 资源/一致性校验（含 CSS 变量审计）
@@ -37,7 +37,7 @@ node scripts/test-revlog.mjs                  # 复习日志（ease/type 映射 
 node scripts/test-idb-store.mjs               # 存储层（v2→v3 升级 / 迁移 / 写穿 / 重载水合 / 复习日志 / 级联清理）
 node scripts/test-table-editor.mjs            # 表格编辑页 #/editor（模版列一致性 / 表格内核 / 草稿 / 载入 / 粘贴多行 / 预览报告 / 渲染 / 事件 / 导入为卡组 / xlsx 指定工作表）
 node scripts/test-wordbook.mjs                # 生词本整理 #/words（同词归并 / 保留优先级 / 合并语义 / 标签整理 / 筛选排序 / 多选批量 / 页面渲染分页）
-node scripts/test-match.mjs                   # 明牌配对 #/match（解锁 ≥3 关 / 建牌与可复现洗牌 / 六态点击状态机 / 连击·失误·用时 / 薄 UI 局部打补丁与入口横幅）
+node scripts/test-match.mjs                   # 明牌配对 #/match（解锁 ≥1 关 / 分轮建牌（每轮 5 对）与可复现洗牌 / 六态点击状态机 / 连击·失误·用时 / 薄 UI 局部打补丁与入口横幅）
 
 # 数据准备（可选，需本地具备 gcide-0.51/）
 node scripts/split-gcide.mjs
@@ -49,7 +49,7 @@ node scripts/gen-examples.mjs --data data/words.json --sample 8
 
 ## 版本号约定
 - **两处必须同步递增**：`sw.js` 的 `VERSION`（缓存键）与 `js/app.js` 的 `APP_VERSION`（顶栏显示）
-- 当前：`APP v0.5.11` / `SW v1.10.1`
+- 当前：`APP v0.5.12` / `SW v1.10.2`
 
 ## 测试工程要点（写新测试时照抄）
 - 每个测试是独立 `.mjs`，自建浏览器桩（localStorage/document/window/location/requestAnimationFrame/HashChangeEvent）

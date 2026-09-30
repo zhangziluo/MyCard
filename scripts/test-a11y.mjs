@@ -303,8 +303,8 @@ console.log('\n[app.js / sw.js：播报接线与版本]');
 ok(/import \{[^}]*\bannounce\b[^}]*\} from '\.\/ui\.js'/.test(appSrc), 'app.js 从 ui.js 引入 announce');
 ok(/routeKey !== lastRouteKey/.test(appSrc), '仅路由变化时播报（同一路由重渲染不打扰读屏）');
 ok(/const pageTitle = renderAppbar\(route\)/.test(appSrc) && /announce\(pageTitle\)/.test(appSrc), 'render() 用顶栏标题播报当前页面');
-ok(/APP_VERSION = 'v0\.5\.11'/.test(appSrc), 'app.js 版本号 v0.5.11');
-ok(/const VERSION = 'v1\.10\.1'/.test(swSrc), 'sw.js VERSION v1.10.1');
+ok(/APP_VERSION = 'v0\.5\.12'/.test(appSrc), 'app.js 版本号 v0.5.12');
+ok(/const VERSION = 'v1\.10\.2'/.test(swSrc), 'sw.js VERSION v1.10.2');
 
 console.log('\n[明牌配对（#/match）的键盘可达性与标注]');
 {
@@ -317,8 +317,9 @@ console.log('\n[明牌配对（#/match）的键盘可达性与标注]');
   );
   ok(/<button type="button" class="\$\{cls\}" data-action="match-pick"/.test(matchSrc), '牌面是原生 <button>（Tab + Enter/空格天然可用）');
   ok(
-    /aria-pressed="\$\{matched \|\| selected \? 'true' : 'false'\}"/.test(matchSrc),
-    '牌面带 aria-pressed（反映选中 / 已配对状态）'
+    /aria-pressed="\$\{selected \? 'true' : 'false'\}"/.test(matchSrc) &&
+      /setAttribute\('aria-pressed', chosen \? 'true' : 'false'\)/.test(matchSrc),
+    '牌面带 aria-pressed（初始反映选中；已配对在爆炸前由 paintPick 置 true）'
   );
   ok(/aria-label="\$\{kindLabel\}「\$\{esc\(tile\.text\)\}」/.test(matchSrc), '牌面有中文 aria-label（单词 / 释义）');
   ok(
@@ -340,8 +341,16 @@ console.log('\n[明牌配对（#/match）的键盘可达性与标注]');
     /@keyframes match-goldflash/.test(css) && animBlock && !/animation:[^;]*infinite/.test(animBlock),
     '配对动画均为一次性（时间被全局「减少动效」收敛，不会循环闪金光）'
   );
-  ok(/\.match-tile\.is-matched::after/.test(css), '金色迸发挂在 ::after（同样被 reduced-motion 覆盖）');
-  ok(!/role="button"/.test(matchSrc), '牌面用原生 button，不重复造 role=button（无需 activateOnKey）');
+  ok(css.includes(".match-tile.is-matched::after"), "金色迸发挂在 ::after（同样被 reduced-motion 覆盖）");
+  ok(
+    matchSrc.includes(`class="match-round" data-match="round"`), // 轮次行
+    '轮次行（第 R/T 轮 · 本轮还剩 N 对）随点击局部更新（data-match=round）'
+  );
+  ok(
+    /class="match-combo" id="match-combo" aria-hidden="true"/.test(matchSrc),
+    'combo✖️N 连击提示是纯装饰层（aria-hidden，读屏改由 announce 播报）'
+  );
+  ok(/role="button"/.test(matchSrc) === false, '牌面用原生 button，不重复造 role=button（无需 activateOnKey）');
 }
 
 /* ==========================================================================

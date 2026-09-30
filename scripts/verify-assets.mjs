@@ -612,7 +612,7 @@ console.log('\n[我的生词批量整理（js/wordbook.js + js/wordbook-view.js�
   must(existsSync(rel('js/wordbook-view.js')), 'js/wordbook-view.js 存在（整理页）');
   must(sw.includes("'./js/wordbook.js'"), 'sw.js PRECACHE 含 ./js/wordbook.js');
   must(sw.includes("'./js/wordbook-view.js'"), 'sw.js PRECACHE 含 ./js/wordbook-view.js');
-  must(/const VERSION = 'v1\.10\.1'/.test(sw), 'sw.js VERSION 已递增（v1.10.1）');
+  must(/const VERSION = 'v1\.10\.2'/.test(sw), 'sw.js VERSION 已递增（v1.10.2）');
 
   // 内核：去重合并 / 标签 / 筛选排序 / 选中集 / 补查目标
   must(/export function normKey/.test(wbSrc), 'wordbook.js：normKey（大小写 / 空格归一为同一个词）');
@@ -630,7 +630,7 @@ console.log('\n[我的生词批量整理（js/wordbook.js + js/wordbook-view.js�
   must(/merge: true/.test(storeSrc2) && /extraBacks/.test(storeSrc2), 'store.js：addWords 支持 { merge: true } 合并释义');
 
   // 路由与入口
-  must(/0\.5\.11/.test(appSrc), 'app.js 版本号更新为 v0.5.11');
+  must(/0\.5\.12/.test(appSrc), 'app.js 版本号更新为 v0.5.12');
   must(/from '\.\/wordbook-view\.js'/.test(appSrc) && /renderWordbook\(root\)/.test(appSrc), 'app.js 挂载 renderWordbook');
   must(/seg\[0\] === 'words'/.test(appSrc) && /#\/words/.test(appSrc), 'app.js 解析 #/words 路由（含 ?page=N 分页）');
   must(/on\('nav-words'/.test(decksSrc3), 'decks.js 提供 nav-words 入口动作');
@@ -651,14 +651,29 @@ console.log('\n[我的生词批量整理（js/wordbook.js + js/wordbook-view.js�
   must(/wb-/.test(css) && /\.field select/.test(css), 'css/style.css 含生词本样式与弹窗下拉框样式');
 }
 
-console.log('\n[明牌配对（v0.5.11，通关 ≥3 关解锁）]');
+console.log('\n[明牌配对（v0.5.12，通关 ≥1 关解锁 · 每轮 5 对）]');
 {
   must(existsSync(rel('js/match.js')), 'js/match.js 存在');
   must(sw.includes("'./js/match.js'"), 'sw.js PRECACHE 含 ./js/match.js');
   const mSrc = readFileSync(rel('js/match.js'), 'utf8');
-  must(/export const UNLOCK_LEVELS = 3/.test(mSrc), 'match.js：解锁门槛 UNLOCK_LEVELS = 3');
+  must(/export const UNLOCK_LEVELS = 1/.test(mSrc), 'match.js：解锁门槛 UNLOCK_LEVELS = 1（v0.5.12 起通关 1 关就能玩）');
+  must(/export const ROUND_PAIRS = 5/.test(mSrc), 'match.js：每轮 ROUND_PAIRS = 5（多余的配对自动往后排）');
+  must(/export const BOOM_MS = \d+/.test(mSrc), 'match.js：BOOM_MS（爆炸动画播完才把这对牌从棋盘移除）');
   must(/export const MAX_PAIRS/.test(mSrc), 'match.js：单局对数上限 MAX_PAIRS（兜底防异常数据）');
   must(/export function buildTiles/.test(mSrc) && /export function shuffle/.test(mSrc), 'match.js：buildTiles / shuffle（随机源可注入）');
+  must(
+    /export function splitRounds/.test(mSrc) && /export function buildBoard/.test(mSrc),
+    'match.js：splitRounds / buildBoard（按轮切分 + 每轮独立洗牌）'
+  );
+  must(
+    /export function roundTiles/.test(mSrc) && /export function roundStats/.test(mSrc) && /export function liveTiles/.test(mSrc),
+    'match.js：roundTiles / roundStats / liveTiles（只铺当前轮的 5 对）'
+  );
+  must(
+    /export function isRoundComplete/.test(mSrc) && /export function isBoardComplete/.test(mSrc),
+    'match.js：每轮成对守门（旧版整盘平铺 / 损坏牌面一律丢弃）'
+  );
+  must(/roundCleared/.test(mSrc), 'match.js：applyPick 返回 roundCleared（UI 据此铺下一轮）');
   must(/export function nextSelection/.test(mSrc) && /export function applyPick/.test(mSrc), 'match.js：点击状态机（nextSelection / applyPick）');
   must(/export function renderMatch/.test(mSrc) && /export function clearMatchSession/.test(mSrc), 'match.js：页面入口 renderMatch / 清场 clearMatchSession');
   must(/export function unlockInfo/.test(mSrc) && /export function formatDuration/.test(mSrc), 'match.js：解锁进度 / 用时文案');
@@ -674,10 +689,15 @@ console.log('\n[明牌配对（v0.5.11，通关 ≥3 关解锁）]');
   const decksSrc4 = readFileSync(rel('js/decks.js'), 'utf8');
   must(/data-action="open-match"/.test(decksSrc4) && /on\('open-match'/.test(decksSrc4), 'decks.js 卡组详情页入口横幅 + open-match 动作');
   must(/from '\.\/match\.js'/.test(decksSrc4), 'decks.js 复用 match.js 解锁判定（规则只写一处）');
+  must(/match\.ROUND_PAIRS/.test(decksSrc4), 'decks.js 横幅文案复用 ROUND_PAIRS（每轮对数只写一处）');
 
   must(/\.match-banner/.test(css) && /\.match-board/.test(css) && /\.match-tile/.test(css), 'css：配对横幅 / 棋盘 / 牌面样式');
+  must(/\.match-board \{[^}]*repeat\(2, minmax\(0, 1fr\)\)/.test(css), 'css：棋盘固定两列（不再随屏宽变多列）');
+  must(/\.match-round \{/.test(css), 'css：轮次行 .match-round（第 R/T 轮 · 本轮还剩 N 对）');
   must(/@keyframes match-goldflash/.test(css) && /@keyframes match-burst/.test(css), 'css：配对成功「金光 + 迸发」关键帧');
+  must(/@keyframes match-boom/.test(css) && /\.match-tile\.is-boom/.test(css), 'css：配对成功「爆炸消除」关键帧（.is-boom）');
   must(/@keyframes match-shake/.test(css) && /@keyframes combo-pop/.test(css), 'css：配对失败抖动 / 连击弹出关键帧');
+  must(/\.match-combo \{/.test(css) && /@keyframes combo-kick/.test(css), 'css：combo✖️N 连击提示 + 抖动关键帧');
   must(/\.match-tile\.is-matched::after/.test(css), 'css：金色迸发挂在 ::after（一次性动画）');
   must(existsSync(rel('scripts/test-match.mjs')), '存在 scripts/test-match.mjs');
   must(readFileSync(rel('scripts/smoke-dom.mjs'), 'utf8').includes('#/match/'), 'smoke-dom 覆盖 #/match 界面渲染 + 会话清场');

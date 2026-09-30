@@ -265,7 +265,7 @@ export function renderDeck(root, deckId) {
   ].join('');
 
   const passedCount = levels.filter((l) => states[l.index] === 'passed').length;
-  // 明牌配对：通关 ≥ UNLOCK_LEVELS 关后出现入口（玩法见 js/match.js）
+  // 明牌配对：通关 ≥ UNLOCK_LEVELS 关后出现入口（v0.5.12 起只需 1 关；玩法见 js/match.js）
   const matchUnlock = match.unlockInfo(deck);
   const matchBanner = matchUnlock.unlocked
     ? `
@@ -273,7 +273,7 @@ export function renderDeck(root, deckId) {
         <span class="match-banner-icon" aria-hidden="true">${icon('layers', 22)}</span>
         <span class="match-banner-body">
           <b>明牌配对 · 玩一局</b>
-          <span>把「${esc(deck.name)}」的单词与释义两两配对（可选 ${passedCount} 个已通关关卡）</span>
+          <span>把「${esc(deck.name)}」的单词与释义两两配对 · 每轮 ${match.ROUND_PAIRS} 对（可选 ${passedCount} 个已通关关卡）</span>
         </span>
         <span class="match-banner-go" aria-hidden="true">开始 ›</span>
       </button>`
@@ -668,7 +668,7 @@ on('open-all-review', (el) => navigate(`#/review/${el.dataset.id}`));
 /* 整卡组可配置测试（顶部按钮）：20~150 题 */
 on('open-deck-test', (el) => navigate(`#/test/${el.dataset.id}`));
 
-/* 明牌配对（通关 ≥3 关后出现）：把本关单词与释义两两配对的明牌小游戏 */
+/* 明牌配对（通关 ≥ UNLOCK_LEVELS 关后出现）：把本关单词与释义两两配对的明牌小游戏 */
 on('open-match', (el) => navigate(`#/match/${el.dataset.id}`));
 
 /* 关卡分页（关卡数 > 15 时，每页 15 关；URL 为 1 基页号） */

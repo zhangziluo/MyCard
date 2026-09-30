@@ -24,7 +24,7 @@
     - **英英选择 `eng_eng`**（*建议考研及以上水平使用（需较强英文阅读理解能力）*）：子模式 A「看单词选英文释义」/ 子模式 B「看英文释义猜单词」随机出现，释义取自 GCIDE
     - **多义多选 `multi_sense`**（*建议考研及以上水平使用*）：勾选该词**全部释义**后提交判分，**全对才算对**，漏选 / 多选 / 错选均算错；释义优先取卡组内中文释义（`back` ＋ 多释义），缺失时回退 GCIDE 英文释义
 - **整卡组可配置测试**：题数 **20~150** 可调（快速 20 / 标准 50 / 挑战 150 ＋ 滑块，步长 10），题型按权重分配、词数不足时循环覆盖，错题进优先池，支持中途退出续做
-- **明牌配对（v0.5.11）**：卡组**通关 ≥ 3 关**后，详情页出现 **「明牌配对 · 玩一局」** 入口（路由 `#/match/{deck}`）——取某一**已通关关卡**的全部卡片展开成 **2N 张明牌**（N 张单词 ＋ N 张释义，位置随机打乱、**全程可见**），**先点单词、再点它的释义**：配对成功 → **金色闪光 ＋ 迸发**、连击 +1（≥2 时「最大连击」格弹跳）；配对失败 → **抖动**、连击清零、失误 +1；全部配完结算 **用时 / 失误 / 最大连击** 并可「再玩一次」（每次重开都重新洗牌、关卡可切换）
+- **明牌配对（v0.5.12）**：卡组**通关 ≥ 1 关**后，详情页出现 **「明牌配对 · 玩一局」** 入口（路由 `#/match/{deck}`）——取某一**已通关关卡**的卡片，**每轮 5 对**（10 张明牌：5 张单词 ＋ 5 张释义，位置随机打乱、**全程可见**）铺进**固定两列**棋盘，多余的配对**自动排到后面的轮次**（如 20 张卡 = 4 轮，轮次行实时显示「第 R/T 轮 · 本轮还剩 N 对」）；**先点单词、再点它的释义**：配对成功 → **金色闪光 ＋ 爆炸消除**（这一对从棋盘上消失）、连击 +1（**连击 ≥2 弹「combo✖️N」浮动提示并抖动**，「最大连击」格同步弹跳）；配对失败 → **抖动**、连击清零、失误 +1；一轮清完自动铺下一轮，全部配完结算 **用时 / 失误 / 最大连击** 并可「再玩一次」（每次重开都重新洗牌、关卡可切换）
 - **导出词表 / Anki 卡包（v0.4.11，v0.4.13 扩至四种格式，v0.4.16 起带复习进度，v0.5.8 起带复习日志）**：卡组菜单（⋮）提供五种导出，纯前端下载（离线可用）；列序统一为 `正面 / 背面 / 例句 / 例句翻译 / 音标 / 标签(逗号)`，无正面的卡片不导出
   - **标准 txt（TSV）**：UTF-8 带 BOM、制表符分隔、一卡一行，首行为列名；单元格内的制表符与换行会被清洗为空格（保证「一卡一行」）
   - **CSV（带表头）**：UTF-8 带 BOM、逗号分隔、CRLF 行尾，首行为列名；按 **RFC 4180** 转义 —— 含 `,` / `"` / 换行的字段用双引号包裹、内部 `"` 加倍（因此多行释义在 Excel / 表格工具里也不会串行）
@@ -72,7 +72,7 @@
   - 整份文件解析后**一次事务批量写入**本地库，按单词去重并报告跳过数；新建牌组时 `source=null` 故可重复导入（各自新建卡组）
 - **数据存储（v0.4，v0.5.8 库升到 v3）**：卡片正文与学习进度存 **IndexedDB**（库 `mycard` v3，stores：`decks` / `cards` / `meta` / `lookup` / **`revlog`**），localStorage 只保留设置与卡组清单（key `mycard-meta`）；旧版 `mycard-v1` 整库会在首次启动时**自动迁移**到 IndexedDB 并删除旧键，v2 → v3 为**增量升级**（只补建 `revlog` store 与其 `byDeck` / `byCard` 索引，既有数据不动），从而支持万词级词库
 - **内置词库**：仅内置「英语高频词（示范）」约 60 词（`data/words.json` ＋ 易混分组 `data/confusables.json`），首次打开**自动导入**并按难度编排 3 关；应用不再内置其它词库，需要时可用首页「导入」按钮导入自己的 CSV / JSON 词表（见上一条）。旧版本曾内置的 10 本考试词库（考研 / 四级 / 六级 / 托福 / 雅思 / 专四 / 专八 / SAT / 初中 / 高中）已下线，浏览器里**遗留的历史卡组会在启动时自动清理**（按 `source` 精确匹配，仅删这些内置卡组，不影响你自建的卡组与「我的生词」）
-- **PWA**：`manifest.json` ＋ `sw.js`；**代码 / 数据走网络优先**（在线总是最新，离线回退缓存），图片走缓存优先；新版本 SW 接管后自动刷新一次，通常**一次刷新即可看到新功能**；顶栏显示当前版本号（当前 `v0.5.11`），设置页另提供「强制刷新到最新版（清理离线缓存）」应对极端缓存情况
+- **PWA**：`manifest.json` ＋ `sw.js`；**代码 / 数据走网络优先**（在线总是最新，离线回退缓存），图片走缓存优先；新版本 SW 接管后自动刷新一次，通常**一次刷新即可看到新功能**；顶栏显示当前版本号（当前 `v0.5.12`），设置页另提供「强制刷新到最新版（清理离线缓存）」应对极端缓存情况
 - **界面**：移动端优先、深色主题、毛玻璃（glassmorphism）卡片；**桌面端自适应** —— `#app` 按 640 / 960 / 1280 / 1600px 断点逐级放宽（600 → 760 → 1080 → 1280 → 1440px），卡组用 `auto-fill` 网格随宽度平铺 2–5 列，宽屏下关卡列表两列平铺
 - **无障碍（v0.5.10）**：全局键盘焦点环（`:focus-visible`）、「跳到主要内容」跳转链接、路由变化用 `#sr-announce` 实时区域播报页面名、可点击卡片（`role="button"`）支持 Enter / 空格、弹窗焦点陷阱与关闭后焦点还原、系统「减少动态效果」全局生效——详见下文「无障碍与键盘可达性」
 
@@ -106,7 +106,7 @@
 │   ├── test-config.js      # 测试配置（题数 20~150、档位、题型权重、可选题型、通关阈值）
 │   ├── test-engine.js      # 测试引擎（抽题 / 循环 / 题型分配 / 优先池 / 进度）
 │   ├── test.js             # 测试题模式（7 种题型 + 整卡组可配置测试）
-│   ├── match.js            # 明牌配对游戏 #/match（通关 ≥3 关解锁；纯内核 + 薄 UI，点击只局部打补丁）
+│   ├── match.js            # 明牌配对游戏 #/match（通关 ≥1 关解锁；每轮 5 对 / 固定两列 / 爆炸消除 + combo✖️N；纯内核 + 薄 UI，点击只局部打补丁）
 │   ├── add-words.js        # 首页添加单词/词表：语种检测 / 分词 / 在线查词 / 缓存 / 预览
 │   ├── import-file.js      # 本地文件导入：CSV/TSV/JSON/XLSX 解析（零依赖）+ 预览 + 字段映射 + 多文件批量 + 拖拽区
 │   ├── import-history.js   # 导入历史与回滚（撤销导入：删新建卡组 / 移除追加卡片）
@@ -151,12 +151,12 @@
     ├── test-xlsx.mjs       # 极简 .xlsx 读取器（ZIP STORED/DEFLATE、共享字符串、日期、多工作表/公式求值/合并单元格，125 项断言）
     ├── test-table-editor.mjs # 表格编辑页 #/editor（模版列一致性 / 表格内核 / 草稿 / 载入 / 粘贴多行 / 预览报告 / 渲染 / 事件 / 导入为卡组 / xlsx 指定工作表，223 项断言）
     ├── test-export.mjs     # 导出 txt/CSV/Markdown/JSON/Anki apkg（RFC4180、meta protobuf、Anki 调度、revlog 日志、ZIP+CRC32、Python sqlite3 校验产物，155 项断言）
-    ├── smoke-dom.mjs       # 无头 DOM 冒烟（各界面渲染 + 分页 + 明暗切换 + 导出/导入入口 + 表格编辑页 + 生词本整理页 + 明牌配对，214 项断言）
+    ├── smoke-dom.mjs       # 无头 DOM 冒烟（各界面渲染 + 分页 + 明暗切换 + 导出/导入入口 + 表格编辑页 + 生词本整理页 + 明牌配对，224 项断言）
     ├── test-perf.mjs       # 大卡组（1 万词 / 500 关）规模：统计/分组/抽题（含优先池读取次数）正确性 + 耗时金丝雀（29 项）
     ├── test-wordbook.mjs   # 生词本整理（同词归并 / 保留卡片优先级 / 合并语义 / 标签整理 / 筛选排序 / 多选批量 / 页面渲染与分页，124 项断言）
-    ├── test-a11y.mjs       # 无障碍（键盘焦点环 / aria 覆盖 / 减少动效 / 弹窗焦点管理，91 项断言）
-    ├── test-match.mjs      # 明牌配对（解锁 / 建牌洗牌 / 牌面文案 / 点击状态机 / 连击 / 薄 UI 与入口横幅，153 项断言）
-    └── verify-assets.mjs   # 资源完整性校验（397 项）
+    ├── test-a11y.mjs       # 无障碍（键盘焦点环 / aria 覆盖 / 减少动效 / 弹窗焦点管理，93 项断言）
+    ├── test-match.mjs      # 明牌配对（解锁 / 分轮建牌洗牌 / 牌面文案 / 点击状态机 / 连击 / 薄 UI 与入口横幅，252 项断言）
+    └── verify-assets.mjs   # 资源完整性校验（408 项）
 ```
 
 ## 本地运行
@@ -197,16 +197,16 @@ node scripts/test-import-file.mjs     # 本地文件导入（解析/预览/字�
 node scripts/test-xlsx.mjs            # 极简 .xlsx 读取器（ZIP STORED/DEFLATE、共享字符串、日期、多工作表/公式求值/合并单元格，125 项）
 node scripts/test-table-editor.mjs    # 表格编辑页 #/editor（模版列一致性 / 表格内核 / 草稿 / 载入 / 粘贴多行 / 预览报告 / 导入为卡组 / xlsx 指定工作表，223 项）
 node scripts/test-export.mjs          # 导出 txt / CSV / Markdown / JSON / Anki apkg（RFC4180·meta protobuf·Anki 调度·revlog 日志·ZIP·CRC32，Python sqlite3 校验，155 项）
-node scripts/smoke-dom.mjs            # 无头 DOM 冒烟（各界面渲染 + 分页 + 明暗切换 + 导出/导入入口 + 表格编辑页 + 生词本整理页 + 明牌配对，214 项）
+node scripts/smoke-dom.mjs            # 无头 DOM 冒烟（各界面渲染 + 分页 + 明暗切换 + 导出/导入入口 + 表格编辑页 + 生词本整理页 + 明牌配对，224 项）
 node scripts/test-perf.mjs            # 大卡组（1 万词）规模：单遍统计 / 复用关卡分组 / 抽题快路径（含优先池）× 读取次数 + 耗时（29 项）
 node scripts/test-wordbook.mjs        # 生词本整理（同词归并 / 保留卡片优先级 / 合并语义 / 标签整理 / 筛选排序 / 多选批量 / 页面渲染与分页，124 项）
-node scripts/test-a11y.mjs            # 无障碍（键盘焦点环 / aria 覆盖 / prefers-reduced-motion / 弹窗焦点陷阱与还原 / 配对页标注，91 项）
-node scripts/test-match.mjs           # 明牌配对（解锁门槛 / 建牌与可复现洗牌 / 点击状态机 / 连击与用时 / 薄 UI 与入口横幅，153 项）
-node scripts/verify-assets.mjs        # PWA 资源完整性 + 字段映射 / 明暗模式 / 导出（含 revlog）/ 导入增强（xlsx 多表·公式·合并）/ 表格编辑 / 生词本整理 / 明牌配对 / 性能校验（397 项）
+node scripts/test-a11y.mjs            # 无障碍（键盘焦点环 / aria 覆盖 / prefers-reduced-motion / 弹窗焦点陷阱与还原 / 配对页标注，93 项）
+node scripts/test-match.mjs           # 明牌配对（解锁门槛 / 分轮建牌与可复现洗牌 / 点击状态机 / 连击与用时 / 薄 UI 与入口横幅，252 项）
+node scripts/verify-assets.mjs        # PWA 资源完整性 + 字段映射 / 明暗模式 / 导出（含 revlog）/ 导入增强（xlsx 多表·公式·合并）/ 表格编辑 / 生词本整理 / 明牌配对 / 性能校验（408 项）
 node --check js/*.js                  # 语法检查
 ```
 
-当前合计 **2886 条校验**（29 个脚本，各套件输出的 `✓`）**全部通过、0 失败**（含纯函数单测、无头 DOM 冒烟、IndexedDB 存储与 v2→v3 升级、大词表导入、Anki 卡包产物（含 `revlog`）与万级性能金丝雀）。
+当前合计 **3008 条校验**（29 个脚本，各套件输出的 `✓`）**全部通过、0 失败**（含纯函数单测、无头 DOM 冒烟、IndexedDB 存储与 v2→v3 升级、大词表导入、Anki 卡包产物（含 `revlog`）与万级性能金丝雀）。
 
 ## 部署：Cloudflare Pages
 
@@ -286,10 +286,10 @@ node --check js/*.js                  # 语法检查
 - **跳转与落点**：`<body>` 首个可聚焦元素是「跳到主要内容」跳转链接（`.skip-link` 平时移出视口、聚焦滑入）；`<main id="view" tabindex="-1">` 可被路由切换 / 跳转链接聚焦
 - **页面播报**：`#sr-announce`（`role="status"` ＋ `aria-live="polite"` ＋ `aria-atomic="true"`）在**路由变化**时播报页面名（同一路由重渲染不重复播报，避免整页重读）；`ui.announce()` 先清空再写入，保证同一句话可重复读出；`ui.toast()` 的容器同样是 `role="status"` 状态区，操作提示读屏自动朗读
 - **可点击卡片的键盘等价**：`div[role="button"][data-action]`（卡组磁贴 / 示范词库横幅 / 翻卡 / 拖拽导入区）由 `ui.activateOnKey` 统一接管 **Enter / 空格**（原生 `<button>` 不重复触发）；**`role="button"` 内不再嵌套可聚焦控件** —— 磁贴里的标签是纯标签，标签筛选走首页 chips 行（`role="group"` ＋ `aria-pressed`）或卡组详情页的标签按钮（`<button>` ＋ 中文 `aria-label`）
-- **语义标注**：进度条 `role="progressbar"` ＋ `aria-valuemin/max/now`；分页 `role="navigation"` ＋ `aria-label`（「‹ 上一页」这类图标按钮都有中文 `aria-label`）；筛选 chips `aria-pressed`；生词本概览 `role="group"`；CSV 预览与表格编辑页表头 `<th scope="col">`；装饰性氛围光 `aria-hidden="true"`；**明牌配对（v0.5.11）**的牌面是原生 `<button>`（`aria-pressed` 反映选中 / 已配对，中文 `aria-label` 含「单词 / 释义」）、棋盘与关卡 chips 为 `role="group"` ＋ `aria-label`、配对进度 `role="progressbar"`，配对成功 / 完成用 `announce()` 播报
+- **语义标注**：进度条 `role="progressbar"` ＋ `aria-valuemin/max/now`；分页 `role="navigation"` ＋ `aria-label`（「‹ 上一页」这类图标按钮都有中文 `aria-label`）；筛选 chips `aria-pressed`；生词本概览 `role="group"`；CSV 预览与表格编辑页表头 `<th scope="col">`；装饰性氛围光 `aria-hidden="true"`；**明牌配对（v0.5.12）**的牌面是原生 `<button>`（`aria-pressed` 反映选中，中文 `aria-label` 含「单词 / 释义」，已配对的牌爆炸后直接离开 DOM）、棋盘与关卡 chips 为 `role="group"` ＋ `aria-label`、配对进度 `role="progressbar"`、轮次行 `data-match="round"` 随点击更新，配对成功 / 连击 / 铺下一轮 / 完成都用 `announce()` 播报；「combo✖️N」浮动提示是**纯装饰层**（`aria-hidden="true"`，读屏只听播报）
 - **弹窗焦点管理**（`ui.openModal`）：`role="dialog"` ＋ `aria-modal="true"` ＋ 标题 `aria-labelledby`（无标题时回退 `aria-label="对话框"`）；打开即聚焦首个可聚焦元素；`Tab` / `Shift+Tab` **焦点陷阱**在弹窗内循环；`Esc` 关闭并把焦点**还给触发元素**
 - **`prefers-reduced-motion`**：系统开启「减少动态效果」时动画 / 过渡时长收敛到 `0.001s`、`animation-iteration-count: 1`（呼吸光 / 发音脉冲不再循环闪烁）、`scroll-behavior: auto`，且同时覆盖 `::before` / `::after`
-- 校验：`node scripts/test-a11y.mjs`（91 项断言：CSS 焦点环与减少动效 / `index.html` 结构 / 各页面 `role`·`aria-*`（含明牌配对页）/ `activateOnKey`·`announce`·`openModal` 运行时行为）
+- 校验：`node scripts/test-a11y.mjs`（93 项断言：CSS 焦点环与减少动效 / `index.html` 结构 / 各页面 `role`·`aria-*`（含明牌配对页）/ `activateOnKey`·`announce`·`openModal` 运行时行为）
 
 ## 复习日志（v0.5.8）
 
@@ -392,21 +392,23 @@ node --check js/*.js                  # 语法检查
 - **题型比例微调**：首次测试题型等权；每次重刷按 `(重刷次数 − 1) % 5` 在**五种基础题型**内轮换侧重一种（权重 ×2），使每次重刷的题型分布略有变化；**不含英英 / 多义**（v0.5.1）。
 - 「再测一次」（结果页）同样计入重刷次数并微调题型比例。
 
-## 明牌配对（`#/match/{deck}`，v0.5.11）
+## 明牌配对（`#/match/{deck}`，v0.5.12）
 
-卡组**通关 ≥ 3 关**后，卡组详情页在「头盔」与关卡列表之间出现 **「明牌配对 · 玩一局」** 横幅（未解锁不显示；直接访问 `#/match/{deck}` 会看到「还差 N 关」引导页）。
+卡组**通关 ≥ 1 关**后，卡组详情页在「头盔」与关卡列表之间出现 **「明牌配对 · 玩一局」** 横幅（未解锁不显示；直接访问 `#/match/{deck}` 会看到「还差 N 关」引导页）。解锁门槛由 `UNLOCK_LEVELS` 统一控制，`js/decks.js` 直接复用 `match.unlockInfo()`，规则只写一处。
 
-- **牌面（全明牌）**：取某一**已通关关卡**的全部卡片 → **2N 张牌**（N 张单词 ＋ N 张释义），用 Fisher-Yates 洗匀后铺成响应式网格（手机 2 列 / ≥640px 3 列 / ≥960px 4 列）。词牌偏主色、义牌偏中性，一眼可分；N 上限 `MAX_PAIRS = 30`（关卡本就 ≤30 张，这里兜底防异常数据）。
+- **每轮 5 对（`ROUND_PAIRS = 5`）**：取某一**已通关关卡**的卡片，按每轮 5 对切成若干轮（每轮 10 张牌 ＝ 5 张单词 ＋ 5 张释义），**每轮各自独立洗牌**（不会出现「整轮全是词牌」的死局）；某关 20 张卡 → 4 轮。**多余的配对自动溢出到后面的轮次**，一轮清空才铺下一轮。
+- **牌面（全明牌、固定两列）**：棋盘 `grid-template-columns: repeat(2, minmax(0, 1fr))` 固定两列（间距 / 字号随屏宽 `clamp()` 自适应，**不再随屏宽变 3 / 4 列**），一眼可分：词牌偏主色、义牌偏中性。整关牌数上限 `MAX_PAIRS = 30`（关卡本就 ≤30 张，这里兜底防异常数据）。
+- **轮次行**：头部实时显示「第 R/T 轮 · 本轮还剩 N 对」（全部配完 → 「全部完成 · 共 T 轮」），点击后**只更新文本**。
 - **玩法**：**先点单词、再点它的释义**。
   - 再点同一张 = 取消选中；点同类另一张 = 改选（词选词 / 义选义）；
-  - 词 ＋ 义且**同一张卡** → **配对成功**：两张牌 **金色闪光 ＋ 金色迸发**、变金收起（`disabled`，不可再点）、连击 +1，连击 ≥2 时「最大连击」格弹跳一次并播报「配对成功，连击 ×N」；
-  - 词 ＋ 义但**不同卡** → **配对失败**：两张牌**抖动**并取消选中（460ms 后复原）、连击清零、失误 +1；
+  - 词 ＋ 义且**同一张卡** → **配对成功**：两张牌 **金色闪光 ＋ 爆炸消除**（`is-matched` / `is-boom`，动画播完 `BOOM_MS = 420ms` 后这一对**真正从 DOM 上摘掉**，棋盘随之变短）、连击 +1；连击 ≥2 时棋盘正中浮出 **「combo✖️N」**提示并抖动（`combo-kick`），同时播报「配对成功，连击 ×N」并让「最大连击」格弹跳；
+  - 词 ＋ 义但**不同卡** → **配对失败**：两张牌**抖动**并取消选中（460ms 后复原）、连击清零、失误 +1、连击提示收起；
   - 点**已配对**的牌 = 无效（不打断当前选中）。
 - **结算**：全部配完 → 结算面板显示 **用时 / 失误 / 最大连击** ＋ 「再玩一次」（同关重新洗牌）＋「返回卡组」；用时实时每秒刷新，配完即定格，**不强制限时**。
 - **关卡选择**：已通关关卡 ≥2 个时，头部列出「第 N 关」chips（`aria-pressed` 标记当前关），默认从**最高**的已通关关卡开局；未通关的关卡不可切换。
-- **会话**：棋局（洗好的牌面 / 选中态 / 连击 / 用时）写入 `sessionStorage['mycard-match-session']`，因此**重渲染不重新洗牌**（主题切换等不会打乱棋盘）；路由切换 / 清空数据时由 `app.js` 调 `clearMatchSession()` 清场（同时清掉用时计时器与抖动定时器）。最佳成绩**暂不持久化**（仅在结算面板显示本局成绩）。
-- **实现分工**（见 `memory-bank/systemPatterns.md` 第 20 条）：`js/match.js` = **纯函数内核**（`UNLOCK_LEVELS` / `passedLevels` / `unlockInfo` / `defaultLevel` / `isPlayableLevel` / `buildTiles` / `shuffle`（随机源可注入）/ `isMatch` / `nextSelection` / `applyPick` / `boardStats` / `playStats` / `formatDuration`）＋ **薄 UI**（`renderMatch` / `clearMatchSession`）。
-- **点击不整页重渲染**：单击只做局部打补丁（选中态 / 金光 / 抖动 / 统计 / 焦点）——否则每配一对都会重建棋盘，导致**已配对的牌重复播金光**、键盘焦点丢失；配对成功后焦点自动交给**下一张还能点的牌**（纯键盘可连玩）。
+- **会话**：棋局（洗好的牌面 / 轮次 / 选中态 / 连击 / 用时）写入 `sessionStorage['mycard-match-session']`，因此**重渲染不重新洗牌**（主题切换等不会打乱棋盘）；会话复活时用 `isBoardComplete()` 守门 —— 旧版「整关平铺」的会话或损坏牌面**一律丢弃重开**；路由切换 / 清空数据时由 `app.js` 调 `clearMatchSession()` 清场（同时清掉用时计时器、抖动定时器与爆炸定时器）。最佳成绩**暂不持久化**（仅在结算面板显示本局成绩）。
+- **实现分工**（见 `memory-bank/systemPatterns.md` 第 20 条）：`js/match.js` = **纯函数内核**（`UNLOCK_LEVELS` / `ROUND_PAIRS` / `MAX_PAIRS` / `BOOM_MS` / `passedLevels` / `unlockInfo` / `defaultLevel` / `isPlayableLevel` / `splitRounds` / `buildBoard` / `buildTiles` / `shuffle`（随机源可注入）/ `roundTiles` / `roundStats` / `liveTiles` / `roundCount` / `roundLeft` / `isRoundComplete` / `isBoardComplete` / `isMatch` / `nextSelection` / `applyPick`（返回 `roundCleared`）/ `boardStats` / `playStats` / `formatDuration`）＋ **薄 UI**（`renderMatch` / `clearMatchSession`）。
+- **点击不整页重渲染**：单击只做局部打补丁（选中态 / 金光 · 爆炸 / 连击提示 / 轮次行 / 统计 / 焦点）——否则每配一对都会重建棋盘，导致**已消除的牌复活**、**金光重复播放**、键盘焦点丢失；配对成功后焦点自动交给**下一张还能点的牌**（纯键盘可连玩），本轮清空铺下一轮时焦点落到新铺的第一张牌。整页 `innerHTML` 只留给「开局 / 换关 / 重开 / 主题切换」这类低频时刻。
 
 ## 间隔重复算法（简版说明）
 

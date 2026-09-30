@@ -12,9 +12,9 @@ import { renderReview, clearReviewSession } from './review.js';
 import { renderTest, clearTestSession } from './test.js';
 import { renderTableEditor } from './table-editor.js';
 import { renderWordbook } from './wordbook-view.js'; // v0.5.9 生词本批量整理（#/words）
-import { renderMatch, clearMatchSession } from './match.js'; // v0.5.11 明牌配对（#/match/{deck}）
+import { renderMatch, clearMatchSession } from './match.js'; // v0.5.12 明牌配对（#/match/{deck}）
 
-const APP_VERSION = 'v0.5.11';
+const APP_VERSION = 'v0.5.12';
 
 /* ------------------------------ 路由解析 ------------------------------ */
 
@@ -47,7 +47,7 @@ function parseHash() {
     if (seg[2] == null) return { view: 'test', id: seg[1], level: null, mode };
     return { view: 'test', id: seg[1], level: Number(seg[2]), mode };
   }
-  // #/match/{deck} → 明牌配对游戏（通关 ≥3 关后解锁）
+  // #/match/{deck} → 明牌配对游戏（通关 ≥1 关后解锁）
   if (seg[0] === 'match' && seg[1]) return { view: 'match', id: seg[1], level: null, mode };
   return { view: 'home', mode };
 }

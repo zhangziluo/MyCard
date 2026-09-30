@@ -630,7 +630,7 @@ console.log('\n[生词本整理页 #/words]');
   ok(globalThis.location.hash === '#/words', '点入口 → 跳到 #/words');
 }
 
-// ---- 明牌配对（#/match/{deck}，v0.5.11）----
+// ---- 明牌配对（#/match/{deck}，v0.5.12：通关 ≥1 关解锁 · 每轮 5 对）----
 console.log('\n[明牌配对 · 棋盘页（#/match）]');
 {
   const mp = store.seedBuiltinDeck(
@@ -647,31 +647,45 @@ console.log('\n[明牌配对 · 棋盘页（#/match）]');
   decks.renderDeck(root, mp.id);
   ok(!root.innerHTML.includes('open-match'), '未解锁的卡组详情页没有配对入口');
 
-  for (const i of [0, 1, 2]) {
-    store.markLevelLearned(mp.id, i);
-    store.markLevelPassed(mp.id, i);
-  }
-  ok(match.unlockInfo(store.getDeck(mp.id)).unlocked === true, '通关 3 关 → 解锁');
+  store.markLevelLearned(mp.id, 0);
+  store.markLevelPassed(mp.id, 0);
+  ok(match.unlockInfo(store.getDeck(mp.id)).unlocked === true, '只通关 1 关 → 已解锁（v0.5.12 起门槛降到 1 关）');
   decks.renderDeck(root, mp.id);
   ok(root.innerHTML.includes('data-action="open-match"'), '卡组详情页出现「明牌配对」入口横幅');
   ok(root.innerHTML.includes('match-banner glass'), '横幅挂上 .match-banner 样式');
+  ok(root.innerHTML.includes('每轮 5 对'), '横幅写明「每轮 5 对」');
+
+  for (const i of [1, 2]) {
+    store.markLevelLearned(mp.id, i);
+    store.markLevelPassed(mp.id, i);
+  }
+  ok(match.unlockInfo(store.getDeck(mp.id)).passed === 3, '三关全通 → 可选关卡数为 3');
 
   globalThis.location.hash = '#/match/' + mp.id;
   (winListeners['hashchange'] || []).forEach((fn) => fn({ type: 'hashchange' }));
   const html = appViewEl.innerHTML;
   ok(html.includes('明牌配对 · 第 3 关'), '默认开局最高已通关关卡（第 3 关）');
-  ok((html.match(/data-action="match-pick"/g) || []).length === 40, '渲染 40 张明牌（2N）');
+  ok(html.includes('每轮 5 对'), '页头写明「每轮 5 对」');
+  ok(html.includes('第 1/4 轮'), '轮次行显示「第 1/4 轮」（20 张卡 → 4 轮）');
+  ok((html.match(/data-action="match-pick"/g) || []).length === 10, '本轮只铺 10 张明牌（5 对，不再整关平铺）');
+  ok(html.includes('id="match-combo"'), '棋盘上带 combo✖️N 连击提示层');
+  ok(html.includes('aria-label="选择关卡"'), '已通关关卡 chips 可切换（3 关都在）');
   ok(html.includes('match-tile-word') && html.includes('match-tile-def'), '词牌 / 义牌外观区分');
   ok(html.includes('role="progressbar" aria-label="配对进度"'), '进度条带 aria 标注');
   ok(html.includes('id="match-result"'), '结算面板容器已渲染');
   const ms = match.getMatchSession();
   ok(!!ms && ms.deckId === mp.id && ms.level === 2 && ms.tiles.length === 40, '会话已建立（第 3 关 / 40 张牌）');
+  ok(ms.roundPairs === 5 && ms.round === 0, '会话按每轮 5 对切分（当前第 1 轮）');
+  ok(match.liveTiles(ms).length === 10 && match.roundCount(ms) === 4, '本轮 10 张 / 整盘 4 轮');
 
-  const mw = ms.tiles.find((t) => t.kind === 'word');
+  const mw = match.roundTiles(ms).find((t) => t.kind === 'word');
   await fire('match-pick', { tile: mw.id });
   ok(match.getMatchSession().selectedId === mw.id, '点词牌 → 选中');
   await fire('match-pick', { tile: 'd-' + mw.cardId });
-  ok(match.getMatchSession().matched.length === 2, '词 + 义（同卡）→ 配对成功');
+  const after = match.getMatchSession();
+  ok(after.matched.length === 2, '词 + 义（同卡）→ 配对成功');
+  ok(after.combo === 1 && after.mistakes === 0, '配对成功 → 连击 +1、失误不变');
+  ok(match.roundLeft(after) === 4, '本轮还剩对数 5 → 4（配对的牌离开棋盘）');
 
   globalThis.location.hash = '#/deck/' + mp.id;
   (winListeners['hashchange'] || []).forEach((fn) => fn({ type: 'hashchange' }));
