@@ -751,7 +751,7 @@ console.log('\n[导入前预览 / 校验报告（v0.5.5）]');
   ok(html.includes('跳过缺少 / 超长单词的行：<b>1</b> 行'), '报告含跳过明细');
   ok(html.includes('忽略整行空白：<b>1</b> 行'), '报告含空白行统计');
   ok(html.includes('第 3 行：缺「单词」'), '报告列出问题行号');
-  ok(html.includes('csv-table') && html.includes('<th>单词</th>') && html.includes('>pear<'), '报告含数据预览表（表头 = 模版列）');
+  ok(html.includes('csv-table') && html.includes('<th scope="col">单词</th>') && html.includes('>pear<'), '报告含数据预览表（表头 = 模版列，带 scope=col）');
   ok(html.includes('前 2 行，共 5 行'), '数据预览标注取行范围', html.slice(-120));
 
   const decksBefore = store.getDb().decks.length;

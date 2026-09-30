@@ -1,6 +1,6 @@
 # Progress — 完成度与遗留
 
-> 更新时间：2026-09-28 ｜ APP `v0.5.9` / SW `v1.9.0` ｜ **2604 条校验全绿**
+> 更新时间：2026-09-30 ｜ APP `v0.5.11` / SW `v1.10.1` ｜ **2886 条校验全绿**
 
 ## 已交付（按版本）
 
@@ -142,14 +142,36 @@
 - **接线**：`js/app.js` 路由 `#/words` + `APP_VERSION = 'v0.5.9'`；`js/decks.js` 卡组页图标按钮 ＋ 菜单项 `nav-words`（仅「我的生词」显示）；`js/ui.js` 共享 `icon()`；`css/style.css` 生词本页面 / 批量栏 / 报告 / 标签弹窗样式；`sw.js` `v1.9.0`
 - 测试：新增 `test-wordbook.mjs`（**124** 条：内核 + 页面渲染 / 筛选分页 / 多选批量 / 在线补查 / 合并报告）；`test-add-words` 82 → **110**（重复词偏好 + 预填查词框）；`test-idb-store` 67 → **80**（`mergeCards` 删副卡级联、`updateCards`、`addWords({merge})` 写穿与重载一致）；`smoke-dom` 170 → **199**（整理页渲染 / 批量栏 / 标签弹窗 / 卡片菜单 / 分页 URL / 去重报告→合并 / 两处入口）；`verify-assets` 339 → **374**（v0.5.9 第 8 节断言）
 
-## 测试资产（25 个 test-*.mjs + `smoke-dom` + `verify-assets` = 27 个脚本 / 2604 条断言）
+**v0.5.10** 无障碍（a11y）统一补齐：键盘焦点环 / aria 覆盖 / 减少动效 / 弹窗焦点管理
+- **焦点可见**：`css/style.css` 新增全局 `*:focus-visible` 焦点环（2px 实线 `--accent-tx`，跟随主题色 / 明暗）；`.field` / `.fill-field` / `.add-words-input` / `.te-cell` 原有的 `outline: none` **收敛到 `:focus:not(:focus-visible)`**（鼠标点击不描边、键盘 Tab 一定可见）；生词本搜索框内层 `input` 无轮廓，改由外层 `.wb-search-box:focus-within` 提供 3px 焦点环
+- **跳转与落点**：`index.html` 的 `<body>` 首个可聚焦元素改为「跳到主要内容」（`.skip-link` 平时 `translateY(-200%)` 移出视口、`:focus` 滑入）；`<main id="view" tabindex="-1">` 可被路由切换 / 跳转链接聚焦
+- **页面播报**：新增 `#sr-announce`（`.sr-only` ＋ `role="status"` ＋ `aria-live="polite"` ＋ `aria-atomic="true"`）与 `ui.announce(msg)`（先清空再写入，同一句话可重复读出）；`js/app.js` 仅在**路由变化**时播报顶栏页面名（`lastRouteKey` 比对，同一路由重渲染不打扰读屏）；**移除 `<main>` 上的整页 `aria-live`**（原来每次重渲染都整页重读）
+- **键盘等价**：`ui.activateOnKey`（document 级 `keydown` 捕获）接管所有 `div[role="button"][data-action]`（卡组磁贴 / 示范词库横幅 / 翻卡 / 拖拽导入区）的 **Enter / 空格**（原生 `<button>` 不重复触发、非 `role=button` 不响应）；**`role="button"` 内不再嵌套可聚焦控件**——卡组磁贴里的标签改回纯标签（`tagBadges(tags, cls, interactive)`），标签筛选走首页 chips 行（`role="group"` ＋ `aria-pressed`）或卡组详情页的标签按钮（`<button>` ＋ 中文 `aria-label`）
+- **语义标注**：卡组磁贴 `role="button"` ＋ `tabindex="0"`；进度条 `role="progressbar"` ＋ `aria-valuemin/max/now`；分页 `role="navigation"` ＋ `aria-label`（`‹`/`›` 图标按钮补中文 `aria-label`）；筛选 chips `aria-pressed`；生词本概览 `role="group"`；CSV 预览与表格编辑页表头 `<th scope="col">`；装饰性氛围光 `<div class="bg-glow" aria-hidden="true">`
+- **弹窗焦点管理**（`js/ui.js` `openModal`）：`role="dialog"` ＋ `aria-modal="true"` ＋ 标题 `aria-labelledby`（无标题回退 `aria-label="对话框"`）；打开即聚焦首个可聚焦元素；新增 `focusables()`／`trapFocus()` 让 `Tab` / `Shift+Tab` 在弹窗内循环；`Esc` 关闭并把焦点**还给触发元素**（`prevFocus`）
+- **`prefers-reduced-motion`**：动画 / 过渡时长统一收敛到 `0.001s`、`animation-iteration-count: 1`（呼吸光 `btnGlow`、发音脉冲 `fill-speak-pulse` 不再循环闪烁）、`scroll-behavior: auto`，并覆盖 `::before` / `::after`（JS 侧无平滑滚动，`window.scrollTo(0, 0)` 本身即瞬时）
+- **接线**：`js/app.js` `APP_VERSION = 'v0.5.10'`；`sw.js` `VERSION = 'v1.10.0'`；`js/review.js` 翻卡按钮 `aria-label` 随正反面切换（「翻到答案面」/「回到问题面」）
+- 测试：新增 `scripts/test-a11y.mjs`（**79** 条：CSS 焦点环 / `.sr-only`·`.skip-link` / `prefers-reduced-motion` 全项 / `index.html` 结构 / 各模块 `role`·`aria-*` 静态断言 / `activateOnKey`·`announce`·`toast`·`openModal`（含焦点陷阱与还原）运行时行为，自带最小 DOM 桩）；`test-import-file`、`test-table-editor`、`verify-assets` 同步适配新标记（`<th scope="col">` 等），`smoke-dom` 无需改动即通过
+
+**v0.5.11** 明牌配对游戏（`#/match/{deck}`，通关 ≥3 关解锁）
+- **解锁与入口**：`js/match.js` `UNLOCK_LEVELS = 3` / `unlockInfo(deck)`（复用 `lv.levelStates` 的 `passed` 判定）——卡组**已通关关卡 ≥3** 时，`js/decks.js` 的 `renderDeck` 在 `deck-hero` 与 `levels-wrap` **之间**插入 `.match-banner`（`<button data-action="open-match">`，**内部不嵌套可聚焦控件**；未解锁不渲染），`on('open-match')` → `#/match/{deckId}`；`passedCount` 同时复用给 hero 的「通关关卡」统计（不再重复遍历）。`js/app.js` 新增 `parseHash` 的 `#/match/{deckId}`、顶栏 `case 'match'`（标题「明牌配对」、返回卡组）、`render()` 分发 `renderMatch`、`hashchange`/`reset-all` 调 `clearMatchSession`
+- **纯函数内核**（`js/match.js`，随机源可注入 → 单测可复现）：`passedLevels`/`passedCount`/`unlockInfo`/`defaultLevel`（= 最高已通关关卡）/`isPlayableLevel`（只能玩已通关关卡）/`levelCardsFor`（`MAX_PAIRS = lv.MAX_PER_LEVEL = 30` 兜底）/`wordText`/`defText`（背面 → `extraBacks[0]` → 「（无释义）」）/`shuffle`（Fisher-Yates）/`buildTiles`（每卡 → `w-{id}` ＋ `d-{id}`，共 2N 张，再整体打乱）/`isMatch`（同卡异面）/`tileMap`/`nextSelection`（`select`/`cancel`/`replace`/`match`/`miss`/`ignore` 六态）/`applyPick`（不改入参，返回 `{state, event, pair}`；成功连击 +1 并刷新 `maxCombo`、失败清零连击并 `mistakes +1`、全配上 `endedAt` 定格）/`boardStats`/`isDone`/`playStats`/`formatDuration`（`45秒` / `1分05秒`）
+- **薄 UI**：`renderMatch`（未解锁 → 引导页「还差 N 关」；已解锁 → 头部统计（用时 / 已配对 / 失误 / 最大连击）＋ `role=progressbar` 进度条＋关卡 chips（`aria-pressed`）＋棋盘＋结算面板）、`clearMatchSession`（清会话 ＋ 用时计时器 ＋ 抖动定时器）；牌面是**原生 `<button>`**（`data-action="match-pick"`、`aria-pressed` 反映选中 / 已配对、`aria-label` 带「单词 / 释义」前缀、已配对 `disabled`），棋盘 / chips 为 `role="group"`＋`aria-label`
+- **点击只局部打补丁（不整页重渲染）**：`paintPick` 只改 class / `aria-pressed` / `disabled` / 统计文本 —— 否则每配一对都重建棋盘会让**已配对的牌重复播金光**、键盘焦点丢失；配对成功后 `focusNextPlayable()` 把焦点交给**下一张还能点的牌**，全部配完 `finishGame()` 打开结算面板并把焦点交给「再玩一次」＋ `announce()` 播报成绩；连击 ≥2 时 `popComboCell()` 让「最大连击」格弹一下（先摘 class 再 `requestAnimationFrame` 加回）
+- **会话**：`sessionStorage['mycard-match-session']`（`{deckId, level, tiles, selectedId, matched, combo, maxCombo, mistakes, startedAt, endedAt}`）——同一关卡的重渲染（主题切换等）**沿用同一副牌**，路由切换即清空；最佳成绩**暂不持久化**
+- **CSS**（`css/style.css`）：`.match-banner` / `.match-head`·`.match-stats`·`.match-lv` / `.match-board`（2 → 3 → 4 列响应式）/ `.match-tile`（词牌主色、义牌中性；`is-selected` / `is-wrong` / `is-matched`）/ `.match-done`；新增**一次性**关键帧 `match-goldflash`（金光）＋ `match-burst`（挂在 `is-matched::after` 的金色迸发）＋ `match-shake`（失败抖动）＋ `combo-pop`（**均非 `infinite` → 被全局 `prefers-reduced-motion` 收敛**）
+- **接线**：`js/app.js` `APP_VERSION = 'v0.5.11'`；`sw.js` `VERSION = 'v1.10.1'` ＋ PRECACHE 增 `./js/match.js`
+- 测试：新增 `scripts/test-match.mjs`（**153** 条：解锁门槛 / 建牌与可复现洗牌（LCG）/ 牌面文案兜底 / 六态状态机 / 连击·失误·用时 / 薄 UI DOM 桩（局部打补丁不写 `innerHTML`、金光 · 抖动、结算面板与焦点、换关 / 重开 / 返回、会话延续与清场、未解锁兜底、入口横幅位置）/ 接线与样式静态断言）；`smoke-dom` 199 → **214**（`#/match` 棋盘页渲染 + 入口横幅解锁前后 + 路由清场）；`test-a11y` 79 → **91**（配对页键盘可达性与标注）；`verify-assets` 374 → **397**（v0.5.11 第 9 节断言）
+
+## 测试资产（27 个 test-*.mjs + `smoke-dom` + `verify-assets` = 29 个脚本 / 2886 条断言）
 | 分类 | 脚本 |
 | --- | --- |
 | 核心纯函数 | `test-core`(43) `test-difficulty`(39) `test-arrange`(22) `test-pagination`(25) `test-resplit-levels`(26) `test-revlog`(58) |
 | 学习与题型 | `test-confusables`(82) `test-hardwords`(26) `test-level-retry`(78) `test-fill`(85) `test-listen`(21) `test-deck-test`(92) `test-eng-eng`(34) `test-multi-sense`(39) `test-review-complete`(11) `test-review-interaction`(18) |
 | 存储与主题 | `test-idb-store`(80) `test-theme`(150) |
-| 新功能 | `test-add-words`(110) `test-import-file`(336) `test-table-editor`(223) `test-export`(155) `test-xlsx`(125) `test-wordbook`(124) |
-| DOM / 资源 | `smoke-dom`(199) `verify-assets`(374) |
+| 新功能 | `test-add-words`(110) `test-import-file`(336) `test-table-editor`(223) `test-export`(155) `test-xlsx`(125) `test-wordbook`(124) `test-match`(153，明牌配对：解锁 / 建牌洗牌 / 状态机 / 连击 / 薄 UI) |
+| 无障碍 | `test-a11y`(91，键盘焦点环 / aria 覆盖 / 减少动效 / 弹窗焦点管理 / 配对页标注) |
+| DOM / 资源 | `smoke-dom`(214) `verify-assets`(397) |
 | 性能金丝雀 | `test-perf`(29，1 万词 / 500 关：统计/分组/抽题（含优先池读取次数）+ 耗时) |
 
 ## 已知问题 / 技术债

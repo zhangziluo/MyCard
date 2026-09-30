@@ -165,7 +165,8 @@ function cardHtml(flipped) {
   if (!card) return '';
   return `
     <div class="flashcard3d-wrap">
-      <div class="flashcard3d${flipped ? ' flipped' : ''}" data-action="review-flip" role="button" tabindex="0">
+      <div class="flashcard3d${flipped ? ' flipped' : ''}" data-action="review-flip" role="button" tabindex="0"
+        aria-label="${flipped ? '回到问题面' : '翻到答案面'}">
         <div class="face face-front">
           <span class="face-tag">正面 · 问题</span>
           <p class="face-main">${esc(card.front)}</p>

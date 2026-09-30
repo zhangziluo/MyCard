@@ -6,14 +6,15 @@ import * as store from './store.js';
 import * as difficulty from './difficulty.js';
 import * as engdefs from './engdefs.js';
 import * as theme from './theme.js';
-import { on, bindDocument, navigate, toast, confirmDialog } from './ui.js';
+import { on, bindDocument, navigate, toast, confirmDialog, announce } from './ui.js';
 import * as decks from './decks.js';
 import { renderReview, clearReviewSession } from './review.js';
 import { renderTest, clearTestSession } from './test.js';
 import { renderTableEditor } from './table-editor.js';
 import { renderWordbook } from './wordbook-view.js'; // v0.5.9 生词本批量整理（#/words）
+import { renderMatch, clearMatchSession } from './match.js'; // v0.5.11 明牌配对（#/match/{deck}）
 
-const APP_VERSION = 'v0.5.9';
+const APP_VERSION = 'v0.5.11';
 
 /* ------------------------------ 路由解析 ------------------------------ */
 
@@ -46,6 +47,8 @@ function parseHash() {
     if (seg[2] == null) return { view: 'test', id: seg[1], level: null, mode };
     return { view: 'test', id: seg[1], level: Number(seg[2]), mode };
   }
+  // #/match/{deck} → 明牌配对游戏（通关 ≥3 关后解锁）
+  if (seg[0] === 'match' && seg[1]) return { view: 'match', id: seg[1], level: null, mode };
   return { view: 'home', mode };
 }
 
@@ -109,6 +112,11 @@ function renderAppbar(route) {
       backHref = route.id ? `#/deck/${route.id}` : '#/home';
       t = route.level == null ? '整卡组测试' : '关卡测试';
       break;
+    case 'match':
+      showBack = true;
+      backHref = route.id ? `#/deck/${route.id}` : '#/home';
+      t = '明牌配对';
+      break;
     case 'settings':
       showBack = true;
       backHref = '#/home';
@@ -133,6 +141,7 @@ function renderAppbar(route) {
   title.textContent = t;
   const sideEl = document.getElementById('appbar-side');
   sideEl.innerHTML = themeToggleHtml() + side;
+  return t;
 }
 
 on('nav-back', (el) => {
@@ -145,11 +154,13 @@ on('nav-back', (el) => {
 
 /* ------------------------------ 渲染入口 ------------------------------ */
 
+let lastRouteKey = ''; // 只在「路由变化」时向读屏播报，避免每次重渲染都打扰
+
 export function render() {
   const route = parseHash();
   const root = document.getElementById('view');
   root.dataset.flipped = '0';
-  renderAppbar(route);
+  const pageTitle = renderAppbar(route);
 
   if (route.view === 'home') {
     decks.renderHome(root);
@@ -167,11 +178,20 @@ export function render() {
     renderTableEditor(root);
   } else if (route.view === 'words') {
     renderWordbook(root);
+  } else if (route.view === 'match') {
+    renderMatch(root, route.id);
   } else {
     decks.renderHome(root);
   }
   document.getElementById('view').scrollTop = 0;
   window.scrollTo(0, 0);
+
+  // 路由变化 → 读屏播报当前页面标题（同一路由的重复渲染不打扰）
+  const routeKey = `${route.view}:${route.id || ''}:${route.level ?? ''}`;
+  if (routeKey !== lastRouteKey) {
+    lastRouteKey = routeKey;
+    announce(pageTitle);
+  }
 }
 /* ------------------------------ 设置页 ------------------------------ */
 
@@ -311,6 +331,7 @@ on('reset-all', async () => {
     store.resetAll();
     clearReviewSession();
     clearTestSession();
+    clearMatchSession();
     toast('已重置，将重新初始化');
     setTimeout(() => {
       location.hash = '#/home';
@@ -411,6 +432,7 @@ function boot() {
   window.addEventListener('hashchange', () => {
     clearReviewSession();
     clearTestSession(); // 同时清除测试会话与自动跳题定时器
+    clearMatchSession(); // 同时清除配对棋局与计时器
     render();
   });
 

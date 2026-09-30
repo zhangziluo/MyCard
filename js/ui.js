@@ -87,10 +87,34 @@ export function handleEvent(evt) {
   }
 }
 
+/* ------------------- 键盘激活 role=button（v0.5.10） ------------------- */
+
+/** 原生可交互标签：浏览器已处理 Enter / Space，无需再合成 click */
+const NATIVE_ACTIVATABLE = { INPUT: 1, TEXTAREA: 1, SELECT: 1, BUTTON: 1, A: 1, OPTION: 1 };
+
+/**
+ * 让 <div role="button" tabindex="0" data-action="…">（卡组磁贴 / 拖拽区 / 翻卡等）
+ * 也能用键盘操作：Enter / Space 触发一次合成 click（仍走事件委托）。
+ * 返回 true 表示已处理；原生按钮 / 链接交给浏览器默认行为。
+ */
+export function activateOnKey(evt) {
+  if (!evt || (evt.key !== 'Enter' && evt.key !== ' ' && evt.key !== 'Spacebar')) return false;
+  const el = evt.target && evt.target.closest ? evt.target.closest('[data-action]') : null;
+  if (!el) return false;
+  if (NATIVE_ACTIVATABLE[el.tagName]) return false;
+  if (el.getAttribute && el.getAttribute('role') !== 'button') return false;
+  if (evt.preventDefault) evt.preventDefault(); // 拦截空格滚动页面
+  if (typeof el.click === 'function') el.click();
+  else if (typeof MouseEvent === 'function') el.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+  return true;
+}
+
 export function bindDocument() {
   for (const type of Object.keys(registry)) {
     document.addEventListener(type, handleEvent, true);
   }
+  // 键盘激活（Enter / Space）role=button 元素
+  document.addEventListener('keydown', activateOnKey, true);
 }
 
 /* ------------------------------- 导航 ------------------------------- */
@@ -106,6 +130,18 @@ export function navigate(hash) {
   window.scrollTo(0, 0);
 }
 
+/* ------------------------- 屏幕阅读器播报（v0.5.10） ------------------------- */
+
+/** 向屏幕阅读器播报一句话（写入 index.html 里的 #sr-announce 实时区域） */
+export function announce(msg) {
+  if (!msg || typeof document === 'undefined' || !document.getElementById) return;
+  const el = document.getElementById('sr-announce');
+  if (!el) return;
+  // 先清空再写入：重复播报同一句时也能被再次读出
+  el.textContent = '';
+  el.textContent = String(msg);
+}
+
 /* ------------------------------- Toast ------------------------------- */
 
 let toastTimer = null;
@@ -115,6 +151,12 @@ export function toast(msg, type = 'info') {
   if (!host) {
     host = document.createElement('div');
     host.id = 'toast-host';
+    // 以状态区域播报（读屏友好）：新增 toast 会被自动朗读
+    if (host.setAttribute) {
+      host.setAttribute('role', 'status');
+      host.setAttribute('aria-live', 'polite');
+      host.setAttribute('aria-atomic', 'true');
+    }
     document.body.appendChild(host);
   }
   const el = document.createElement('div');
@@ -130,14 +172,53 @@ export function toast(msg, type = 'info') {
 
 /* ------------------------------- Modal ------------------------------- */
 
+let modalUid = 0;
+
+/** 弹窗内可聚焦元素选择器（焦点陷阱用） */
+const FOCUSABLE_SELECTOR =
+  'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+/** 返回容器内当前可聚焦的元素列表 */
+export function focusables(root) {
+  if (!root || typeof root.querySelectorAll !== 'function') return [];
+  return Array.from(root.querySelectorAll(FOCUSABLE_SELECTOR)).filter(
+    (el) => el && !el.disabled && !(el.hasAttribute && el.hasAttribute('hidden'))
+  );
+}
+
+/** Tab / Shift+Tab 在弹窗内循环（焦点陷阱，避免 Tab 跑到弹窗后的页面） */
+function trapFocus(evt, overlay) {
+  const list = focusables(overlay);
+  if (!list.length) return;
+  const first = list[0];
+  const last = list[list.length - 1];
+  const doc = overlay.ownerDocument || (typeof document !== 'undefined' ? document : null);
+  const active = doc && doc.activeElement;
+  const inside = typeof overlay.contains === 'function' ? overlay.contains(active) : true;
+  if (evt.shiftKey) {
+    if (active === first || !inside) {
+      evt.preventDefault();
+      if (last.focus) last.focus();
+    }
+  } else if (active === last || !inside) {
+    evt.preventDefault();
+    if (first.focus) first.focus();
+  }
+}
+
 export function openModal({ title = '', body = '', actions = [], onClose = null, wide = false }) {
   closeModal();
+  const uid = ++modalUid;
+  const titleId = `modal-title-${uid}`;
+  const prevFocus = (typeof document !== 'undefined' && document.activeElement) || null;
   const overlay = document.createElement('div');
   overlay.className = 'modal-overlay';
   overlay.dataset.ui = 'modal-overlay';
   overlay.innerHTML = `
-    <div class="modal${wide ? ' modal-wide' : ''}" role="dialog" aria-modal="true">
-      ${title ? `<div class="modal-title">${esc(title)}</div>` : ''}
+    <div class="modal${wide ? ' modal-wide' : ''}" role="dialog" aria-modal="true"${
+      title ? ` aria-labelledby="${titleId}"` : ' aria-label="对话框"'
+    }>
+      ${title ? `<div class="modal-title" id="${titleId}">${esc(title)}</div>` : ''}
       <div class="modal-body">${body}</div>
       ${actions.length ? `<div class="modal-actions">${actions
         .map(
@@ -151,10 +232,24 @@ export function openModal({ title = '', body = '', actions = [], onClose = null,
   document.body.classList.add('modal-open');
   requestAnimationFrame(() => overlay.classList.add('show'));
 
+  // 初始焦点：弹窗内第一个可聚焦元素（键盘 / 读屏用户不迷路）
+  const firstFocus = focusables(overlay)[0];
+  if (firstFocus && firstFocus.focus) {
+    try {
+      firstFocus.focus();
+    } catch (e) {}
+  }
+
   const cleanup = () => {
     overlay.remove();
     document.body.classList.remove('modal-open');
     document.removeEventListener('keydown', onKey);
+    // 关闭后把焦点还给触发弹窗的元素（键盘 / 读屏连续性）
+    if (prevFocus && typeof prevFocus.focus === 'function' && prevFocus.isConnected !== false) {
+      try {
+        prevFocus.focus();
+      } catch (e) {}
+    }
     if (onClose) onClose();
   };
 
@@ -162,7 +257,11 @@ export function openModal({ title = '', body = '', actions = [], onClose = null,
     if (e.target === overlay) cleanup();
   };
   const onKey = (e) => {
-    if (e.key === 'Escape') cleanup();
+    if (e.key === 'Escape') {
+      cleanup();
+      return;
+    }
+    if (e.key === 'Tab') trapFocus(e, overlay); // 焦点陷阱
   };
   overlay.addEventListener('click', onOverlayClick);
   document.addEventListener('keydown', onKey);

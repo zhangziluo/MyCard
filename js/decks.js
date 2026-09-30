@@ -13,6 +13,7 @@ import { importFileButtonHtml, dropzoneHtml, bindDropzone, csvTemplateButtonHtml
 import { tableEditorLinkHtml } from './table-editor.js'; // 首页入口：在网页里填表格（#/editor）
 import { importHistoryButtonHtml } from './import-history.js'; // 注册「导入历史 / 撤销」入口
 import './export.js'; // 注册卡组菜单的「导出 txt / apkg」动作
+import * as match from './match.js'; // 明牌配对：解锁判定 + 入口横幅（#/match/{deck}）
 import { esc, on, icon, navigate, openModal, closeModal, readForm, toast, confirmDialog, parseTags } from './ui.js';
 
 const ACTIVE_TAG_KEY = 'mycard-active-tag';
@@ -20,9 +21,21 @@ let activeTag = localStorage.getItem(ACTIVE_TAG_KEY) || '全部';
 
 /* ------------------------------- 小工具 ------------------------------- */
 
-function tagBadges(tags, cls = '') {
+/**
+ * 卡组标签。
+ * - interactive=true（默认）：渲染为 <button>，键盘可达，点击 = 按该标签筛选（用于卡组详情页的纯容器里）。
+ * - interactive=false：渲染为纯 <span> 标签，用于「卡组磁贴」——磁贴本身是 role="button"，
+ *   按 ARIA 规范其中不能嵌套可聚焦控件；键盘用户可在首页 chips 行完成同样的标签筛选。
+ */
+function tagBadges(tags, cls = '', interactive = true) {
   return (tags || [])
-    .map((t) => `<span class="tag ${cls}" data-action="filter-tag" data-tag="${esc(t)}">${esc(t)}</span>`)
+    .map((t) =>
+      interactive
+        ? `<button type="button" class="tag ${cls}" data-action="filter-tag" data-tag="${esc(
+            t
+          )}" aria-label="按标签「${esc(t)}」筛选">${esc(t)}</button>`
+        : `<span class="tag ${cls}" data-action="filter-tag" data-tag="${esc(t)}">${esc(t)}</span>`
+    )
     .join('');
 }
 
@@ -48,9 +61,9 @@ function deckTileHtml(deck) {
       ${deck.demo ? '<span class="pill pill-demo">示范</span>' : ''}
     </div>
     ${deck.description ? `<p class="deck-desc">${esc(deck.description)}</p>` : ''}
-    <div class="tag-row">${tagBadges(deck.tags)}</div>
+    <div class="tag-row">${tagBadges(deck.tags, '', false)}</div>
     <div class="deck-progress">
-      <div class="progress-track"><i class="progress-fill" style="width:${pct}%"></i></div>
+      <div class="progress-track" role="progressbar" aria-label="学习进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}"><i class="progress-fill" style="width:${pct}%"></i></div>
       <div class="deck-stat">
         <span><b>${stats.total}</b> 卡片</span>
         <span><b>${stats.learned}</b> 已学</span>
@@ -76,12 +89,14 @@ export function renderHome(root) {
   const chips = ['全部', ...tags]
     .map(
       (t) =>
-        `<button class="chip${t === activeTag ? ' chip-on' : ''}" data-action="filter-tag" data-tag="${esc(t)}">${esc(t)}${t === '全部' ? ` (${db.decks.length})` : ''}</button>`
+        `<button class="chip${t === activeTag ? ' chip-on' : ''}" data-action="filter-tag" data-tag="${esc(t)}" aria-pressed="${
+          t === activeTag
+        }">${esc(t)}${t === '全部' ? ` (${db.decks.length})` : ''}</button>`
     )
     .join('');
 
   const demoBanner = !hasDemo
-    ? `<div class="banner glass" data-action="import-demo">
+    ? `<div class="banner glass" data-action="import-demo" role="button" tabindex="0" aria-label="导入示范卡组：内置英语高频词约 60 词，分 3 关">
          <span class="banner-icon">${icon('card', 22)}</span>
          <div><b>导入示范卡组</b><p>内置「英语高频词」约 60 词，分 3 关，体验关卡闯关模式</p></div>
          <span class="banner-go">${icon('back', 18)}</span>
@@ -117,7 +132,7 @@ export function renderHome(root) {
       </div>
       ${dropzoneHtml()}
       <p class="csv-hint">没有模版？${csvTemplateButtonHtml()}（标准列：单词 / 释义 / 例句 / 例句翻译 / 音标 / 标签；示例行可选，导入前请删除）　${jsonTemplateButtonHtml()}（JSON 结构：name / tags / words）　不方便准备文件？${tableEditorLinkHtml()}</p>
-      ${tags.length ? `<div class="chips scroll-x">${chips}</div>` : ''}
+      ${tags.length ? `<div class="chips scroll-x" role="group" aria-label="按标签筛选卡组">${chips}</div>` : ''}
       <div class="deck-grid">${decks.map(deckTileHtml).join('') || empty}</div>
     </div>`;
   bindDropzone(root); // 绑定拖拽导入（CSV / JSON → 预览 → 确认导入）
@@ -182,7 +197,7 @@ function levelCardHtml(deck, lvInfo, state, now) {
       </div>
       ${badge}
     </div>
-    <div class="progress-track"><i class="progress-fill" style="width:${pct}%"></i></div>
+    <div class="progress-track" role="progressbar" aria-label="已学 ${learned} / ${total} 张" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}"><i class="progress-fill" style="width:${pct}%"></i></div>
     <div class="level-card-foot">${levelAction(deck, lvInfo, state, now)}</div>
   </section>`;
 }
@@ -202,10 +217,10 @@ function pagerHtml(deckId, page, totalLevels) {
   const from = page * lv.LEVELS_PER_PAGE + 1;
   const to = Math.min(totalLevels, (page + 1) * lv.LEVELS_PER_PAGE);
   return `
-  <div class="pager glass">
-    <button class="pager-btn" data-action="deck-page" data-id="${esc(deckId)}" data-page="${page}" ${page <= 0 ? 'disabled' : ''}>‹ 上一页</button>
+  <div class="pager glass" role="navigation" aria-label="关卡分页">
+    <button class="pager-btn" data-action="deck-page" data-id="${esc(deckId)}" data-page="${page}" ${page <= 0 ? 'disabled' : ''} aria-label="上一页关卡">‹ 上一页</button>
     <div class="pager-info"><b>${lv.levelPageLabel(page, totalLevels)}</b><span>第 ${from}–${to} 关 / 共 ${totalLevels} 关</span></div>
-    <button class="pager-btn" data-action="deck-page" data-id="${esc(deckId)}" data-page="${page + 2}" ${page >= total - 1 ? 'disabled' : ''}>下一页 ›</button>
+    <button class="pager-btn" data-action="deck-page" data-id="${esc(deckId)}" data-page="${page + 2}" ${page >= total - 1 ? 'disabled' : ''} aria-label="下一页关卡">下一页 ›</button>
   </div>`;
 }
 
@@ -249,6 +264,21 @@ export function renderDeck(root, deckId) {
     deck.demo ? '<span class="pill pill-demo">示范</span>' : ''
   ].join('');
 
+  const passedCount = levels.filter((l) => states[l.index] === 'passed').length;
+  // 明牌配对：通关 ≥ UNLOCK_LEVELS 关后出现入口（玩法见 js/match.js）
+  const matchUnlock = match.unlockInfo(deck);
+  const matchBanner = matchUnlock.unlocked
+    ? `
+      <button type="button" class="match-banner glass" data-action="open-match" data-id="${esc(deck.id)}">
+        <span class="match-banner-icon" aria-hidden="true">${icon('layers', 22)}</span>
+        <span class="match-banner-body">
+          <b>明牌配对 · 玩一局</b>
+          <span>把「${esc(deck.name)}」的单词与释义两两配对（可选 ${passedCount} 个已通关关卡）</span>
+        </span>
+        <span class="match-banner-go" aria-hidden="true">开始 ›</span>
+      </button>`
+    : '';
+
   root.innerHTML = `
     <div class="view">
       <div class="deck-hero glass">
@@ -261,7 +291,7 @@ export function renderDeck(root, deckId) {
           <div><b>${stats.total}</b><span>卡片</span></div>
           <div><b>${stats.learned}</b><span>已学</span></div>
           <div><b>${stats.due}</b><span>待复习</span></div>
-          <div><b>${levels.filter((l) => states[l.index] === 'passed').length}/${levels.length}</b><span>通关关卡</span></div>
+          <div><b>${passedCount}/${levels.length}</b><span>通关关卡</span></div>
         </div>
         ${stats.total ? `<div class="hero-actions">
           <button class="btn btn-primary btn-block hero-flip-btn" data-action="open-all-review" data-id="${esc(deck.id)}">${icon('refresh', 18)} 翻转记忆 · 整卡组循环${hardCount ? `（困难词 ${hardCount}）` : ''}</button>
@@ -269,6 +299,7 @@ export function renderDeck(root, deckId) {
           <button class="btn btn-ghost btn-block" data-action="rearrange-deck" data-id="${esc(deck.id)}">${icon('refresh', 16)} 按难度重排关卡（错题提前）</button>
         </div>` : ''}
       </div>
+      ${matchBanner}
       <div class="levels-wrap">${levelsHtml}</div>
       <button class="btn btn-ghost btn-block manage-btn" data-action="open-cards" data-id="${esc(deck.id)}">${icon('cards', 16)} 管理卡片（${stats.total} 张）</button>
     </div>`;
@@ -285,10 +316,10 @@ function cardsPagerHtml(deckId, page, totalCards) {
   const from = page * CARDS_PER_PAGE + 1;
   const to = Math.min(totalCards, (page + 1) * CARDS_PER_PAGE);
   return `
-  <div class="pager glass">
-    <button class="pager-btn" data-action="cards-page" data-id="${esc(deckId)}" data-page="${page}" ${page <= 0 ? 'disabled' : ''}>‹ 上一页</button>
+  <div class="pager glass" role="navigation" aria-label="卡片分页">
+    <button class="pager-btn" data-action="cards-page" data-id="${esc(deckId)}" data-page="${page}" ${page <= 0 ? 'disabled' : ''} aria-label="上一页卡片">‹ 上一页</button>
     <div class="pager-info"><b>第 ${page + 1}/${totalPages} 页</b><span>第 ${from}–${to} 张 / 共 ${totalCards} 张</span></div>
-    <button class="pager-btn" data-action="cards-page" data-id="${esc(deckId)}" data-page="${page + 2}" ${page >= totalPages - 1 ? 'disabled' : ''}>下一页 ›</button>
+    <button class="pager-btn" data-action="cards-page" data-id="${esc(deckId)}" data-page="${page + 2}" ${page >= totalPages - 1 ? 'disabled' : ''} aria-label="下一页卡片">下一页 ›</button>
   </div>`;
 }
 
@@ -636,6 +667,9 @@ on('open-all-review', (el) => navigate(`#/review/${el.dataset.id}`));
 
 /* 整卡组可配置测试（顶部按钮）：20~150 题 */
 on('open-deck-test', (el) => navigate(`#/test/${el.dataset.id}`));
+
+/* 明牌配对（通关 ≥3 关后出现）：把本关单词与释义两两配对的明牌小游戏 */
+on('open-match', (el) => navigate(`#/match/${el.dataset.id}`));
 
 /* 关卡分页（关卡数 > 15 时，每页 15 关；URL 为 1 基页号） */
 on('deck-page', (el) => {

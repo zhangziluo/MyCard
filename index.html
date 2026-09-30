@@ -32,6 +32,8 @@
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
+  <a class="skip-link" href="#view">跳到主要内容</a>
+
   <div class="bg-glow" aria-hidden="true"></div>
 
   <div id="app">
@@ -43,8 +45,12 @@
       <div class="appbar-side" id="appbar-side"></div>
     </header>
 
-    <main id="view" aria-live="polite"></main>
+    <!-- tabindex=-1：可由「跳到主要内容」跳转 / 路由切换后接收焦点；不用 aria-live（就地播报交给 #sr-announce，避免整页朗读） -->
+    <main id="view" tabindex="-1"></main>
   </div>
+
+  <!-- 屏幕阅读器实时区域：仅播报「跳到某页 / 操作结果」等一句话提示 -->
+  <div id="sr-announce" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
 
   <noscript>
     <div style="padding:24px;text-align:center">Mycard 需要启用 JavaScript 才能使用。</div>

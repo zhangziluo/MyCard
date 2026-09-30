@@ -481,7 +481,7 @@ export function previewTableHtml(preview) {
   const names = Array.from({ length: cols }, (_, i) =>
     preview.header && preview.header[i] != null ? String(preview.header[i]) : `列 ${i + 1}`
   );
-  const head = `<tr><th class="csv-idx">#</th>${names.map((n) => `<th>${esc(n)}</th>`).join('')}</tr>`;
+  const head = `<tr><th class="csv-idx" scope="col">#</th>${names.map((n) => `<th scope="col">${esc(n)}</th>`).join('')}</tr>`;
   const body = (preview.rows || [])
     .map(
       (r, i) =>

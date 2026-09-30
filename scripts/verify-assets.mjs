@@ -612,7 +612,7 @@ console.log('\n[我的生词批量整理（js/wordbook.js + js/wordbook-view.js�
   must(existsSync(rel('js/wordbook-view.js')), 'js/wordbook-view.js 存在（整理页）');
   must(sw.includes("'./js/wordbook.js'"), 'sw.js PRECACHE 含 ./js/wordbook.js');
   must(sw.includes("'./js/wordbook-view.js'"), 'sw.js PRECACHE 含 ./js/wordbook-view.js');
-  must(/const VERSION = 'v1\.9\.0'/.test(sw), 'sw.js VERSION 已递增（v1.9.0）');
+  must(/const VERSION = 'v1\.10\.1'/.test(sw), 'sw.js VERSION 已递增（v1.10.1）');
 
   // 内核：去重合并 / 标签 / 筛选排序 / 选中集 / 补查目标
   must(/export function normKey/.test(wbSrc), 'wordbook.js：normKey（大小写 / 空格归一为同一个词）');
@@ -630,7 +630,7 @@ console.log('\n[我的生词批量整理（js/wordbook.js + js/wordbook-view.js�
   must(/merge: true/.test(storeSrc2) && /extraBacks/.test(storeSrc2), 'store.js：addWords 支持 { merge: true } 合并释义');
 
   // 路由与入口
-  must(/0\.5\.9/.test(appSrc), 'app.js 版本号更新为 v0.5.9');
+  must(/0\.5\.11/.test(appSrc), 'app.js 版本号更新为 v0.5.11');
   must(/from '\.\/wordbook-view\.js'/.test(appSrc) && /renderWordbook\(root\)/.test(appSrc), 'app.js 挂载 renderWordbook');
   must(/seg\[0\] === 'words'/.test(appSrc) && /#\/words/.test(appSrc), 'app.js 解析 #/words 路由（含 ?page=N 分页）');
   must(/on\('nav-words'/.test(decksSrc3), 'decks.js 提供 nav-words 入口动作');
@@ -649,6 +649,38 @@ console.log('\n[我的生词批量整理（js/wordbook.js + js/wordbook-view.js�
   must(/setViewState|getViewState/.test(viewSrc), '整理页状态可读可写（测试用）');
   must(existsSync(rel('scripts/test-wordbook.mjs')), '存在 scripts/test-wordbook.mjs');
   must(/wb-/.test(css) && /\.field select/.test(css), 'css/style.css 含生词本样式与弹窗下拉框样式');
+}
+
+console.log('\n[明牌配对（v0.5.11，通关 ≥3 关解锁）]');
+{
+  must(existsSync(rel('js/match.js')), 'js/match.js 存在');
+  must(sw.includes("'./js/match.js'"), 'sw.js PRECACHE 含 ./js/match.js');
+  const mSrc = readFileSync(rel('js/match.js'), 'utf8');
+  must(/export const UNLOCK_LEVELS = 3/.test(mSrc), 'match.js：解锁门槛 UNLOCK_LEVELS = 3');
+  must(/export const MAX_PAIRS/.test(mSrc), 'match.js：单局对数上限 MAX_PAIRS（兜底防异常数据）');
+  must(/export function buildTiles/.test(mSrc) && /export function shuffle/.test(mSrc), 'match.js：buildTiles / shuffle（随机源可注入）');
+  must(/export function nextSelection/.test(mSrc) && /export function applyPick/.test(mSrc), 'match.js：点击状态机（nextSelection / applyPick）');
+  must(/export function renderMatch/.test(mSrc) && /export function clearMatchSession/.test(mSrc), 'match.js：页面入口 renderMatch / 清场 clearMatchSession');
+  must(/export function unlockInfo/.test(mSrc) && /export function formatDuration/.test(mSrc), 'match.js：解锁进度 / 用时文案');
+  must(/const SESSION_KEY = 'mycard-match-session'/.test(mSrc), 'match.js：会话 key = mycard-match-session（sessionStorage）');
+  must(/from '\.\/(store|levels|ui)\.js'/.test(mSrc), 'match.js 只依赖 store / levels / ui（纯内核 + 薄 UI）');
+  must(!/from '(?!\.\/)/.test(mSrc), 'match.js 只 import 本地模块（零第三方依赖）');
+
+  const appSrc2 = readFileSync(rel('js/app.js'), 'utf8');
+  must(/seg\[0\] === 'match'/.test(appSrc2) && /renderMatch\(root, route\.id\)/.test(appSrc2), 'app.js 路由 #/match/{deckId} → renderMatch');
+  must(/case 'match':/.test(appSrc2) && /t = '明牌配对'/.test(appSrc2), 'app.js 顶栏标题「明牌配对」+ 返回卡组');
+  must(/clearMatchSession\(\)/.test(appSrc2), 'app.js 路由切换 / 重置数据时清空配对会话');
+
+  const decksSrc4 = readFileSync(rel('js/decks.js'), 'utf8');
+  must(/data-action="open-match"/.test(decksSrc4) && /on\('open-match'/.test(decksSrc4), 'decks.js 卡组详情页入口横幅 + open-match 动作');
+  must(/from '\.\/match\.js'/.test(decksSrc4), 'decks.js 复用 match.js 解锁判定（规则只写一处）');
+
+  must(/\.match-banner/.test(css) && /\.match-board/.test(css) && /\.match-tile/.test(css), 'css：配对横幅 / 棋盘 / 牌面样式');
+  must(/@keyframes match-goldflash/.test(css) && /@keyframes match-burst/.test(css), 'css：配对成功「金光 + 迸发」关键帧');
+  must(/@keyframes match-shake/.test(css) && /@keyframes combo-pop/.test(css), 'css：配对失败抖动 / 连击弹出关键帧');
+  must(/\.match-tile\.is-matched::after/.test(css), 'css：金色迸发挂在 ::after（一次性动画）');
+  must(existsSync(rel('scripts/test-match.mjs')), '存在 scripts/test-match.mjs');
+  must(readFileSync(rel('scripts/smoke-dom.mjs'), 'utf8').includes('#/match/'), 'smoke-dom 覆盖 #/match 界面渲染 + 会话清场');
 }
 
 console.log('\n[大卡组性能（单遍统计 / 复用 levels / 抽题快路径）]');

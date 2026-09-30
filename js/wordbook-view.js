@@ -167,35 +167,45 @@ export function wbChipsHtml(cards, state = S) {
   const list = cards || [];
   const counts = wb.tagCounts(list);
   const chips = [
-    `<button class="chip${state.tag === wb.ALL ? ' chip-on' : ''}" data-action="wb-tag" data-tag="${wb.ALL}">全部 (${list.length})</button>`
+    `<button class="chip${state.tag === wb.ALL ? ' chip-on' : ''}" data-action="wb-tag" data-tag="${wb.ALL}" aria-pressed="${
+      state.tag === wb.ALL
+    }">全部 (${list.length})</button>`
   ];
   if (counts.untagged) {
     chips.push(
-      `<button class="chip${state.tag === wb.UNTAGGED ? ' chip-on' : ''}" data-action="wb-tag" data-tag="${wb.UNTAGGED}">未打标签 (${counts.untagged})</button>`
+      `<button class="chip${state.tag === wb.UNTAGGED ? ' chip-on' : ''}" data-action="wb-tag" data-tag="${
+        wb.UNTAGGED
+      }" aria-pressed="${state.tag === wb.UNTAGGED}">未打标签 (${counts.untagged})</button>`
     );
   }
   for (const t of counts.list) {
     chips.push(
-      `<button class="chip${state.tag === t.tag ? ' chip-on' : ''}" data-action="wb-tag" data-tag="${esc(t.tag)}">${esc(t.tag)} (${t.count})</button>`
+      `<button class="chip${state.tag === t.tag ? ' chip-on' : ''}" data-action="wb-tag" data-tag="${esc(
+        t.tag
+      )}" aria-pressed="${state.tag === t.tag}">${esc(t.tag)} (${t.count})</button>`
     );
   }
   const srcChips = [];
   const srcs = wb.srcCounts(list);
   if (srcs.length) {
     srcChips.push(
-      `<button class="chip chip-src${state.src === wb.ALL ? ' chip-on' : ''}" data-action="wb-src" data-src="${wb.ALL}">全部来源</button>`
+      `<button class="chip chip-src${state.src === wb.ALL ? ' chip-on' : ''}" data-action="wb-src" data-src="${
+        wb.ALL
+      }" aria-pressed="${state.src === wb.ALL}">全部来源</button>`
     );
     for (const s of srcs) {
       srcChips.push(
-        `<button class="chip chip-src${state.src === s.src ? ' chip-on' : ''}" data-action="wb-src" data-src="${esc(s.src)}">${esc(
-          s.label
-        )} (${s.count})</button>`
+        `<button class="chip chip-src${state.src === s.src ? ' chip-on' : ''}" data-action="wb-src" data-src="${esc(
+          s.src
+        )}" aria-pressed="${state.src === s.src}">${esc(s.label)} (${s.count})</button>`
       );
     }
   }
   return (
-    `<div class="chips scroll-x" id="wb-tag-chips">${chips.join('')}</div>` +
-    (srcChips.length ? `<div class="chips scroll-x" id="wb-src-chips">${srcChips.join('')}</div>` : '')
+    `<div class="chips scroll-x" id="wb-tag-chips" role="group" aria-label="按标签筛选">${chips.join('')}</div>` +
+    (srcChips.length
+      ? `<div class="chips scroll-x" id="wb-src-chips" role="group" aria-label="按来源筛选">${srcChips.join('')}</div>`
+      : '')
   );
 }
 
@@ -205,9 +215,11 @@ export function wbOverviewHtml(cards) {
   const st = wb.statsOf(cards);
   const off = (n) => (n ? '' : ' is-off');
   return `
-  <div class="wb-stats glass">
-    <button class="wb-stat" data-action="wb-all"><b>${st.total}</b><span>生词总数</span></button>
-    <button class="wb-stat${off(st.noBack)}${S.missing ? ' chip-on' : ''}" data-action="wb-toggle-missing"><b>${
+  <div class="wb-stats glass" role="group" aria-label="生词本概览（可点击下钻）">
+    <button class="wb-stat" data-action="wb-all" aria-label="生词总数 ${st.total}，查看全部"><b>${st.total}</b><span>生词总数</span></button>
+    <button class="wb-stat${off(st.noBack)}${S.missing ? ' chip-on' : ''}" data-action="wb-toggle-missing" aria-pressed="${
+      S.missing ? 'true' : 'false'
+    }"><b>${
       st.noBack
     }</b><span>缺释义</span></button>
     <button class="wb-stat${off(st.dupGroups)}" data-action="wb-dedupe-report" ${st.dupGroups ? '' : 'disabled'}><b>${
@@ -215,7 +227,7 @@ export function wbOverviewHtml(cards) {
     }</b><span>重复词组</span></button>
     <button class="wb-stat${off(st.untagged)}${S.tag === wb.UNTAGGED ? ' chip-on' : ''}" data-action="wb-tag" data-tag="${
       wb.UNTAGGED
-    }"><b>${st.untagged}</b><span>未打标签</span></button>
+    }" aria-pressed="${S.tag === wb.UNTAGGED ? 'true' : 'false'}"><b>${st.untagged}</b><span>未打标签</span></button>
   </div>`;
 }
 
@@ -242,10 +254,10 @@ export function wbPagerHtml(page, total, per = WORDS_PER_PAGE) {
   const from = (page - 1) * per + 1;
   const to = Math.min(total, page * per);
   return `
-  <div class="pager glass">
-    <button class="pager-btn" data-action="wb-page" data-page="${page - 1}" ${page <= 1 ? 'disabled' : ''}>‹ 上一页</button>
+  <div class="pager glass" role="navigation" aria-label="生词本分页">
+    <button class="pager-btn" data-action="wb-page" data-page="${page - 1}" ${page <= 1 ? 'disabled' : ''} aria-label="上一页生词">‹ 上一页</button>
     <div class="pager-info"><b>第 ${page}/${pages} 页</b><span>第 ${from}–${to} 个 / 共 ${total} 个</span></div>
-    <button class="pager-btn" data-action="wb-page" data-page="${page + 1}" ${page >= pages ? 'disabled' : ''}>下一页 ›</button>
+    <button class="pager-btn" data-action="wb-page" data-page="${page + 1}" ${page >= pages ? 'disabled' : ''} aria-label="下一页生词">下一页 ›</button>
   </div>`;
 }
 

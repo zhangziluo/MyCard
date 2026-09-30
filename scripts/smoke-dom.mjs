@@ -150,8 +150,9 @@ const store = await import('../js/store.js');
 const decks = await import('../js/decks.js');
 const review = await import('../js/review.js');
 const testMod = await import('../js/test.js');
+const match = await import('../js/match.js');
 console.log('\n[模块加载]');
-ok(true, 'store / decks / review / test 均可正常 import（依赖图完整）');
+ok(true, 'store / decks / review / test / match 均可正常 import（依赖图完整）');
 
 // ---- 造数据：60 张卡组 ----
 const payload = {
@@ -627,6 +628,54 @@ console.log('\n[生词本整理页 #/words]');
   ok(String(om ? om.innerHTML : '').includes('整理生词本（去重 / 标签）'), '生词卡组菜单含「整理生词本（去重 / 标签）」');
   await fire('nav-words');
   ok(globalThis.location.hash === '#/words', '点入口 → 跳到 #/words');
+}
+
+// ---- 明牌配对（#/match/{deck}，v0.5.11）----
+console.log('\n[明牌配对 · 棋盘页（#/match）]');
+{
+  const mp = store.seedBuiltinDeck(
+    {
+      name: '配对冒烟组',
+      levelSize: 20,
+      words: Array.from({ length: 60 }, (_, i) => ({ front: 'mt' + i, back: '释义' + i }))
+    },
+    { demo: false, source: 'smoke-match' }
+  );
+  ok(!!mp && new Set(store.getDeck(mp.id).cards.map((c) => c.level)).size === 3, '配对卡组就绪（60 张 / 3 关）');
+  ok(match.unlockInfo(store.getDeck(mp.id)).unlocked === false, '一关未通关 → 未解锁');
+
+  decks.renderDeck(root, mp.id);
+  ok(!root.innerHTML.includes('open-match'), '未解锁的卡组详情页没有配对入口');
+
+  for (const i of [0, 1, 2]) {
+    store.markLevelLearned(mp.id, i);
+    store.markLevelPassed(mp.id, i);
+  }
+  ok(match.unlockInfo(store.getDeck(mp.id)).unlocked === true, '通关 3 关 → 解锁');
+  decks.renderDeck(root, mp.id);
+  ok(root.innerHTML.includes('data-action="open-match"'), '卡组详情页出现「明牌配对」入口横幅');
+  ok(root.innerHTML.includes('match-banner glass'), '横幅挂上 .match-banner 样式');
+
+  globalThis.location.hash = '#/match/' + mp.id;
+  (winListeners['hashchange'] || []).forEach((fn) => fn({ type: 'hashchange' }));
+  const html = appViewEl.innerHTML;
+  ok(html.includes('明牌配对 · 第 3 关'), '默认开局最高已通关关卡（第 3 关）');
+  ok((html.match(/data-action="match-pick"/g) || []).length === 40, '渲染 40 张明牌（2N）');
+  ok(html.includes('match-tile-word') && html.includes('match-tile-def'), '词牌 / 义牌外观区分');
+  ok(html.includes('role="progressbar" aria-label="配对进度"'), '进度条带 aria 标注');
+  ok(html.includes('id="match-result"'), '结算面板容器已渲染');
+  const ms = match.getMatchSession();
+  ok(!!ms && ms.deckId === mp.id && ms.level === 2 && ms.tiles.length === 40, '会话已建立（第 3 关 / 40 张牌）');
+
+  const mw = ms.tiles.find((t) => t.kind === 'word');
+  await fire('match-pick', { tile: mw.id });
+  ok(match.getMatchSession().selectedId === mw.id, '点词牌 → 选中');
+  await fire('match-pick', { tile: 'd-' + mw.cardId });
+  ok(match.getMatchSession().matched.length === 2, '词 + 义（同卡）→ 配对成功');
+
+  globalThis.location.hash = '#/deck/' + mp.id;
+  (winListeners['hashchange'] || []).forEach((fn) => fn({ type: 'hashchange' }));
+  ok(match.getMatchSession() === null, '路由切换 → 清空配对会话');
 }
 
 console.log(`\n冒烟结果: ${pass} 通过, ${fail} 失败`);

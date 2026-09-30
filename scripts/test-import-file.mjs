@@ -353,12 +353,12 @@ console.log('\n[CSV / JSON 预览（前 10 行表格）]');
 
   const table = imp.previewTableHtml(p1);
   ok(table.includes('class="csv-table"'), '渲染表格元素');
-  ok(table.includes('<th class="csv-idx">#</th>'), '含行号列');
-  ok(table.includes('<th>word</th>') && table.includes('<th>meaning</th>'), '表头使用文件首行做列名');
+  ok(table.includes('<th class="csv-idx" scope="col">#</th>'), '含行号列（表头带 scope=col）');
+  ok(table.includes('<th scope="col">word</th>') && table.includes('<th scope="col">meaning</th>'), '表头使用文件首行做列名（可被读屏识别为列头）');
   ok((table.match(/<tr>/g) || []).length === 11, '渲染 1 行表头 + 10 行数据', (table.match(/<tr>/g) || []).length);
 
   const tableNoHeader = imp.previewTableHtml(p2);
-  ok(tableNoHeader.includes('<th>列 1</th>') && tableNoHeader.includes('<th>列 2</th>'), '无表头时列名用「列 1 / 列 2」');
+  ok(tableNoHeader.includes('<th scope="col">列 1</th>') && tableNoHeader.includes('<th scope="col">列 2</th>'), '无表头时列名用「列 1 / 列 2」');
 
   const escaped = imp.previewTableHtml(imp.csvPreview('word,meaning\n<script>x</script>,<b>y</b>\n'));
   ok(escaped.includes('&lt;script&gt;') && !escaped.includes('<script>'), '单元格内容做 HTML 转义');
@@ -604,7 +604,7 @@ console.log('\n[拖拽导入]');
   const overlay = body.children.filter((c) => c && c.className === 'modal-overlay').pop();
   ok(String(overlay.innerHTML).includes('csv-table'), '拖入后弹出的是预览表格');
   ok(String(overlay.innerHTML).includes('阿尔法'), '拖入的 CSV 数据进入预览');
-  ok(String(overlay.innerHTML).includes('<th>单词</th>'), '中文表头被识别为列名');
+  ok(String(overlay.innerHTML).includes('<th scope="col">单词</th>'), '中文表头被识别为列名');
 
   ok(imp.bindDropzone({}) === 0, '无拖拽区时安全返回 0');
 }
