@@ -1,6 +1,6 @@
 # Progress — 完成度与遗留
 
-> 更新时间：2026-09-30 ｜ APP `v0.5.12` / SW `v1.10.2` ｜ **3008 条校验全绿**
+> 更新时间：2026-10-06 ｜ APP `v0.5.13` / SW `v1.10.3` ｜ **3012 条校验全绿**
 
 ## 已交付（按版本）
 
@@ -169,21 +169,29 @@
 - **状态机**：`applyPick` 返回值新增 **`roundCleared`**（本轮清空 → UI 铺下一轮并播报「第 N 轮开始，本轮 M 对」），连击 / 失误 / `endedAt` 定格仍在纯内核里算；`nextSelection` 六态（`select`/`cancel`/`replace`/`match`/`miss`/`ignore`）不变
 - **牌面固定两列**：`css/style.css` 的 `.match-board` 改为 `grid-template-columns: repeat(2, minmax(0, 1fr))`（间距 / 字号用 `clamp()` 随屏宽自适应）——**不再随屏宽切 3 / 4 列**，两列一眼可扫
 - **配对 = 爆炸消除**：新增 `is-boom` ＋ 关键帧 **`match-boom`**（金色闪光 `match-goldflash` / `match-burst` 保留）；`BOOM_MS = 420ms` 后由 `removePair()` 把这一对**真的从 DOM 上摘掉**（棋盘随之变短）——因此**点击只做局部补丁**（`paintPick` / `removePair` / 轮次行 / 统计），整页 `innerHTML` 只留给开局 · 换关 · 重开 · 铺下一轮 · 主题切换；`boomMs()` 在 `prefers-reduced-motion` 下**返回 0**（不空等动画）
-- **连击✖️N 提示**：连击 ≥2 时棋盘正中浮出 **「combo✖️N」** 并 `combo-kick` 抖动一下，失败 / 取消选中即收起；该层是**纯装饰**（`aria-hidden="true"`，读屏只听 `announce('配对成功，连击 ×N')`）
+- **连击✖️N 提示**：连击 ≥2 时棋盘**右下角**浮出 **「combo✖️N」** 并 `combo-kick` 抖动一下，失败 / 取消选中即收起；该层是**纯装饰**（`aria-hidden="true"`，读屏只听 `announce('配对成功，连击 ×N')`）；**v0.5.13 起落点固定在棋盘底部留白条内**（`right/bottom: 0` ＋ `.match-board-wrap` 的 `padding-bottom: clamp(28px, 8vw, 34px)`）→ **不遮挡牌面文字**
 - **轮次行**：头部 `[data-match="round"]` 实时显示「第 R/T 轮 · 本轮还剩 N 对」（全部配完 → 「全部完成 · 共 T 轮」），点击后**只更新文本**
 - **会话守门**：`sessionStorage['mycard-match-session']` 复活时用 `isBoardComplete()` 校验牌面 —— 旧版「整关平铺」的会话或损坏牌面**一律丢弃重开**；`clearMatchSession()` 同时清掉用时计时器、抖动定时器与**爆炸定时器**
 - **接线**：`js/app.js` `APP_VERSION = 'v0.5.12'`；`sw.js` `VERSION = 'v1.10.2'`；`js/decks.js` 横幅文案更新
 - 测试：`scripts/test-match.mjs` 153 → **252**（分轮切分与溢出 / 每轮洗牌可复现 / `roundCleared` 与铺下一轮 / `isRoundComplete`·`isBoardComplete` / 爆炸消除与 `removePair`（`BOOM_MS` 后摘牌）/ combo 层与收起 / 轮次行文本 / 会话守门丢弃旧盘 / 两列 CSS 与关键帧静态断言）；`smoke-dom` 214 → **224**（解锁 ≥1 即可见横幅、第 1/4 轮、本轮 10 张牌、combo 层、会话 `roundPairs`·`round`）；`test-a11y` 91 → **93**（版本字符串、`aria-pressed` 初值 / 赋值、轮次行 `data-match="round"`、combo 层 `aria-hidden`）；`verify-assets` 397 → **408**（第 9 节配对断言改为 v0.5.12：`UNLOCK_LEVELS=1` / `ROUND_PAIRS`·`BOOM_MS`·`splitRounds`·`buildBoard`·`roundTiles`、两列 CSS、`is-boom`·combo 关键帧、`sw v1.10.2`、`app v0.5.12`）
 
-## 测试资产（27 个 test-*.mjs + `smoke-dom` + `verify-assets` = 29 个脚本 / 3008 条断言）
+**v0.5.13** 连击提示挪到棋盘右下角（不遮挡牌面文字）
+- **位置**：`css/style.css` 的 `.match-combo` 由「棋盘正中（`left/top: 50%` ＋ `translate(-50%, -50%)`）」改为**贴棋盘右下角**（`right: 0; bottom: 0` ＋ `transform-origin: 100% 100%`）；同时 `.match-board-wrap` 追加 **`padding-bottom: clamp(28px, 8vw, 34px)` 底部留白条** —— 提示整块落在留白里，**完全不压牌面文字**（留白随屏宽收敛，移动端不挤）
+- **动画与尺寸**：`@keyframes combo-kick` 去掉 `translate(-50%, -50%)` 基址，改为**绕右下角**的 `scale` / `rotate` ＋ `translateX` 水平小抖（仍是一次性动画 → 全局 `prefers-reduced-motion` 照旧收敛）；提示字号 / 内边距 / 阴影同步缩小（`clamp(14px, 4vw, 18px)`）以保证留在留白条内、不产生横向滚动
+- **JS 不改行为**：`js/match.js` 仅同步注释（`comboHtml` / `showCombo` / `hideCombo` 与 `aria-hidden="true"` 纯装饰层语义均不变，读屏仍只听 `announce()`）
+- **接线**：`js/app.js` `APP_VERSION = 'v0.5.13'`；`sw.js` `VERSION = 'v1.10.3'`
+- 测试：`scripts/test-match.mjs` 252 → **254**（`.match-combo` = `right/bottom: 0` ＋ `.match-board-wrap` 有 `padding-bottom: clamp(...)` 留白条 / `combo-kick` 关键帧不含 `translate(-50%, -50%)` / `transform-origin: 100% 100%`）；`verify-assets` 408 → **410**（同一位置的静态断言）；`test-a11y` 93、`smoke-dom` 224 不变
+
+
+## 测试资产（27 个 test-*.mjs + `smoke-dom` + `verify-assets` = 29 个脚本 / 3012 条断言）
 | 分类 | 脚本 |
 | --- | --- |
 | 核心纯函数 | `test-core`(43) `test-difficulty`(39) `test-arrange`(22) `test-pagination`(25) `test-resplit-levels`(26) `test-revlog`(58) |
 | 学习与题型 | `test-confusables`(82) `test-hardwords`(26) `test-level-retry`(78) `test-fill`(85) `test-listen`(21) `test-deck-test`(92) `test-eng-eng`(34) `test-multi-sense`(39) `test-review-complete`(11) `test-review-interaction`(18) |
 | 存储与主题 | `test-idb-store`(80) `test-theme`(150) |
-| 新功能 | `test-add-words`(110) `test-import-file`(336) `test-table-editor`(223) `test-export`(155) `test-xlsx`(125) `test-wordbook`(124) `test-match`(252，明牌配对：≥1 关解锁 / 分轮建牌与洗牌 / 爆炸消除 / 状态机 / 连击 / 薄 UI) |
+| 新功能 | `test-add-words`(110) `test-import-file`(336) `test-table-editor`(223) `test-export`(155) `test-xlsx`(125) `test-wordbook`(124) `test-match`(254，明牌配对：≥1 关解锁 / 分轮建牌与洗牌 / 爆炸消除 / 状态机 / 连击 / 薄 UI / 连击提示贴右下角) |
 | 无障碍 | `test-a11y`(93，键盘焦点环 / aria 覆盖 / 减少动效 / 弹窗焦点管理 / 配对页标注) |
-| DOM / 资源 | `smoke-dom`(224) `verify-assets`(408) |
+| DOM / 资源 | `smoke-dom`(224) `verify-assets`(410) |
 | 性能金丝雀 | `test-perf`(29，1 万词 / 500 关：统计/分组/抽题（含优先池读取次数）+ 耗时) |
 
 ## 已知问题 / 技术债

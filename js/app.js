@@ -14,7 +14,7 @@ import { renderTableEditor } from './table-editor.js';
 import { renderWordbook } from './wordbook-view.js'; // v0.5.9 生词本批量整理（#/words）
 import { renderMatch, clearMatchSession } from './match.js'; // v0.5.12 明牌配对（#/match/{deck}）
 
-const APP_VERSION = 'v0.5.12';
+const APP_VERSION = 'v0.5.13';
 
 /* ------------------------------ 路由解析 ------------------------------ */
 

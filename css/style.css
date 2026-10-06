@@ -830,8 +830,10 @@ body.modal-open { overflow: hidden; }
 }
 .match-lv.is-active { color: var(--accent-tx); border-color: rgba(var(--accent-rgb), 0.42); background: var(--accent-soft); }
 
-/* 棋盘：**固定两列**（间距 / 牌高 / 字号随屏宽 clamp 自适应 → 移动端不挤也不空） */
-.match-board-wrap { position: relative; }
+/* 棋盘：**固定两列**（间距 / 牌高 / 字号随屏宽 clamp 自适应 → 移动端不挤也不空）
+   底部另留一条窄留白（clamp 自适应）：**「combo✖️N」提示贴在这条留白的右下角**（v0.5.13），
+   于是提示落在牌面之外 —— 不遮挡牌面文字 */
+.match-board-wrap { position: relative; padding-bottom: clamp(28px, 8vw, 34px); }
 .match-board {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -924,35 +926,38 @@ body.modal-open { overflow: hidden; }
   40% { transform: scale(1.28); color: var(--amber-tx); }
   100% { transform: scale(1); }
 }
-/* 连击提示：combo✖️N 浮在棋盘正中（连续配对成功才出现；改文字 + 重放抖动动画） */
+/* 连击提示：combo✖️N 贴棋盘**右下角**（v0.5.13；连续配对成功才出现，改文字 + 重放抖动动画）
+   落点固定在 .match-board-wrap 的底部留白条内（right / bottom: 0）→ **不遮挡牌面文字** */
 .match-combo {
   position: absolute;
-  left: 50%;
-  top: 50%;
+  right: 0;
+  bottom: 0;
   z-index: 2;
-  padding: 6px 16px;
+  padding: 3px 11px;
   border-radius: 999px;
-  transform: translate(-50%, -50%);
-  font-size: clamp(19px, 6vw, 26px);
+  transform-origin: 100% 100%; /* 弹出 / 抖动都绕右下角，锚点不漂 */
+  font-size: clamp(14px, 4vw, 18px);
   font-weight: 900;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.4px;
+  line-height: 1.25;
   white-space: nowrap;
   color: var(--amber-tx);
   background: var(--panel-top);
   border: 1px solid rgba(255, 190, 90, 0.44);
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.34);
   pointer-events: none;
 }
 .match-combo[hidden] { display: none; }
 .match-combo.is-pop { animation: combo-kick 0.46s var(--ease-out) both; }
-/* 文字震动：弹一下 + 左右小抖（一次性动画 → 被 prefers-reduced-motion 收敛） */
+/* 文字震动：弹一下 + 左右小抖（一次性动画 → 被 prefers-reduced-motion 收敛）
+   基址已是「右下角锚定」→ 关键帧里**不再写 translate(-50%, -50%)**，只做绕右下角的缩放 / 旋转 / 水平小抖 */
 @keyframes combo-kick {
-  0% { transform: translate(-50%, -50%) scale(0.62) rotate(-4deg); opacity: 0; }
-  35% { transform: translate(-50%, -50%) scale(1.16) rotate(2.5deg); opacity: 1; }
-  55% { transform: translate(calc(-50% - 4px), -50%) scale(1.02) rotate(-1.5deg); }
-  72% { transform: translate(calc(-50% + 4px), -50%) scale(1) rotate(1deg); }
-  86% { transform: translate(calc(-50% - 2px), -50%) scale(1); }
-  100% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+  0% { transform: scale(0.62) rotate(-4deg); opacity: 0; }
+  35% { transform: scale(1.16) rotate(2.5deg); opacity: 1; }
+  55% { transform: translateX(-4px) scale(1.02) rotate(-1.5deg); }
+  72% { transform: translateX(4px) scale(1) rotate(1deg); }
+  86% { transform: translateX(-2px) scale(1); }
+  100% { transform: none; opacity: 1; }
 }
 
 /* 结算面板（全部配对完成） */

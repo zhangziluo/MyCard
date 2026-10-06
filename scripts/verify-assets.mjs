@@ -612,7 +612,7 @@ console.log('\n[我的生词批量整理（js/wordbook.js + js/wordbook-view.js�
   must(existsSync(rel('js/wordbook-view.js')), 'js/wordbook-view.js 存在（整理页）');
   must(sw.includes("'./js/wordbook.js'"), 'sw.js PRECACHE 含 ./js/wordbook.js');
   must(sw.includes("'./js/wordbook-view.js'"), 'sw.js PRECACHE 含 ./js/wordbook-view.js');
-  must(/const VERSION = 'v1\.10\.2'/.test(sw), 'sw.js VERSION 已递增（v1.10.2）');
+  must(/const VERSION = 'v1\.10\.3'/.test(sw), 'sw.js VERSION 已递增（v1.10.3）');
 
   // 内核：去重合并 / 标签 / 筛选排序 / 选中集 / 补查目标
   must(/export function normKey/.test(wbSrc), 'wordbook.js：normKey（大小写 / 空格归一为同一个词）');
@@ -630,7 +630,7 @@ console.log('\n[我的生词批量整理（js/wordbook.js + js/wordbook-view.js�
   must(/merge: true/.test(storeSrc2) && /extraBacks/.test(storeSrc2), 'store.js：addWords 支持 { merge: true } 合并释义');
 
   // 路由与入口
-  must(/0\.5\.12/.test(appSrc), 'app.js 版本号更新为 v0.5.12');
+  must(/0\.5\.13/.test(appSrc), 'app.js 版本号更新为 v0.5.13');
   must(/from '\.\/wordbook-view\.js'/.test(appSrc) && /renderWordbook\(root\)/.test(appSrc), 'app.js 挂载 renderWordbook');
   must(/seg\[0\] === 'words'/.test(appSrc) && /#\/words/.test(appSrc), 'app.js 解析 #/words 路由（含 ?page=N 分页）');
   must(/on\('nav-words'/.test(decksSrc3), 'decks.js 提供 nav-words 入口动作');
@@ -651,7 +651,7 @@ console.log('\n[我的生词批量整理（js/wordbook.js + js/wordbook-view.js�
   must(/wb-/.test(css) && /\.field select/.test(css), 'css/style.css 含生词本样式与弹窗下拉框样式');
 }
 
-console.log('\n[明牌配对（v0.5.12，通关 ≥1 关解锁 · 每轮 5 对）]');
+console.log('\n[明牌配对（v0.5.13，通关 ≥1 关解锁 · 每轮 5 对 · 连击提示贴右下角）]');
 {
   must(existsSync(rel('js/match.js')), 'js/match.js 存在');
   must(sw.includes("'./js/match.js'"), 'sw.js PRECACHE 含 ./js/match.js');
@@ -698,6 +698,14 @@ console.log('\n[明牌配对（v0.5.12，通关 ≥1 关解锁 · 每轮 5 对�
   must(/@keyframes match-boom/.test(css) && /\.match-tile\.is-boom/.test(css), 'css：配对成功「爆炸消除」关键帧（.is-boom）');
   must(/@keyframes match-shake/.test(css) && /@keyframes combo-pop/.test(css), 'css：配对失败抖动 / 连击弹出关键帧');
   must(/\.match-combo \{/.test(css) && /@keyframes combo-kick/.test(css), 'css：combo✖️N 连击提示 + 抖动关键帧');
+  must(
+    /\.match-combo \{[^}]*right: 0[^}]*bottom: 0/.test(css) && /\.match-board-wrap \{[^}]*padding-bottom: clamp\(/.test(css),
+    'css：combo✖️N 贴棋盘右下角（棋盘底部留白条内 → 不压牌面文字）'
+  );
+  must(
+    /\.match-combo \{[^}]*transform-origin: 100% 100%/.test(css),
+    'css：combo✖️N 绕右下角缩放 / 旋转（锚点固定在右下角）'
+  );
   must(/\.match-tile\.is-matched::after/.test(css), 'css：金色迸发挂在 ::after（一次性动画）');
   must(existsSync(rel('scripts/test-match.mjs')), '存在 scripts/test-match.mjs');
   must(readFileSync(rel('scripts/smoke-dom.mjs'), 'utf8').includes('#/match/'), 'smoke-dom 覆盖 #/match 界面渲染 + 会话清场');
