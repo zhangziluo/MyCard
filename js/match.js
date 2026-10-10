@@ -1,5 +1,5 @@
 // ============================================================================
-// match.js — 明牌配对游戏（v0.5.13，路由 #/match/{deckId}）
+// match.js — 明牌配对游戏（v0.6.1，路由 #/match/{deckId}）
 //
 // 解锁：卡组「已通关关卡」≥ UNLOCK_LEVELS（1）时，卡组详情页出现入口横幅。
 // 玩法：取某一「已通关关卡」的卡片，按 ROUND_PAIRS（5）对一轮切成多轮（多余的配对
@@ -20,8 +20,11 @@
 //     会复活、键盘焦点也会丢）；只有「本轮清空 → 铺下一轮」这种低频时刻才重写
 //     `#match-board` 里的内容
 //
-// 会话：sessionStorage（key mycard-match-session，关掉标签页即清空）；
-//       路由切换时由 app.js 调 clearMatchSession() 清场。
+// 会话：**只存在内存（页面会话级）**——`S` 是模块级变量，不写 sessionStorage；
+//       **任何一次「进入配对页」都会重新洗牌开局**（首次加载 / 刷新 / 路由切换 / 点入口 /
+//       点同一关 chip / 点「再玩一次」），因为刷新与路由切换都会让 `S` 归零；
+//       只有**同一页内的重渲染**（切主题 / 切主色 / 跟随系统变色）会沿用当前棋局、不重排。
+//       路由切换时由 app.js 调 clearMatchSession() 清场（清会话 + 计时器）。
 // ============================================================================
 
 import * as store from './store.js';
@@ -39,8 +42,6 @@ export const MAX_PAIRS = lv.MAX_PER_LEVEL;
 
 /** 一次「配对成功」的爆炸动画时长（ms）：动画播完才把这对牌从棋盘移除 */
 export const BOOM_MS = 420;
-
-export const SESSION_KEY = 'mycard-match-session';
 
 /* ---------------------------- 解锁 / 可选关卡 ---------------------------- */
 
@@ -210,34 +211,6 @@ export function roundStats(state) {
   };
 }
 
-/** 一轮是否「词义成对完整」（每张卡恰好一张词牌 + 一张义牌）——损坏会话的判定依据 */
-export function isRoundComplete(list) {
-  const arr = Array.isArray(list) ? list : [];
-  if (!arr.length || arr.length % 2 !== 0) return false;
-  const need = new Map();
-  for (const t of arr) {
-    if (!t || !t.id || !t.cardId) return false;
-    const k = need.get(t.cardId) || { word: 0, def: 0 };
-    if (t.kind === 'word') k.word += 1;
-    else if (t.kind === 'def') k.def += 1;
-    else return false;
-    need.set(t.cardId, k);
-  }
-  for (const k of need.values()) if (k.word !== 1 || k.def !== 1) return false;
-  return true;
-}
-
-/** 整副牌是否每轮都成对完整（会话从 sessionStorage 复活时的完整性守门） */
-export function isBoardComplete(tiles, per = ROUND_PAIRS) {
-  const arr = Array.isArray(tiles) ? tiles : [];
-  if (!arr.length) return false;
-  const size = posInt(per, ROUND_PAIRS) * 2;
-  for (let i = 0; i < arr.length; i += size) {
-    if (!isRoundComplete(arr.slice(i, i + size))) return false;
-  }
-  return true;
-}
-
 /* ---------------------------- 配对判定 / 状态机 ---------------------------- */
 
 /** 两张牌是否互为配对（同一张卡的单词牌 + 释义牌） */
@@ -384,36 +357,10 @@ export function formatDuration(ms) {
 
 /* ------------------------------- 会话存取 ------------------------------- */
 
-let S = null; // 当前会话
+let S = null; // 当前会话（**只存内存**：进入配对页 = 新的一局，见文件头注释）
 let clock = null; // 用时计时器
 let missTimer = null; // 「配对失败」抖动的清除定时器
 let boomTimer = null; // 「爆炸消除 → 铺下一轮 / 结算」的定时器
-
-function saveSession() {
-  try {
-    sessionStorage.setItem(SESSION_KEY, JSON.stringify(S));
-  } catch (e) {}
-}
-
-/** 读会话（完整性守门：旧版平铺 / 损坏 / 越界的会话直接丢弃 → 重新开局） */
-function loadSession(deckId) {
-  try {
-    const raw = sessionStorage.getItem(SESSION_KEY);
-    const s = raw ? JSON.parse(raw) : null;
-    if (!s || s.deckId !== deckId || !Array.isArray(s.tiles) || !s.tiles.length) return null;
-    if (!isBoardComplete(s.tiles, s.roundPairs)) return null; // 旧版（整盘平铺）或损坏的牌面
-    if (roundIndex(s) >= roundCount(s)) return null; // 轮次越界
-    const known = new Set(s.tiles.map((t) => t.id));
-    if (!Array.isArray(s.matched)) s.matched = [];
-    if (s.matched.some((id) => !known.has(id))) return null; // 消掉的牌不在牌面里
-    // 选中态失效（被消掉 / 不在本轮）→ 清掉，避免出现「幽灵选中」
-    const cur = new Set(roundTiles(s).map((t) => t.id));
-    if (s.selectedId && (!cur.has(s.selectedId) || s.matched.includes(s.selectedId))) s.selectedId = null;
-    return s;
-  } catch (e) {
-    return null;
-  }
-}
 
 function stopClock() {
   if (clock) {
@@ -442,9 +389,6 @@ export function clearMatchSession() {
   stopMissTimer();
   stopBoomTimer();
   S = null;
-  try {
-    sessionStorage.removeItem(SESSION_KEY);
-  } catch (e) {}
 }
 
 /** 读取当前会话（供测试 / 页面自查，页面本身不依赖它） */
@@ -813,11 +757,12 @@ function paintPick(event, pair, roundCleared) {
 
 /* ------------------------------- 开局 / 路由 ------------------------------- */
 
-/** 开一局（可注入 rng 便于单测复现洗牌） */
+/**
+ * 开一局（可注入 rng 便于单测复现洗牌）。
+ * 只写内存会话，不落 sessionStorage —— 「重新进入同一关」必须拿到新洗的牌面。
+ */
 function startGame(deck, level, rng = Math.random) {
   S = newSession(deck.id, level, levelCardsFor(deck, level), Date.now(), rng);
-  saveSession();
-  startClock();
   return S;
 }
 
@@ -835,8 +780,9 @@ export function renderMatch(root, deckId) {
     return;
   }
 
-  // 沿用未完成的会话（重渲染不重新洗牌 / 不重排轮次）；关卡已不可玩则重新开局
-  let s = S && S.deckId === deckId ? S : loadSession(deckId);
+  // 内存里已有本卡组的棋局 → 属于「同一页内的重渲染」（切主题 / 切主色），沿用不动；
+  // 其余情况（首次加载 / 刷新 / 路由切换 / 点入口）一律**重新洗牌开局**。
+  let s = S && S.deckId === deckId ? S : null;
   if (!s || !isPlayableLevel(deck, s.level)) s = startGame(deck, defaultLevel(deck));
   S = s;
 
@@ -851,7 +797,6 @@ on('match-pick', (el) => {
   const out = applyPick(S, el.dataset.tile);
   if (out.event === 'ignore') return;
   S = out.state;
-  saveSession();
   paintPick(out.event, out.pair, out.roundCleared);
 });
 

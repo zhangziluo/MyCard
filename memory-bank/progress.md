@@ -1,6 +1,6 @@
 # Progress — 完成度与遗留
 
-> 更新时间：2026-10-10 ｜ APP `v0.6.0` / SW `v1.11.0` ｜ **3262 条校验全绿**
+> 更新时间：2026-10-10 ｜ APP `v0.6.1` / SW `v1.11.1` ｜ **3272 条校验全绿**
 
 ## 已交付（按版本）
 
@@ -158,7 +158,7 @@
 - **纯函数内核**（`js/match.js`，随机源可注入 → 单测可复现）：`passedLevels`/`passedCount`/`unlockInfo`/`defaultLevel`（= 最高已通关关卡）/`isPlayableLevel`（只能玩已通关关卡）/`levelCardsFor`（`MAX_PAIRS = lv.MAX_PER_LEVEL = 30` 兜底）/`wordText`/`defText`（背面 → `extraBacks[0]` → 「（无释义）」）/`shuffle`（Fisher-Yates）/`buildTiles`（每卡 → `w-{id}` ＋ `d-{id}`，共 2N 张，再整体打乱）/`isMatch`（同卡异面）/`tileMap`/`nextSelection`（`select`/`cancel`/`replace`/`match`/`miss`/`ignore` 六态）/`applyPick`（不改入参，返回 `{state, event, pair}`；成功连击 +1 并刷新 `maxCombo`、失败清零连击并 `mistakes +1`、全配上 `endedAt` 定格）/`boardStats`/`isDone`/`playStats`/`formatDuration`（`45秒` / `1分05秒`）
 - **薄 UI**：`renderMatch`（未解锁 → 引导页「还差 N 关」；已解锁 → 头部统计（用时 / 已配对 / 失误 / 最大连击）＋ `role=progressbar` 进度条＋关卡 chips（`aria-pressed`）＋棋盘＋结算面板）、`clearMatchSession`（清会话 ＋ 用时计时器 ＋ 抖动定时器）；牌面是**原生 `<button>`**（`data-action="match-pick"`、`aria-pressed` 反映选中 / 已配对、`aria-label` 带「单词 / 释义」前缀、已配对 `disabled`），棋盘 / chips 为 `role="group"`＋`aria-label`
 - **点击只局部打补丁（不整页重渲染）**：`paintPick` 只改 class / `aria-pressed` / `disabled` / 统计文本 —— 否则每配一对都重建棋盘会让**已配对的牌重复播金光**、键盘焦点丢失；配对成功后 `focusNextPlayable()` 把焦点交给**下一张还能点的牌**，全部配完 `finishGame()` 打开结算面板并把焦点交给「再玩一次」＋ `announce()` 播报成绩；连击 ≥2 时 `popComboCell()` 让「最大连击」格弹一下（先摘 class 再 `requestAnimationFrame` 加回）
-- **会话**：`sessionStorage['mycard-match-session']`（`{deckId, level, tiles, selectedId, matched, combo, maxCombo, mistakes, startedAt, endedAt}`）——同一关卡的重渲染（主题切换等）**沿用同一副牌**，路由切换即清空；最佳成绩**暂不持久化**
+- **会话**：`sessionStorage['mycard-match-session']`（`{deckId, level, tiles, selectedId, matched, combo, maxCombo, mistakes, startedAt, endedAt}`）——同一关卡的重渲染（主题切换等）**沿用同一副牌**，路由切换即清空；最佳成绩**暂不持久化**（**v0.6.1 起棋局改为只存内存、不再落 sessionStorage**，见文末 v0.6.1 条）
 - **CSS**（`css/style.css`）：`.match-banner` / `.match-head`·`.match-stats`·`.match-lv` / `.match-board`（2 → 3 → 4 列响应式）/ `.match-tile`（词牌主色、义牌中性；`is-selected` / `is-wrong` / `is-matched`）/ `.match-done`；新增**一次性**关键帧 `match-goldflash`（金光）＋ `match-burst`（挂在 `is-matched::after` 的金色迸发）＋ `match-shake`（失败抖动）＋ `combo-pop`（**均非 `infinite` → 被全局 `prefers-reduced-motion` 收敛**）
 - **接线**：`js/app.js` `APP_VERSION = 'v0.5.11'`；`sw.js` `VERSION = 'v1.10.1'` ＋ PRECACHE 增 `./js/match.js`
 - 测试：新增 `scripts/test-match.mjs`（**153** 条：解锁门槛 / 建牌与可复现洗牌（LCG）/ 牌面文案兜底 / 六态状态机 / 连击·失误·用时 / 薄 UI DOM 桩（局部打补丁不写 `innerHTML`、金光 · 抖动、结算面板与焦点、换关 / 重开 / 返回、会话延续与清场、未解锁兜底、入口横幅位置）/ 接线与样式静态断言）；`smoke-dom` 199 → **214**（`#/match` 棋盘页渲染 + 入口横幅解锁前后 + 路由清场）；`test-a11y` 79 → **91**（配对页键盘可达性与标注）；`verify-assets` 374 → **397**（v0.5.11 第 9 节断言）
@@ -171,7 +171,7 @@
 - **配对 = 爆炸消除**：新增 `is-boom` ＋ 关键帧 **`match-boom`**（金色闪光 `match-goldflash` / `match-burst` 保留）；`BOOM_MS = 420ms` 后由 `removePair()` 把这一对**真的从 DOM 上摘掉**（棋盘随之变短）——因此**点击只做局部补丁**（`paintPick` / `removePair` / 轮次行 / 统计），整页 `innerHTML` 只留给开局 · 换关 · 重开 · 铺下一轮 · 主题切换；`boomMs()` 在 `prefers-reduced-motion` 下**返回 0**（不空等动画）
 - **连击✖️N 提示**：连击 ≥2 时棋盘**右下角**浮出 **「combo✖️N」** 并 `combo-kick` 抖动一下，失败 / 取消选中即收起；该层是**纯装饰**（`aria-hidden="true"`，读屏只听 `announce('配对成功，连击 ×N')`）；**v0.5.13 起落点固定在棋盘底部留白条内**（`right/bottom: 0` ＋ `.match-board-wrap` 的 `padding-bottom: clamp(28px, 8vw, 34px)`）→ **不遮挡牌面文字**
 - **轮次行**：头部 `[data-match="round"]` 实时显示「第 R/T 轮 · 本轮还剩 N 对」（全部配完 → 「全部完成 · 共 T 轮」），点击后**只更新文本**
-- **会话守门**：`sessionStorage['mycard-match-session']` 复活时用 `isBoardComplete()` 校验牌面 —— 旧版「整关平铺」的会话或损坏牌面**一律丢弃重开**；`clearMatchSession()` 同时清掉用时计时器、抖动定时器与**爆炸定时器**
+- **会话守门**：`sessionStorage['mycard-match-session']` 复活时用 `isBoardComplete()` 校验牌面 —— 旧版「整关平铺」的会话或损坏牌面**一律丢弃重开**；`clearMatchSession()` 同时清掉用时计时器、抖动定时器与**爆炸定时器**（**v0.6.1 起该缓存与守门一并下线**：棋局只存内存，每次进入都重新洗牌）
 - **接线**：`js/app.js` `APP_VERSION = 'v0.5.12'`；`sw.js` `VERSION = 'v1.10.2'`；`js/decks.js` 横幅文案更新
 - 测试：`scripts/test-match.mjs` 153 → **252**（分轮切分与溢出 / 每轮洗牌可复现 / `roundCleared` 与铺下一轮 / `isRoundComplete`·`isBoardComplete` / 爆炸消除与 `removePair`（`BOOM_MS` 后摘牌）/ combo 层与收起 / 轮次行文本 / 会话守门丢弃旧盘 / 两列 CSS 与关键帧静态断言）；`smoke-dom` 214 → **224**（解锁 ≥1 即可见横幅、第 1/4 轮、本轮 10 张牌、combo 层、会话 `roundPairs`·`round`）；`test-a11y` 91 → **93**（版本字符串、`aria-pressed` 初值 / 赋值、轮次行 `data-match="round"`、combo 层 `aria-hidden`）；`verify-assets` 397 → **408**（第 9 节配对断言改为 v0.5.12：`UNLOCK_LEVELS=1` / `ROUND_PAIRS`·`BOOM_MS`·`splitRounds`·`buildBoard`·`roundTiles`、两列 CSS、`is-boom`·combo 关键帧、`sw v1.10.2`、`app v0.5.12`）
 
@@ -196,15 +196,21 @@
 - **接线**：`js/app.js` `APP_VERSION = 'v0.6.0'`；`sw.js` `VERSION = 'v1.11.0'` ＋ PRECACHE 增 `./js/crossword.js`
 - 测试：新增 `scripts/test-crossword.mjs`（**173** 条：解锁判定与之词源合法性 / 词条清洗与去重 / `canPlace` 四条规则与 `findPlacement` 评分 / 棋盘生成（词全在盘上 · 字母一致 · 无非法相邻 · 编号 · 可复现 · 空词库边界）/ 状态机（写清 · 检查 · 提示 · 显示本词 · 进度 · 用时文案 · 格子尺寸）/ 薄 UI DOM 桩（整页渲染 · **打字不整页重渲染** · 焦点推进 · 线索高亮 · 检查标错 · 提示计数 · 显示本词 · 结算与 `announce` · 换一批 / 换词源 / 换词数 / 重新开始 · 会话复活与清场 · 未解锁引导页 · 键盘退格与方向键 · 返回卡组）/ 入口横幅）；`smoke-dom` 224 → **250**（`#/crossword` 棋盘页渲染 + 入口横幅解锁前后 + 各动作可用 + 路由清场）；`test-a11y` 93 → **109**（填字页键盘可达性与标注：原生 input 标注 / 三处 `role=group` / chips `aria-pressed` / 线索 `aria-label` / 进度条 aria / `announce` / 文档级委托 / 一次性抖动动画）；`verify-assets` 410 → **445**（v0.6.0 第 9 节：文件与内核导出符号 / 路由与入口接线 / CSS 变量与关键帧 / 新增测试与图标断言）
 
-## 测试资产（28 个 test-*.mjs + `smoke-dom` + `verify-assets` = 30 个脚本 / 3262 条断言）
+**v0.6.1** 明牌配对：重进同一关即重新洗牌（棋局只存内存）
+- **行为**：`js/match.js` 的棋局不再写 `sessionStorage` —— `renderMatch` 只承认一种沿用情形「**内存里已有本卡组的会话**」（= 同一页内的重渲染：切主题 / 切主色 / 跟随系统变色，不重排棋盘、不丢选中态）；**其余任何一次进入配对页都 `startGame` 重新洗牌开局**（首次加载 / 刷新 / 路由切换 / 点卡组横幅 / 点同一关 chip / 点「再玩一次」），**牌面与牌底顺序每次都换、进度清零**
+- **下线**：`SESSION_KEY` / `saveSession` / `loadSession`（唯一作用就是「刷新后把上一局捞回来」，与需求相反）与只服务于「复活损坏棋局」的 `isRoundComplete` / `isBoardComplete`；`clearMatchSession()` 只清会话与三个定时器（用时 / 抖动 / 爆炸）；`startGame()` 不再自带 `startClock()`（计时统一由 `renderMatch` 启动）
+- **接线**：`js/app.js` `APP_VERSION = 'v0.6.1'`；`sw.js` `VERSION = 'v1.11.1'`
+- 测试：`scripts/test-match.mjs` 254 → **260**（新增：不写 sessionStorage / 连续重进同一关牌面必变 / 遗留 `mycard-match-session` 键既不读也不写 / 「每轮词义成对完整」改由本地 `roundIntact`·`roundsIntact` 断言 `buildBoard` 产物 / 已下线守门路径的静态断言）；`smoke-dom` 250 → **253**（重进同一关 → 干净新局 + 牌面重洗 + 不写 sessionStorage）；`verify-assets` 445 → **446**（配对节改为「不读写 sessionStorage + 只认内存会话」）；`test-a11y` 109 不变
+
+## 测试资产（28 个 test-*.mjs + `smoke-dom` + `verify-assets` = 30 个脚本 / 3272 条断言）
 | 分类 | 脚本 |
 | --- | --- |
 | 核心纯函数 | `test-core`(43) `test-difficulty`(39) `test-arrange`(22) `test-pagination`(25) `test-resplit-levels`(26) `test-revlog`(58) |
 | 学习与题型 | `test-confusables`(82) `test-hardwords`(26) `test-level-retry`(78) `test-fill`(85) `test-listen`(21) `test-deck-test`(92) `test-eng-eng`(34) `test-multi-sense`(39) `test-review-complete`(11) `test-review-interaction`(18) |
 | 存储与主题 | `test-idb-store`(80) `test-theme`(150) |
-| 新功能 | `test-add-words`(110) `test-import-file`(336) `test-table-editor`(223) `test-export`(155) `test-xlsx`(125) `test-wordbook`(124) `test-match`(254，明牌配对：≥1 关解锁 / 分轮建牌与洗牌 / 爆炸消除 / 状态机 / 连击 / 薄 UI / 连击提示贴右下角) `test-crossword`(173，填字游戏：词条清洗与去重 / canPlace 四条规则 / 交叉排版生成与可复现 / 逐格状态机 / 打字只打补丁的薄 UI / 入口横幅) |
+| 新功能 | `test-add-words`(110) `test-import-file`(336) `test-table-editor`(223) `test-export`(155) `test-xlsx`(125) `test-wordbook`(124) `test-match`(260，明牌配对：≥1 关解锁 / 分轮建牌与洗牌 / 爆炸消除 / 状态机 / 连击 / 薄 UI / 连击提示贴右下角 / 棋局只存内存重进即重洗) `test-crossword`(173，填字游戏：词条清洗与去重 / canPlace 四条规则 / 交叉排版生成与可复现 / 逐格状态机 / 打字只打补丁的薄 UI / 入口横幅) |
 | 无障碍 | `test-a11y`(109，键盘焦点环 / aria 覆盖 / 减少动效 / 弹窗焦点管理 / 配对页与填字页标注) |
-| DOM / 资源 | `smoke-dom`(250) `verify-assets`(445) |
+| DOM / 资源 | `smoke-dom`(253) `verify-assets`(446) |
 | 性能金丝雀 | `test-perf`(29，1 万词 / 500 关：统计/分组/抽题（含优先池读取次数）+ 耗时) |
 
 ## 已知问题 / 技术债

@@ -1,15 +1,16 @@
 #!/usr/bin/env node
 // ============================================================================
-// test-match.mjs — 明牌配对游戏（v0.5.12，js/match.js）
+// test-match.mjs — 明牌配对游戏（v0.6.1，js/match.js）
 //   运行: node scripts/test-match.mjs
 // 覆盖：① 解锁判定（通关 ≥1 关解锁 / 可玩关卡 / 默认关卡）
 //       ② 建牌与洗牌（2N 张、牌 id 唯一、rng 可注入 → 完全可复现、上限兜底）
-//       ③ 轮次切分（每轮 5 对 / 多余的自动往后 / 每轮独立洗牌 / 完整性守门）
+//       ③ 轮次切分（每轮 5 对 / 多余的自动往后 / 每轮独立洗牌 / 每轮词义成对完整）
 //       ④ 牌面文案（正面 / 背面 → 多释义 → 兜底文案）
 //       ⑤ 点击状态机（select / cancel / replace / match / miss / ignore / 越界牌忽略）
 //       ⑥ 轮次推进与连击（本轮清零自动铺下一轮 / 连击跨轮累计 / 失误清零 / 用时）
 //       ⑦ 薄 UI（DOM 桩：只铺本轮 10 张 / 点击只打补丁 / 爆炸消除后从 DOM 移除 /
-//          combo✖️N 连击抖动 / 一轮清空自动铺下一轮 / 结算面板 / 会话守门 / 入口横幅）
+//          combo✖️N 连击抖动 / 一轮清空自动铺下一轮 / 结算面板 / 入口横幅）
+//       ⑧ 会话只存内存：同一页内重渲染不重排，**每次重新进入同一关都重新洗牌开局**
 // ============================================================================
 
 import { readFileSync, existsSync } from 'node:fs';
@@ -263,10 +264,36 @@ function act(action, data = {}) {
   ui.handleEvent({ type: 'click', target: { closest: () => el }, preventDefault() {} });
 }
 
-const storedSession = () => {
-  const raw = mem[matchMod.SESSION_KEY];
-  return raw ? JSON.parse(raw) : null;
-};
+/** 测试本地等价物：某轮是否「每张卡恰好一张词牌 + 一张义牌」（原来由 match.js 的 isRoundComplete 提供，
+ *  棋局改为只存内存后该守门函数已下线，这里直接对 buildBoard 的产物断言同一性质） */
+function roundIntact(list) {
+  const arr = Array.isArray(list) ? list : [];
+  if (!arr.length || arr.length % 2 !== 0) return false;
+  const need = new Map();
+  for (const t of arr) {
+    if (!t || !t.id || !t.cardId) return false;
+    const k = need.get(t.cardId) || { word: 0, def: 0 };
+    if (t.kind === 'word') k.word += 1;
+    else if (t.kind === 'def') k.def += 1;
+    else return false;
+    need.set(t.cardId, k);
+  }
+  for (const k of need.values()) if (k.word !== 1 || k.def !== 1) return false;
+  return true;
+}
+
+/** 整副牌是否每轮都成对完整 */
+function roundsIntact(list, per = matchMod ? matchMod.ROUND_PAIRS : 5) {
+  const arr = Array.isArray(list) ? list : [];
+  if (!arr.length) return false;
+  const size = per * 2;
+  for (let i = 0; i < arr.length; i += size) if (!roundIntact(arr.slice(i, i + size))) return false;
+  return true;
+}
+
+/** 旧版遗留的棋局缓存键：棋局已改为只存内存，这个键不应再被写入 */
+const LEGACY_SESSION_KEY = 'mycard-match-session';
+
 const tileEl = (id) => tiles.find((t) => t.dataset.tile === id);
 const roundLine = () => roundCell.textContent;
 const statText = (key) => {
@@ -370,7 +397,7 @@ ok(matchMod.splitRounds(null).length === 0 && matchMod.splitRounds([{ front: 'x'
 
 const board = matchMod.buildBoard(lvl0, lcg(5));
 ok(board.length === 40, '整副牌 40 张（4 轮 × 10 张）');
-ok(matchMod.isBoardComplete(board, 5) === true, '整副牌每轮都「词义成对完整」（会话可安全复活）');
+ok(roundsIntact(board, 5) === true, '整副牌每轮都「词义成对完整」（不会出现孤儿牌）');
 ok(
   JSON.stringify(matchMod.buildBoard(lvl0, lcg(5)).map((t) => t.id)) === JSON.stringify(board.map((t) => t.id)),
   '同一随机源 → 整副牌完全可复现'
@@ -380,22 +407,22 @@ ok(
   r0.filter((t) => t.kind === 'word').length === 5 && r0.filter((t) => t.kind === 'def').length === 5,
   '每轮独立洗牌 → 每轮都是 5 词 + 5 义（不会整轮全是词牌）'
 );
-ok(matchMod.isBoardComplete(matchMod.buildTiles(lvl0, lcg(5)), 5) === false, '整盘平铺（v0.5.11 老版）→ 不满足每轮成对，会被丢弃');
+ok(roundsIntact(matchMod.buildTiles(lvl0, lcg(5)), 5) === false, '整盘平铺（v0.5.11 老版牌序）→ 不满足每轮成对');
 ok(
-  matchMod.isRoundComplete([
+  roundIntact([
     { id: 'w-a', cardId: 'a', kind: 'word' },
     { id: 'w-a2', cardId: 'a', kind: 'word' }
   ]) === false,
   '同一张卡两张词牌 → 不算成对（防死局）'
 );
 ok(
-  matchMod.isRoundComplete([
+  roundIntact([
     { id: 'w-a', cardId: 'a', kind: 'word' },
     { id: 'd-a', cardId: 'a', kind: 'def' }
   ]) === true,
   '一卡一词汇 + 一释义 = 成对'
 );
-ok(matchMod.isRoundComplete([]) === false && matchMod.isBoardComplete([]) === false, '空牌面不视为完整');
+ok(roundIntact([]) === false && roundsIntact([]) === false, '空牌面不视为完整');
 
 const rs = matchMod.newSession('dR', 0, lvl0, 1000, lcg(9));
 ok(rs.roundPairs === 5 && rs.round === 0 && rs.tiles.length === 40, '会话记录每轮对数 / 当前轮次（0 基）');
@@ -552,8 +579,7 @@ ok(ROOT._html.includes('class="match-lv is-active" data-action="match-level" dat
 ok(ROOT._html.includes('id="match-result"') && ROOT._html.includes('hidden'), '结算面板初始隐藏');
 ok(session().level === 2 && session().tiles.length === 40, '会话已建立（第 3 关整关 40 张牌 = 4 轮）');
 ok(session().roundPairs === 5 && session().round === 0, '会话记住每轮 5 对 / 当前第 1 轮');
-ok(!!storedSession() && storedSession().deckId === d3.id, '会话写入 sessionStorage（刷新不丢牌面）');
-ok(storedSession().roundPairs === 5, '每轮对数一并落盘（刷新后轮次划分不变）');
+ok(mem[LEGACY_SESSION_KEY] === undefined, '棋局只存内存：不写 sessionStorage（进入即新的一局）');
 ok(
   ROOT._html.includes('<b data-match="time">0秒</b>') &&
     ROOT._html.includes('<b data-match="pairs">0/20</b>') &&
@@ -719,7 +745,7 @@ act('match-level', { level: 'xx' });
 ok(session().level === 0, '非法关卡号安全忽略');
 act('match-back');
 ok(location.hash === '#/deck/' + d3.id, '返回卡组 → 跳回 #/deck/{id}');
-ok(session() === null && !mem[matchMod.SESSION_KEY], '返回时清空会话与 sessionStorage');
+ok(session() === null, '返回时清空会话（内存）');
 
 console.log('\n[薄 UI：会话延续 / 重渲染不重新洗牌]');
 matchMod.renderMatch(ROOT, d3.id);
@@ -737,7 +763,7 @@ ok(ROOT._html.includes('第 1/4 轮 · 本轮还剩 5 对'), '重渲染后轮次
 
 /* 消掉一对 → 重渲染：已消的牌不能复活 */
 act('match-pick', { tile: selId }); // 再点一次 → 取消选中
-ok(session().selectedId === null, '再点同一张 → 取消选中（会话随之落盘）');
+ok(session().selectedId === null, '再点同一张 → 取消选中');
 act('match-pick', { tile: wFirst.id });
 act('match-pick', { tile: 'd-' + wFirst.cardId });
 await tick(); // 减少动效 → 爆炸立即结束，这一对从 DOM 移除
@@ -746,9 +772,24 @@ matchMod.renderMatch(ROOT, d3.id);
 ok(tiles.length === 8 && session().matched.length === 2, '重渲染后依旧只剩 8 张（已消的牌不复活）');
 ok(ROOT._html.includes('第 1/4 轮 · 本轮还剩 4 对'), '重渲染后本轮剩余对数正确');
 
-/* 旧版（整盘平铺）会话 → 丢弃重开，避免出现「半截棋盘」 */
+/* 重新进入同一关（模拟刷新 / 路由切换 → S 归零）→ 必须重新洗牌开局 */
+matchMod.clearMatchSession(); // app.js 也会在 hashchange 时这样做
+matchMod.renderMatch(ROOT, d3.id);
+const reEntryA = session().tiles.map((t) => t.id).join();
+ok(session().matched.length === 0 && session().round === 0, '重新进入 → 干净新局（进度清零、回到第 1 轮）');
+ok(session().level === 2 && session().tiles.length === 40, '重新进入保持同一关（默认最高已通关关卡）');
+let reshuffled = false;
+for (let i = 0; i < 5 && !reshuffled; i++) {
+  matchMod.clearMatchSession();
+  matchMod.renderMatch(ROOT, d3.id);
+  if (session().tiles.map((t) => t.id).join() !== reEntryA) reshuffled = true;
+}
+ok(reshuffled, '连续重进同一关 → 每次都是新洗的牌面 / 牌底顺序');
+ok(tiles.length === 10 && session().round === 0, '重进后 DOM 只铺新一局的第 1 轮 10 张牌');
+
+/* 旧版遗留的棋局缓存键：既不读取（不复活旧牌面）也不写入 */
 matchMod.clearMatchSession();
-mem[matchMod.SESSION_KEY] = JSON.stringify({
+mem[LEGACY_SESSION_KEY] = JSON.stringify({
   deckId: d3.id,
   level: 2,
   tiles: [{ id: 'w-x', kind: 'word', cardId: 'a' }],
@@ -757,8 +798,10 @@ mem[matchMod.SESSION_KEY] = JSON.stringify({
   startedAt: Date.now()
 });
 matchMod.renderMatch(ROOT, d3.id);
-ok(session().roundPairs === 5 && session().tiles.length === 40, '旧版 / 损坏会话被丢弃 → 重新开局（每轮 5 对）');
+ok(session().tiles.length === 40 && roundsIntact(session().tiles), 'sessionStorage 里的旧棋局被忽略 → 直接开新局（40 张完整牌）');
 ok(session().matched.length === 0 && session().round === 0, '新局干净：未消牌、第 1 轮');
+ok(mem[LEGACY_SESSION_KEY] !== undefined, '遗留键原样保留（本版本不再使用该键）');
+delete mem[LEGACY_SESSION_KEY];
 
 matchMod.clearMatchSession();
 matchMod.renderMatch(ROOT, d3.id);
@@ -805,8 +848,13 @@ ok(/seg\[0\] === 'match' && seg\[1\]/.test(appSrc), 'app.js 解析 #/match/{deck
 ok(/case 'match':[\s\S]{0,200}t = '明牌配对'/.test(appSrc), "顶栏标题「明牌配对」+ 返回卡组");
 ok(/route\.view === 'match'[\s\S]{0,140}renderMatch\(root, route\.id\)/.test(appSrc), 'render() 分发到 renderMatch');
 ok(/clearMatchSession\(\); \/\/ 同时清除配对棋局与计时器/.test(appSrc), 'hashchange 清空配对会话与计时器');
-ok(/v0\.6\.0/.test(appSrc) && /通关 ≥\s?1 关/.test(appSrc), 'APP_VERSION 升到 v0.6.0（解锁 ≥1 关）');
-ok(swSrc.includes("'./js/match.js'") && /VERSION = 'v1\.11\.0'/.test(swSrc), 'sw.js 预缓存 match.js 且 VERSION = v1.11.0');
+ok(/v0\.6\.1/.test(appSrc) && /通关 ≥\s?1 关/.test(appSrc), 'APP_VERSION 升到 v0.6.1（解锁 ≥1 关）');
+ok(swSrc.includes("'./js/match.js'") && /VERSION = 'v1\.11\.1'/.test(swSrc), 'sw.js 预缓存 match.js 且 VERSION = v1.11.1');
+ok(
+  !/sessionStorage\.(setItem|getItem|removeItem)/.test(read('js/match.js')),
+  'match.js 不再读写 sessionStorage（棋局只存内存：重进即重新洗牌）'
+);
+ok(!/loadSession|isBoardComplete/.test(read('js/match.js')), 'match.js 已下线「从缓存复活棋局」的守门路径');
 ok(existsSync(resolve(ROOTDIR, 'js/match.js')) && existsSync(resolve(ROOTDIR, 'scripts/test-match.mjs')), 'js/match.js 与 scripts/test-match.mjs 均存在');
 ok(/data-action="open-match" data-id="\$\{esc\(deck\.id\)\}"/.test(decksSrc), 'decks.js 入口横幅 data-action=open-match');
 ok(/on\('open-match', \(el\) => navigate\(`#\/match\/\$\{el\.dataset\.id\}`\)\)/.test(decksSrc), 'decks.js 注册 open-match 动作');

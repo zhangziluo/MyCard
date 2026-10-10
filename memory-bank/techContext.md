@@ -26,7 +26,7 @@
 # 本地运行（必须 http(s)，file:// 下模块与 SW 受限）
 python3 -m http.server 8080
 
-# 全量校验（28 个 test-*.mjs + smoke-dom + verify-assets = 30 个脚本，3262 条断言）
+# 全量校验（28 个 test-*.mjs + smoke-dom + verify-assets = 30 个脚本，3272 条断言）
 for f in scripts/test-*.mjs scripts/smoke-dom.mjs scripts/verify-assets.mjs; do node "$f"; done
 node --check js/*.js sw.js scripts/*.mjs      # 语法检查
 node scripts/verify-assets.mjs                # 资源/一致性校验（含 CSS 变量审计）
@@ -37,7 +37,7 @@ node scripts/test-revlog.mjs                  # 复习日志（ease/type 映射 
 node scripts/test-idb-store.mjs               # 存储层（v2→v3 升级 / 迁移 / 写穿 / 重载水合 / 复习日志 / 级联清理）
 node scripts/test-table-editor.mjs            # 表格编辑页 #/editor（模版列一致性 / 表格内核 / 草稿 / 载入 / 粘贴多行 / 预览报告 / 渲染 / 事件 / 导入为卡组 / xlsx 指定工作表）
 node scripts/test-wordbook.mjs                # 生词本整理 #/words（同词归并 / 保留优先级 / 合并语义 / 标签整理 / 筛选排序 / 多选批量 / 页面渲染分页）
-node scripts/test-match.mjs                   # 明牌配对 #/match（解锁 ≥1 关 / 分轮建牌（每轮 5 对）与可复现洗牌 / 六态点击状态机 / 连击·失误·用时 / 薄 UI 局部打补丁与入口横幅 / 连击提示贴棋盘右下角）
+node scripts/test-match.mjs                   # 明牌配对 #/match（解锁 ≥1 关 / 分轮建牌（每轮 5 对）与可复现洗牌 / 六态点击状态机 / 连击·失误·用时 / 薄 UI 局部打补丁与入口横幅 / 连击提示贴棋盘右下角 / 棋局只存内存：同一页内重渲染不重排、**重进同一关重新洗牌**）
 node scripts/test-crossword.mjs               # 填字游戏 #/crossword（解锁 ≥1 关 / 词条清洗（纯字母·长度·去重）/ canPlace 四条排版规则 · findPlacement 评分 / 棋盘生成与可复现 / 逐格状态机（检查·提示·显示本词）/ 薄 UI（打字只打补丁、焦点推进、结算、会话复活与清场）与入口横幅）
 
 # 数据准备（可选，需本地具备 gcide-0.51/）
@@ -50,7 +50,7 @@ node scripts/gen-examples.mjs --data data/words.json --sample 8
 
 ## 版本号约定
 - **两处必须同步递增**：`sw.js` 的 `VERSION`（缓存键）与 `js/app.js` 的 `APP_VERSION`（顶栏显示）
-- 当前：`APP v0.6.0` / `SW v1.11.0`
+- 当前：`APP v0.6.1` / `SW v1.11.1`
 
 ## 测试工程要点（写新测试时照抄）
 - 每个测试是独立 `.mjs`，自建浏览器桩（localStorage/document/window/location/requestAnimationFrame/HashChangeEvent）
@@ -75,3 +75,4 @@ node scripts/gen-examples.mjs --data data/words.json --sample 8
 10. **加 IDB store 时别忘了三处**：`idb.js` 的 `onupgradeneeded` 补建（用 `contains` 判空）、`clearAll()` 的 store 清单（漏写 = 清空后旧数据又读回来）、`scripts/fake-idb.mjs` 能力对齐（本项目只有 `put/get/delete/clear/getAll/index.getAll`）。
 11. **Anki `revlog` 的学习步间隔是「负数秒」而非正数秒**：Anki 用 `interval_secs()` 按符号区分单位（正数 = 天 ×86400、负数 = 秒），写 `600` 会被读成「600 天」。`js/revlog.js` 的 `entryToAnkiIvl()` 已按此换算。
 12. **评分日志必须传「评分前」快照**：`store.updateCard()` 原地改卡片对象，直接把卡片对象交给 `recordReview` 会让 `lastIvl` / `type` 失真（`test-review-interaction.mjs` 有守卫断言）。
+13. **配对棋局不落盘（v0.6.1）**：`js/match.js` 的棋局只存在模块级 `S`（内存），**不写 sessionStorage**；`renderMatch` 只承认「内存里已有本卡组的会话」这一种沿用情形（= 同一页内的重渲染，如切主题），其余路（首次加载 / 刷新 / 路由切换 / 点入口）一律 `startGame` 重新洗牌。**别再把棋局写回 sessionStorage**——那等于把「重进同一关」变成「接着上一局」，与需求相反。随之下线的 `isRoundComplete` / `isBoardComplete`（只服务于「复活损坏棋局」）改由 `test-match.mjs` 直接断言 `buildBoard` 产物的「每轮词义成对完整」性质。

@@ -691,6 +691,25 @@ console.log('\n[明牌配对 · 棋盘页（#/match）]');
   globalThis.location.hash = '#/deck/' + mp.id;
   (winListeners['hashchange'] || []).forEach((fn) => fn({ type: 'hashchange' }));
   ok(match.getMatchSession() === null, '路由切换 → 清空配对会话');
+
+  // 重新进入同一关 → 重新洗牌开局（棋局只存内存，不进 sessionStorage）
+  globalThis.location.hash = '#/match/' + mp.id;
+  (winListeners['hashchange'] || []).forEach((fn) => fn({ type: 'hashchange' }));
+  const reEntry = match.getMatchSession();
+  ok(!!reEntry && reEntry.matched.length === 0 && reEntry.round === 0, '重新进入同一关 → 干净新局（进度清零）');
+  let reShuffled = reEntry.tiles.map((t) => t.id).join() !== ms.tiles.map((t) => t.id).join();
+  for (let i = 0; i < 5 && !reShuffled; i++) {
+    globalThis.location.hash = '#/deck/' + mp.id;
+    (winListeners['hashchange'] || []).forEach((fn) => fn({ type: 'hashchange' }));
+    globalThis.location.hash = '#/match/' + mp.id;
+    (winListeners['hashchange'] || []).forEach((fn) => fn({ type: 'hashchange' }));
+    reShuffled = match.getMatchSession().tiles.map((t) => t.id).join() !== ms.tiles.map((t) => t.id).join();
+  }
+  ok(reShuffled, '重进同一关 → 牌面重新洗牌（不再是上次那副牌）');
+  ok(
+    mem['mycard-match-session'] === undefined,
+    '棋局只存内存：不写 sessionStorage（刷新 / 重进都必须重洗）'
+  );
 }
 
 // ---- 填字游戏（#/crossword/{deck}，v0.6.0：通关 ≥1 关解锁 · 按当前词库生成）----

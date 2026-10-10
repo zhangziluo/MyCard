@@ -612,7 +612,7 @@ console.log('\n[我的生词批量整理（js/wordbook.js + js/wordbook-view.js�
   must(existsSync(rel('js/wordbook-view.js')), 'js/wordbook-view.js 存在（整理页）');
   must(sw.includes("'./js/wordbook.js'"), 'sw.js PRECACHE 含 ./js/wordbook.js');
   must(sw.includes("'./js/wordbook-view.js'"), 'sw.js PRECACHE 含 ./js/wordbook-view.js');
-  must(/const VERSION = 'v1\.11\.0'/.test(sw), 'sw.js VERSION 已递增（v1.11.0）');
+  must(/const VERSION = 'v1\.11\.1'/.test(sw), 'sw.js VERSION 已递增（v1.11.1）');
 
   // 内核：去重合并 / 标签 / 筛选排序 / 选中集 / 补查目标
   must(/export function normKey/.test(wbSrc), 'wordbook.js：normKey（大小写 / 空格归一为同一个词）');
@@ -630,7 +630,7 @@ console.log('\n[我的生词批量整理（js/wordbook.js + js/wordbook-view.js�
   must(/merge: true/.test(storeSrc2) && /extraBacks/.test(storeSrc2), 'store.js：addWords 支持 { merge: true } 合并释义');
 
   // 路由与入口
-  must(/0\.6\.0/.test(appSrc), 'app.js 版本号更新为 v0.6.0');
+  must(/0\.6\.1/.test(appSrc), 'app.js 版本号更新为 v0.6.1');
   must(/from '\.\/wordbook-view\.js'/.test(appSrc) && /renderWordbook\(root\)/.test(appSrc), 'app.js 挂载 renderWordbook');
   must(/seg\[0\] === 'words'/.test(appSrc) && /#\/words/.test(appSrc), 'app.js 解析 #/words 路由（含 ?page=N 分页）');
   must(/on\('nav-words'/.test(decksSrc3), 'decks.js 提供 nav-words 入口动作');
@@ -651,7 +651,7 @@ console.log('\n[我的生词批量整理（js/wordbook.js + js/wordbook-view.js�
   must(/wb-/.test(css) && /\.field select/.test(css), 'css/style.css 含生词本样式与弹窗下拉框样式');
 }
 
-console.log('\n[明牌配对（v0.5.13，通关 ≥1 关解锁 · 每轮 5 对 · 连击提示贴右下角）]');
+console.log('\n[明牌配对（v0.6.1，通关 ≥1 关解锁 · 每轮 5 对 · 棋局只存内存重进即重洗）]');
 {
   must(existsSync(rel('js/match.js')), 'js/match.js 存在');
   must(sw.includes("'./js/match.js'"), 'sw.js PRECACHE 含 ./js/match.js');
@@ -670,14 +670,21 @@ console.log('\n[明牌配对（v0.5.13，通关 ≥1 关解锁 · 每轮 5 对 �
     'match.js：roundTiles / roundStats / liveTiles（只铺当前轮的 5 对）'
   );
   must(
-    /export function isRoundComplete/.test(mSrc) && /export function isBoardComplete/.test(mSrc),
-    'match.js：每轮成对守门（旧版整盘平铺 / 损坏牌面一律丢弃）'
+    !/sessionStorage\.(setItem|getItem|removeItem)/.test(mSrc),
+    'match.js：棋局只存内存（不写 / 不读 sessionStorage → 每次进入都重新洗牌）'
+  );
+  must(
+    !/loadSession|isRoundComplete|isBoardComplete/.test(mSrc),
+    'match.js：已下线「从缓存复活棋局」的守门路径（重进即新局）'
   );
   must(/roundCleared/.test(mSrc), 'match.js：applyPick 返回 roundCleared（UI 据此铺下一轮）');
   must(/export function nextSelection/.test(mSrc) && /export function applyPick/.test(mSrc), 'match.js：点击状态机（nextSelection / applyPick）');
   must(/export function renderMatch/.test(mSrc) && /export function clearMatchSession/.test(mSrc), 'match.js：页面入口 renderMatch / 清场 clearMatchSession');
   must(/export function unlockInfo/.test(mSrc) && /export function formatDuration/.test(mSrc), 'match.js：解锁进度 / 用时文案');
-  must(/const SESSION_KEY = 'mycard-match-session'/.test(mSrc), 'match.js：会话 key = mycard-match-session（sessionStorage）');
+  must(
+    /S && S\.deckId === deckId \? S : null/.test(mSrc),
+    'match.js：renderMatch 只认内存会话（内存里没有 → 重新洗牌开局）'
+  );
   must(/from '\.\/(store|levels|ui)\.js'/.test(mSrc), 'match.js 只依赖 store / levels / ui（纯内核 + 薄 UI）');
   must(!/from '(?!\.\/)/.test(mSrc), 'match.js 只 import 本地模块（零第三方依赖）');
 
