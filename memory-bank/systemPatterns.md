@@ -20,6 +20,8 @@ index.html ──► js/app.js（入口：路由 / 顶栏 / 设置页 / boot）
                  ├─ match.js（#/match 明牌配对游戏：分轮建牌 + 六态点击状态机 + 点击只局部打补丁）
                  ├─ crossword.js（#/crossword 填字游戏：按当前词库交叉排版生成棋盘 +
                  │           逐格填写状态机 + 输入只局部打补丁）
+                 ├─ keyboard.js（移动端英文字母键盘：#kb-bar 单例底栏（QWERTY + 退格 / 空格 /
+                 │           收起→迷你胶囊）+ inputmode=none 抑制系统输入法，被填字页与填空题复用）
                  ├─ review.js（翻转记忆）· test.js（测试）+ test-engine.js + test-config.js
                  ├─ levels.js（关卡/分页）· levelstats.js · hardwords.js
                  ├─ difficulty.js（难度判定）· arrange.js（关卡编排）· engdefs.js（GCIDE 释义）
@@ -55,6 +57,12 @@ index.html ──► js/app.js（入口：路由 / 顶栏 / 设置页 / boot）
 
 21. **第二个游戏（填字 `js/crossword.js`）沿用第 20 条分层，但多了「生成器」与「表单输入」两件事**（v0.6.0）：① **内核 = 生成器 + 状态机**——`entryFromCard`/`candidateEntries`（词条清洗：`sanitizeAnswer` 只留 A–Z 并转大写、长度 2–12、按答案去重）、`canPlace`（四条排版规则：交叉字母一致 / 不叠加同向词 / 空格子的垂直邻居必须空 / 词首词尾必须空）、`findPlacement`（评分 = 交叉数 × 10000 − 外框面积）、`generateCrossword(cards, { size, rng })`（**最长词打底 → 逐个找落点 → 交叉不上的跳过**，随机源可注入 → 完全可复现）、`buildBoard`（归一化坐标 + 逐行扫描编号 + 格子挂线索 id）；状态机 `newGame`/`setLetter`/`checkAll`/`hintCell`/`revealCell`/`revealWord`/`progress` 全是**不改入参**的纯函数（`finalize()` 统一维护 `solved` 与 `endedAt`）。② **词源与规模是可切换的生成参数**：`sourceCards(deck, source)` 把「整卡组 / 某一已通关关卡」收敛成一个数组，`SIZES = [6,8,10,12]` 决定抽词数——**同一套生成器服务所有入口**（换词源 / 换词数 / 换一批都只是重新调 `generateCrossword`），这样「按当前词库自定义生成」只有一条代码路径。③ **输入类 UI 绝不能整页重渲染**：`paintCells()` / `paintClues()` / `paintStatus()` 只打补丁（格子的 `value` · `is-wrong` · `is-revealed` · `is-active`、线索的 `is-correct` · `aria-pressed`、状态行 + 四个统计格 + 进度条），否则每敲一个字母都会**丢焦点、丢光标、丢输入法候选框**；整页 `innerHTML` 只留给「开局 / 换词源 / 换词数 / 换一批 / 重新开始」。④ **键盘 / 焦点走文档级委托且只绑一次**：`bindKeysOnce()`（模块级 `keysBound` 守卫）注册 `keydown`（方向键找最近有字母格 + 切方向、Backspace 空退回上一格、Delete 清格、空格拦截）与 `focusin`（按当前方向自动选中所属线索）；**不要**在每次渲染时 `addEventListener`。⑤ **答题格用原生 `<input maxlength=1 inputmode="latin" autocapitalize="characters">`**（Tab / 输入法 / 移动端拉丁键盘天然可用），`aria-label` 含「第 R 行第 C 列 / 线索号 / 已填字母」；线索是原生 `<button>` + `aria-pressed`；棋盘 / 词源 / 词数 chips 用 `role="group"` + `aria-label`。⑥ **会话守门**：`sessionStorage['mycard-crossword-session']` 里存**含答案的棋盘**，复活时逐项校验（格子 / 线索非空、字母 key 必须落在棋盘内、`wrong`/`revealed` 过滤、选中线索有效、跑一次 `finalize` 纠正 `solved`），损坏一律丢弃重开；`clearCrosswordSession()` 连计时器一起清。
 22. **可复现用「可注入随机源」，紧凑排版用「外框面积惩罚」**（v0.6.0，通用经验）：凡是「随机生成 + 需要单测断言」的功能，都把 `rng = Math.random` 作为**最后一个可注入参数**（`generateCrossword(cards, { rng })` / `shuffle(list, rng)` / `hintCell(state, rng)`），测试传 LCG 即可断言「同一 seed → 结果逐字节相同」、并断言「换 seed → 结果变化」；生成类算法用**整数评分 + 严格大于才替换**（同分保留先遍历到的）来同时满足「紧凑」与「确定」。
+
+23. **移动端「自绘字母键盘」＝单例底栏 + `inputmode="none"` + 宿主回调**（v0.7.0，`js/keyboard.js`）：填字页与填空题的答案都是英文单词，手机弹系统输入法会出现中文候选框 / 拼音键盘 / 顶飞页面，所以自绘一个键盘。分工：
+    - **单例底栏**：`#kb-bar` 由模块创建一次并挂到 **`<body>`**（不是 `#view` 里面）——① 路由重渲染不会反复重建；② 不受 `.view { animation: fadeUp }` 的 transform 影响（`position: fixed` 在有 transform 的祖先里会以该祖先为包含块，放 `#view` 内会闪位）。三态由 `applyState()` 统一画：**展开 = 完整键位**（并给 `<body>` 加 `kb-open`、把实测高度写进 `--kb-h`，`#view` 据此追加底部留白）；**收起 = 右下角「⌨ 字母键盘」迷你胶囊**（点它唤回，**不依赖页面重渲染**）；**无宿主 = 整条 `hidden`**（退出 tab 序与无障碍树）。
+    - **抑制系统输入法**：只用 `inputmode="none"`（**不要 `readonly`**，见 `techContext.md` 已知坑 14）；宿主通过 `inputs` 声明选择器，`syncInputs()` 负责在 `none` / `latin` 间同步；**渲染顺序必须是「先定键盘态 → 再写 `innerHTML` → 再 `syncInputs()`」**（`inputmode` 要在 focus 前落到 DOM 上）。
+    - **宿主只管业务**：`openKeyboard({ inputs, space, onKey, onBackspace, onSpace, onEnter })` 声明回调，按键走 Action 委托（`kb-key` / `kb-hide` / `kb-show`）派发；键盘**不碰存储、不碰业务状态**。收起飞状态由模块自己记（`dismissed`：同页手动收起后不再自动弹回，`closeKeyboard()` 复位），宿主不需要自己渲染「唤出键盘」按钮。
+    - **触屏判定**：`pointer: coarse` → `navigator.maxTouchPoints > 0` → `'ontouchstart' in window` 三级兜底，读 `matchMedia` 是**每次调用现读**（测试可用桩切换）；桌面端不显示键盘，继续用物理键盘。
 
 ## 数据模型（store.js）
 - **Card**：`id, front, back, example, exampleZh, phonetic, tags[], groups[], extraBacks[], createdAt, level, state('new'|'learning'|'review'), repetitions, interval, easeFactor, due, lastReview, src, addedAt`

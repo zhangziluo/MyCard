@@ -26,7 +26,7 @@
 # 本地运行（必须 http(s)，file:// 下模块与 SW 受限）
 python3 -m http.server 8080
 
-# 全量校验（28 个 test-*.mjs + smoke-dom + verify-assets = 30 个脚本，3272 条断言）
+# 全量校验（29 个 test-*.mjs + smoke-dom + verify-assets = 31 个脚本，3453 条断言）
 for f in scripts/test-*.mjs scripts/smoke-dom.mjs scripts/verify-assets.mjs; do node "$f"; done
 node --check js/*.js sw.js scripts/*.mjs      # 语法检查
 node scripts/verify-assets.mjs                # 资源/一致性校验（含 CSS 变量审计）
@@ -38,7 +38,8 @@ node scripts/test-idb-store.mjs               # 存储层（v2→v3 升级 / 迁
 node scripts/test-table-editor.mjs            # 表格编辑页 #/editor（模版列一致性 / 表格内核 / 草稿 / 载入 / 粘贴多行 / 预览报告 / 渲染 / 事件 / 导入为卡组 / xlsx 指定工作表）
 node scripts/test-wordbook.mjs                # 生词本整理 #/words（同词归并 / 保留优先级 / 合并语义 / 标签整理 / 筛选排序 / 多选批量 / 页面渲染分页）
 node scripts/test-match.mjs                   # 明牌配对 #/match（解锁 ≥1 关 / 分轮建牌（每轮 5 对）与可复现洗牌 / 六态点击状态机 / 连击·失误·用时 / 薄 UI 局部打补丁与入口横幅 / 连击提示贴棋盘右下角 / 棋局只存内存：同一页内重渲染不重排、**重进同一关重新洗牌**）
-node scripts/test-crossword.mjs               # 填字游戏 #/crossword（解锁 ≥1 关 / 词条清洗（纯字母·长度·去重）/ canPlace 四条排版规则 · findPlacement 评分 / 棋盘生成与可复现 / 逐格状态机（检查·提示·显示本词）/ 薄 UI（打字只打补丁、焦点推进、结算、会话复活与清场）与入口横幅）
+node scripts/test-crossword.mjs               # 填字游戏 #/crossword（解锁 ≥1 关 / 词条清洗（纯字母·长度·去重）/ canPlace 四条排版规则 · findPlacement 评分 / 棋盘生成与可复现 / 逐格状态机（检查·提示·显示本词）/ **移动端：cellSize 触屏下限 30px + 屏幕字母键盘** / 薄 UI（打字只打补丁、焦点推进、结算、会话复活与清场）与入口横幅）
+node scripts/test-keyboard.mjs                # 移动端英文字母键盘 #kb-bar（环境判定 / 键位 HTML / open·hide·show·close 四态 / DOM 三态（键盘·迷你胶囊·隐藏）/ inputmode 同步 / 事件派发 / 视口监听只绑一次）
 
 # 数据准备（可选，需本地具备 gcide-0.51/）
 node scripts/split-gcide.mjs
@@ -50,7 +51,7 @@ node scripts/gen-examples.mjs --data data/words.json --sample 8
 
 ## 版本号约定
 - **两处必须同步递增**：`sw.js` 的 `VERSION`（缓存键）与 `js/app.js` 的 `APP_VERSION`（顶栏显示）
-- 当前：`APP v0.6.1` / `SW v1.11.1`
+- 当前：`APP v0.7.0` / `SW v1.12.0`
 
 ## 测试工程要点（写新测试时照抄）
 - 每个测试是独立 `.mjs`，自建浏览器桩（localStorage/document/window/location/requestAnimationFrame/HashChangeEvent）
@@ -76,3 +77,4 @@ node scripts/gen-examples.mjs --data data/words.json --sample 8
 11. **Anki `revlog` 的学习步间隔是「负数秒」而非正数秒**：Anki 用 `interval_secs()` 按符号区分单位（正数 = 天 ×86400、负数 = 秒），写 `600` 会被读成「600 天」。`js/revlog.js` 的 `entryToAnkiIvl()` 已按此换算。
 12. **评分日志必须传「评分前」快照**：`store.updateCard()` 原地改卡片对象，直接把卡片对象交给 `recordReview` 会让 `lastIvl` / `type` 失真（`test-review-interaction.mjs` 有守卫断言）。
 13. **配对棋局不落盘（v0.6.1）**：`js/match.js` 的棋局只存在模块级 `S`（内存），**不写 sessionStorage**；`renderMatch` 只承认「内存里已有本卡组的会话」这一种沿用情形（= 同一页内的重渲染，如切主题），其余路（首次加载 / 刷新 / 路由切换 / 点入口）一律 `startGame` 重新洗牌。**别再把棋局写回 sessionStorage**——那等于把「重进同一关」变成「接着上一局」，与需求相反。随之下线的 `isRoundComplete` / `isBoardComplete`（只服务于「复活损坏棋局」）改由 `test-match.mjs` 直接断言 `buildBoard` 产物的「每轮词义成对完整」性质。
+14. **移动端抑制系统输入法只能用 `inputmode="none"`（v0.7.0）**：自绘字母键盘（`js/keyboard.js`）靠把宿主输入框的 `inputmode` 在 `none` / `latin` 之间切换来「不弹系统键盘」。**不要改用 `readonly`**——`readonly` 会连 `input` 事件一起掐掉（物理键盘与部分浏览器的手写/语音输入就废了）；`inputmode="none"` 不支持时只会退化成「两种键盘都能用」，不会坏。另一个坑：`inputmode` 是**属性**，必须在 `focus` **之前**写到 DOM 上（所以 `renderCrossword` / `renderTest` 都是**先 `openKeyboard` / `attachFillKeyboard`，再写 `innerHTML`**，最后再 `syncInputs()` 一次），否则 iOS 可能已经按旧属性把系统键盘弹起来了。

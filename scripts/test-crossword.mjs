@@ -155,6 +155,7 @@ function mkCellEl(cell) {
 
 function syncDom() {
   rootSets++;
+  doc.activeElement = null; // 整页重写会丢焦点（与真实 DOM 一致）→ 键盘落点回退到「当前线索」
   cells = [];
   inputs = [];
   clueBtns = [];
@@ -204,7 +205,8 @@ const doc = {
   removeEventListener() {},
   createElement: (t) => mkEl(t),
   querySelector: () => null,
-  querySelectorAll: () => [],
+  // 字母键盘（js/keyboard.js）用 document.querySelectorAll 同步输入框 inputmode → 委托给棋盘桩
+  querySelectorAll: (sel) => ROOT.querySelectorAll(sel),
   getElementById: (id) =>
     id === 'view'
       ? ROOT
@@ -214,10 +216,23 @@ const doc = {
           ? progressBar
           : id === 'sr-announce'
             ? announceEl
-            : id.startsWith('cw-')
-              ? statEls[id.slice(3)] || null
-              : null
+            : id === 'kb-bar'
+              ? kbBar
+              : id.startsWith('cw-')
+                ? statEls[id.slice(3)] || null
+                : null
 };
+// 记录 keyboard.js 创建的底栏（模拟真实 DOM 里 <body> 下的 #kb-bar 单例）
+let kbBar = null;
+{
+  const bodyEl = doc.body;
+  const append = bodyEl.appendChild.bind(bodyEl);
+  bodyEl.appendChild = (c) => {
+    if (c && c.id === 'kb-bar') kbBar = c;
+    return append(c);
+  };
+}
+const bar = () => kbBar;
 globalThis.document = doc;
 globalThis.window = { addEventListener() {}, dispatchEvent() {}, scrollTo() {}, innerWidth: 390, innerHeight: 780 };
 globalThis.location = { hash: '#/home', href: '' };
@@ -234,6 +249,7 @@ globalThis.HashChangeEvent = class HashChangeEvent {
 const store = await import('../js/store.js');
 const ui = await import('../js/ui.js');
 const cw = await import('../js/crossword.js');
+const kb = await import('../js/keyboard.js'); // v0.7.0 移动端字母键盘
 const decks = await import('../js/decks.js'); // 卡组详情页入口横幅
 cwApi = cw;
 
@@ -584,8 +600,30 @@ ok(
   '格子尺寸随行列数收敛（格子越多越小）'
 );
 ok(cw.cellSize(1, 1, { width: 390, height: 780 }) === cw.MAX_CELL, '小棋盘的格子不超过上限');
-ok(cw.cellSize(60, 60, { width: 320, height: 480 }) === cw.MIN_CELL, '超大棋盘收敛到下限（配横向滚动）');
 ok(cw.cellSize(8, 8) > 0, '缺视口信息也能算出合理尺寸');
+
+// 移动端适配：触屏格子有更高的下限（手指点得准、字母看得清）→ 放不下就横向滚动
+ok(cw.TOUCH_MIN_CELL === 30 && cw.MIN_CELL === 24 && cw.MAX_CELL === 40, '格子尺寸常量：触屏下限 30 / 桌面下限 24 / 上限 40');
+ok(
+  cw.cellSize(60, 60, { width: 320, height: 480, touch: true }) === cw.TOUCH_MIN_CELL,
+  '触屏超大棋盘收敛到 30px（不再压成 18px 的“蚂蚁格”）'
+);
+ok(
+  cw.cellSize(60, 60, { width: 320, height: 480, touch: false }) === cw.MIN_CELL,
+  '桌面超大棋盘收敛到 24px'
+);
+ok(
+  cw.cellSize(60, 60, { width: 320, height: 480 }) === cw.TOUCH_MIN_CELL,
+  '窄视口未显式给 touch → 按「视口 ≤ 600px」推断为触屏布局'
+);
+ok(
+  cw.cellSize(14, 14, { width: 390, height: 780, touch: true }) >= cw.TOUCH_MIN_CELL,
+  '触屏 14×14 棋盘：格子仍 ≥ 30px（靠横向滚动兜底，而不是缩小格子）'
+);
+ok(
+  cw.cellSize(14, 14, { width: 390, height: 780, touch: true }) >= cw.cellSize(14, 14, { width: 390, height: 780, touch: false }),
+  '同样尺寸的棋盘：触屏格子不小于桌面格子'
+);
 
 
 /* ==========================================================================
@@ -759,11 +797,11 @@ const ks = cw.getCrosswordSession();
 const kw = ks.board.words[0];
 const wCells = cw.wordCells(ks.board, kw.id);
 const ka = wCells[0];
-const kb = wCells[1];
+const kbCell = wCells[1];
 type_(ka.row, ka.col, kw.answer[0]);
 ok(cw.getCrosswordSession().letters[`${ka.row},${ka.col}`] === kw.answer[0], '先填第一格');
-ok(inputEl(kb.row, kb.col).focusCount > 0, '焦点推进到第二格');
-const evBs = fireKey(inputEl(kb.row, kb.col), 'Backspace');
+ok(inputEl(kbCell.row, kbCell.col).focusCount > 0, '焦点推进到第二格');
+const evBs = fireKey(inputEl(kbCell.row, kbCell.col), 'Backspace');
 ok(evBs.defaultPrevented === true, '退格被接管（不走浏览器默认行为）');
 ok(!cw.getCrosswordSession().letters[`${ka.row},${ka.col}`], '空格上退格 → 回上一格并清掉它');
 ok(inputEl(ka.row, ka.col).focusCount > 0, '焦点回到上一格');
@@ -782,6 +820,97 @@ const backId = cw.getCrosswordSession().deckId;
 act('cw-back');
 ok(globalThis.location.hash === `#/deck/${backId}`, '返回卡组 → 跳到卡组详情页');
 ok(cw.getCrosswordSession() === null, '返回卡组同时清空会话');
+
+/* ==========================================================================
+ * ⑦ 移动端适配：触屏格子尺寸 + 底部英文字母键盘（v0.7.0）
+ * ========================================================================== */
+
+console.log('\n[移动端：触屏布局 + 底部字母键盘]');
+/** 模拟触屏（pointer: coarse）—— keyboard.js / 页面都按这个信号判断 */
+const setTouch = (on) => {
+  globalThis.window.matchMedia = (q) => ({ matches: !!on && String(q).includes('coarse') });
+};
+
+setTouch(false);
+cw.clearCrosswordSession();
+cw.renderCrossword(ROOT, mp.id);
+ok(kb.isTouchDevice() === false && kb.isKeyboardOpen() === false, '非触屏：不弹字母键盘（继续用系统键盘）');
+ok(bar() === null || bar().hidden === true, '非触屏：底部键盘条不存在 / 隐藏');
+ok(kb.keyboardConfig() === null, '非触屏：不注册键盘宿主（页面完全不知道键盘存在）');
+ok(/inputmode="latin"/.test(ROOT._html), '非触屏：答题格 inputmode=latin');
+
+setTouch(true);
+cw.clearCrosswordSession();
+cw.renderCrossword(ROOT, mp.id);
+const tS = cw.getCrosswordSession();
+ok(kb.isTouchDevice() === true && kb.isKeyboardOpen() === true, '触屏：进入填字页自动弹出字母键盘');
+ok(kb.inputMode() === 'none' && /inputmode="none"/.test(ROOT._html), '键盘展开 → inputmode=none（抑制系统输入法）');
+ok(!!bar() && bar().hidden === false && bar().classList.contains('is-open'), '底部键盘条 #kb-bar 已创建并展开（挂在 #view 之外，路由重渲染不重建）');
+ok((bar().innerHTML.match(/data-key="/g) || []).length === 27, '字母键盘 = 26 个字母 + 退格（27 键）');
+ok(bar().innerHTML.includes('data-action="kb-hide"'), '键盘带「收起键盘」键');
+ok(!bar().innerHTML.includes('data-key="SPACE"'), '填字键盘不带空格键（答案只含字母）');
+ok(!ROOT._html.includes('data-action="kb-show"'), '页面 HTML 不需要「⌨ 字母键盘」按钮（改由键盘条迷你态提供）');
+const cellPx = Number((ROOT._html.match(/--cw-cell:(\d+)px/) || [])[1]);
+ok(cellPx >= cw.TOUCH_MIN_CELL, `触屏棋盘格子 ≥ ${cw.TOUCH_MIN_CELL}px（当前 ${cellPx}px，放不下靠横向滚动）`);
+ok(
+  inputs.every((i) => i.getAttribute && i.getAttribute('inputmode') === 'none'),
+  'syncInputs：键盘展开时全部答题格都写成 inputmode=none'
+);
+ok(inputs.length === tS.board.cells.length, '触屏下棋盘格数量不变（只是尺寸变大 + 可滚动）');
+
+console.log('\n[字母键盘：敲字母 / 退格 / 收起 / 唤出]');
+const tWord = tS.board.words[0];
+const tCells = cw.wordCells(tS.board, tWord.id);
+const setsBeforeKb = rootSets;
+act('kb-key', { key: tWord.answer[0] });
+ok(
+  cw.getCrosswordSession().letters[`${tCells[0].row},${tCells[0].col}`] === tWord.answer[0],
+  '点字母键 → 写进当前线索第一个空格'
+);
+ok(rootSets === setsBeforeKb, '屏幕键盘打字同样只打补丁（不整页重渲染）');
+ok(inputEl(tCells[1].row, tCells[1].col).focusCount > 0, '写完自动推进到下一格');
+act('kb-key', { key: tWord.answer[1] });
+ok(cw.getCrosswordSession().letters[`${tCells[1].row},${tCells[1].col}`] === tWord.answer[1], '继续敲第二个字母');
+act('kb-key', { key: 'BACK' });
+ok(!cw.getCrosswordSession().letters[`${tCells[1].row},${tCells[1].col}`], '点退格键 → 清掉当前格');
+act('kb-key', { key: 'BACK' });
+ok(!cw.getCrosswordSession().letters[`${tCells[0].row},${tCells[0].col}`], '空格上再退格 → 回上一格并清掉它');
+act('kb-key', { key: 'zz' });
+ok(rootSets === setsBeforeKb && cw.getCrosswordSession().letters[tCells[0].row + ',' + tCells[0].col] === undefined, '非法键值被忽略（不写入）');
+
+act('kb-hide');
+ok(kb.isKeyboardOpen() === false && bar().hidden === false, '点「收起键盘」→ 底栏收成迷你态（不是整条消失）');
+ok(bar().classList.contains('is-mini') && bar().innerHTML.includes('data-action="kb-show"'), '迷你态只留「⌨ 字母键盘」胶囊（点它可再唤出）');
+ok(kb.inputMode() === 'latin', '收起后 inputMode 回到 latin（恢复系统键盘）');
+ok(
+  inputs.every((i) => i.getAttribute && i.getAttribute('inputmode') === 'latin'),
+  '收起后输入框恢复 inputmode=latin'
+);
+ok(kb.shouldAutoOpen() === false, '同页内手动收起过 → 不再自动弹回');
+cw.renderCrossword(ROOT, mp.id); // 模拟切主题等重渲染
+ok(kb.isKeyboardOpen() === false, '重渲染也不自动弹回（尊重用户的「收起」）');
+ok(bar().innerHTML.includes('data-action="kb-show"'), '重渲染后迷你胶囊仍在（不需要页面自己渲染按钮）');
+act('kb-show');
+ok(kb.isKeyboardOpen() === true && bar().hidden === false && bar().classList.contains('is-open'), '点「⌨ 字母键盘」→ 键盘重新展开');
+ok(!bar().innerHTML.includes('kb-mini'), '展开后迷你胶囊消失（换成键位）');
+ok(
+  inputs.every((i) => i.getAttribute && i.getAttribute('inputmode') === 'none'),
+  '重新展开 → 再次抑制系统输入法'
+);
+act('cw-new');
+ok(kb.isKeyboardOpen() === true && cw.getCrosswordSession().board.cells.length > 0, '换一批后键盘仍展开可用');
+
+console.log('\n[完成 / 离场：键盘收场]');
+for (const w of cw.getCrosswordSession().board.words) {
+  if (cw.getCrosswordSession().solved) break;
+  act('cw-clue', { word: String(w.id) });
+  act('cw-reveal');
+}
+ok(cw.getCrosswordSession().solved === true, '全部填对（键盘敲字与「显示本词」混用）');
+ok(kb.isKeyboardOpen() === false && bar().hidden === true, '完成后键盘条整条隐藏（腾出屏幕看结算）');
+cw.clearCrosswordSession();
+ok(kb.isKeyboardOpen() === false && cw.getCrosswordSession() === null, '离开填字页清场：会话 + 键盘一起收');
+setTouch(false);
 
 /* ==========================================================================
  * 汇总

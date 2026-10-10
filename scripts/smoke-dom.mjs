@@ -69,6 +69,34 @@ const storage = {
 
 const fakeBody = fakeEl();
 const appViewEl = fakeEl();
+/* 让 appViewEl 支持 .cw-input 查询（填字页 + 移动端键盘冒烟用）：
+   innerHTML 写入时按 data-cell 造出输入框桩，keyboard.js 的 syncInputs / crossword 的
+   paintCells / 字母键盘落点都能真实走到，而不只是断言 HTML 字符串 */
+let cwInputs = [];
+Object.defineProperty(appViewEl, 'innerHTML', {
+  get() {
+    return appViewEl._html === undefined ? '' : appViewEl._html;
+  },
+  set(v) {
+    appViewEl._html = String(v);
+    cwInputs = [];
+    for (const m of appViewEl._html.matchAll(/<input class="cw-input"[^>]*data-cell="(-?\d+,-?\d+)"/g)) {
+      const el = fakeEl();
+      el.dataset.cell = m[1];
+      el.classList.add('cw-input');
+      el.value = '';
+      el._attrs = {};
+      el.setAttribute = (k, val) => {
+        el._attrs[k] = String(val);
+      };
+      el.getAttribute = (k) => (k in el._attrs ? el._attrs[k] : null);
+      el.closest = () => el;
+      cwInputs.push(el);
+    }
+  }
+});
+appViewEl.querySelectorAll = (sel) => (sel === '.cw-input' ? cwInputs.slice() : []);
+const appViewInputs = () => cwInputs.slice();
 const appbarSideEl = fakeEl();
 const htmlEl = fakeEl();
 /** 文档级监听表（type → handlers[]），用于验证粘贴绑定 */
@@ -85,8 +113,8 @@ globalThis.document = {
   querySelector() {
     return null;
   },
-  querySelectorAll() {
-    return [];
+  querySelectorAll(sel) {
+    return sel === '.cw-input' ? appViewEl.querySelectorAll(sel) : []; // 让 keyboard.syncInputs 能落到答题格
   },
   getElementById(id) {
     if (id === 'view') return appViewEl;
@@ -775,6 +803,62 @@ console.log('\n[填字游戏 · 棋盘页（#/crossword）]');
   (winListeners['hashchange'] || []).forEach((fn) => fn({ type: 'hashchange' }));
   ok(crossword.getCrosswordSession() === null, '路由切换 → 清空填字会话');
   ok(appViewEl.innerHTML.includes('data-action="open-crossword"'), '回到卡组详情页（填字入口仍在）');
+
+  // ---- 移动端字母键盘（v0.7.0：触屏进填字页 / 填空题自动接英文字母键盘）----
+  console.log('\n[移动端字母键盘（触屏）]');
+  const kbd = await import('../js/keyboard.js');
+  ok(kbd.isTouchDevice() === false && kbd.isKeyboardOpen() === false, '非触屏：不接字母键盘（桌面用物理键盘）');
+  globalThis.window.matchMedia = (q) => ({ matches: String(q).includes('coarse') });
+  ok(kbd.isTouchDevice() === true, '模拟 pointer: coarse → 识别为触屏');
+
+  globalThis.location.hash = '#/crossword/' + cp.id;
+  (winListeners['hashchange'] || []).forEach((fn) => fn({ type: 'hashchange' }));
+  ok(kbd.isKeyboardOpen() === true, '触屏进入填字页 → 自动展开字母键盘');
+  ok(
+    kbd.inputMode() === 'none' && appViewEl.innerHTML.includes('inputmode="none"'),
+    '填字答题格写 inputmode=none（抑制系统输入法）'
+  );
+  await fire('kb-hide');
+  ok(kbd.isKeyboardOpen() === false && kbd.inputMode() === 'latin', '点「收起键盘」→ 收起并恢复系统输入法');
+  await fire('kb-show');
+  ok(kbd.isKeyboardOpen() === true && kbd.inputMode() === 'none', '点迷你胶囊 → 键盘重新展开');
+
+  const kws = crossword.getCrosswordSession();
+  const kWord = kws.board.words[0];
+  const kCell = crossword.wordCells(kws.board, kWord.id)[0];
+  ok(appViewInputs().length === kws.board.cells.length, '填字页的答题格都建成了可交互节点（冒烟桩按 data-cell 重建）');
+  await fire('kb-key', { key: kWord.answer[0] });
+  ok(
+    crossword.getCrosswordSession().letters[`${kCell.row},${kCell.col}`] === kWord.answer[0],
+    '点字母键 → 写进当前线索第一个空格'
+  );
+  ok(
+    appViewInputs().some((i) => i.getAttribute('inputmode') === 'none'),
+    '字母键盘展开时答题格 inputmode 同步为 none'
+  );
+  await fire('kb-key', { key: 'BACK' });
+  ok(!crossword.getCrosswordSession().letters[`${kCell.row},${kCell.col}`], '点退格键 → 清掉该格');
+
+  // 填空题：触屏同样接键盘（空格键可用）
+  const fk = store.seedBuiltinDeck(
+    {
+      name: '键盘冒烟组',
+      levelSize: 20,
+      words: Array.from({ length: 20 }, (_, i) => ({ front: 'word' + i, back: '释义' + i, example: 'I use word' + i + '.' }))
+    },
+    { demo: false, source: 'smoke-keyboard' }
+  );
+  const fillQs = testMod.buildQuestions(store.getDeck(fk.id), 0, { types: ['fill'], random: () => 0 });
+  mem['mycard-test-session'] = JSON.stringify({ deckId: fk.id, level: 0, questions: fillQs, pos: 0, correct: 0 });
+  testMod.renderTest(root, fk.id, 0);
+  ok(kbd.isKeyboardOpen() === true, '触屏进入填空题 → 自动展开字母键盘');
+  ok(appViewEl.innerHTML.includes('inputmode="none"'), '填空输入框写 inputmode=none');
+  ok(kbd.keyboardConfig() && kbd.keyboardConfig().space === true, '填空题键盘带空格键（多词答案可用）');
+
+  globalThis.location.hash = '#/home';
+  (winListeners['hashchange'] || []).forEach((fn) => fn({ type: 'hashchange' }));
+  ok(kbd.isKeyboardOpen() === false, '离开测试页 → 键盘收起');
+  delete globalThis.window.matchMedia;
 }
 
 console.log(`\n冒烟结果: ${pass} 通过, ${fail} 失败`);

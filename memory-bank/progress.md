@@ -1,6 +1,6 @@
 # Progress — 完成度与遗留
 
-> 更新时间：2026-10-10 ｜ APP `v0.6.1` / SW `v1.11.1` ｜ **3272 条校验全绿**
+> 更新时间：2026-10-10 ｜ APP `v0.7.0` / SW `v1.12.0` ｜ **3453 条校验全绿**
 
 ## 已交付（按版本）
 
@@ -202,15 +202,26 @@
 - **接线**：`js/app.js` `APP_VERSION = 'v0.6.1'`；`sw.js` `VERSION = 'v1.11.1'`
 - 测试：`scripts/test-match.mjs` 254 → **260**（新增：不写 sessionStorage / 连续重进同一关牌面必变 / 遗留 `mycard-match-session` 键既不读也不写 / 「每轮词义成对完整」改由本地 `roundIntact`·`roundsIntact` 断言 `buildBoard` 产物 / 已下线守门路径的静态断言）；`smoke-dom` 250 → **253**（重进同一关 → 干净新局 + 牌面重洗 + 不写 sessionStorage）；`verify-assets` 445 → **446**（配对节改为「不读写 sessionStorage + 只认内存会话」）；`test-a11y` 109 不变
 
-## 测试资产（28 个 test-*.mjs + `smoke-dom` + `verify-assets` = 30 个脚本 / 3272 条断言）
+**v0.7.0** 移动端适配 + 英文字母键盘（填字页 / 填空题）
+- **新增 `js/keyboard.js`**：单例底栏 `#kb-bar`（挂 `<body>`，不进 `#view` —— 路由重渲染不重建、不受 `.view` 的 `fadeUp` transform 影响）；三行 QWERTY（10/9/7）+ `⌫` 退格 + 「收起键盘」，填空题另有空格键（27 / 28 键）；全为原生 `<button>` + 中文 `aria-label`；`KB_ROWS` / `BACK_KEY` / `SPACE_KEY` / `BAR_ID` 常量导出
+- **抑制系统输入法**：`inputMode()` = 展开时 `'none'`、否则 `'latin'`；`syncInputs()` 把宿主的 `inputs` 选择器命中的输入框全部同步（**不用 `readonly`**）
+- **三态**：展开（`body.kb-open` + 实测高度写 `--kb-h` → `#view` 追加底部留白）/ 收起（右下角 `⌨ 字母键盘` 迷你胶囊，`data-action="kb-show"` 唤回，**不依赖页面重渲染**；`dismissed` 记录同页手动收起，不再自动弹回）/ 无宿主（整条 `hidden`，退出 tab 序）
+- **触屏判定**：`isTouchDevice()` = `pointer: coarse` → `navigator.maxTouchPoints > 0` → `'ontouchstart' in window`；`shouldAutoOpen()` = 触屏 && 未收起；**桌面端不显示键盘**
+- **填字页适配**：`cellSize(cols, rows, { width, height, touch })` —— 新增 `TOUCH_MIN_CELL = 30`（`MIN_CELL` 24 → 触屏 30、`MAX_CELL` 40）、`TOUCH_HEIGHT_RATIO = 0.4`、`TOUCH_H_PAD = 34`、`TOUCH_VIEWPORT_WIDTH = 600`（缺省按视口宽推断 touch）；`crosswordHtml` 传 `touch: kb.isTouchDevice()`；`.cw-board` 改 `inline-grid` + `.cw-board-wrap { display:block; text-align:center }`（横向溢出不切左端）＋ `@media (max-width: 600px)` 收窄内边距；`focusCell()` 追加 `revealEl()`（`scrollIntoView({block:'nearest', inline:'nearest'})`）；字母键盘 `onKey` → 写「当前聚焦格（否则当前线索第一个空格）」→ 复用 `applyTypedLetter()`（抽出，与 `input` 事件同一条链路）；退格抽出 `backspaceAt()` / `clearCellAt()` 共用；完成 / 离场 `closeKeyboard()`
+- **填空题适配**：`attachFillKeyboard()`（触屏 + 未作答才接；`inputs: '.fill-field'`、`space: true`、回车 → `submitFill()`）、`fillKeyboardEdit()`（小写追加 / 退格删一字符 / 写回 `q.draft` / 光标置尾 / **不落盘**）；`clearTestSession()` 调 `closeKeyboard()`
+- **渲染顺序**（关键）：`renderCrossword` / `renderTest` / `renderDeckTest` 都改为「**先定键盘态 → 写 `innerHTML` → `kb.syncInputs()` → 再 `attachFillInput()`（聚焦）**」，保证 `inputmode` 在 focus 前落到 DOM 上
+- **接线**：`js/app.js` `APP_VERSION = 'v0.7.0'`；`sw.js` `VERSION = 'v1.12.0'` ＋ PRECACHE 增 `./js/keyboard.js`；`css/style.css` 新增 `.kb-bar` / `.kb-bar[hidden]` / `.kb-key` / `.kb-key-wide` / `.kb-key-back` / `.kb-mini` / `@keyframes kbUp` / `body.kb-open #view`，`:root` 补 `--kb-h: 190px`
+- 测试：新增 `scripts/test-keyboard.mjs`（**52** 条：环境判定 / 键位 HTML / open·hide·show·close 四态 / DOM 三态 / `syncInputs` / 事件派发（字母·退格·空格·回车·非法值·未展开不派发）/ 视口监听只绑一次 / 无 DOM 降级）；`test-crossword` 173 → **213**（触屏格子尺寸语义 + 键盘三态 + 敲字母 / 退格 / 收起 / 唤出 / 完成后收场）；`test-fill` 85 → **115**（键盘接入 + 空格键 + 草稿不落盘 + 切选择题收场）；`smoke-dom` 253 → **267**（触屏进填字页 / 填空题自动展开、`inputmode=none`、点键写格、收起-唤出、离场收起；桩新增 `.cw-input` 重建与 `document.querySelectorAll` 委托）；`test-a11y` 109 → **124**（键盘 role/aria-label/`[hidden]`/一次性动画/两处接入）；`verify-assets` 446 → **476**（第 10 节：模块导出符号 / 两处接入 / CSS 三态与媒体查询 / `--kb-h` / 三个测试覆盖）
+
+## 测试资产（29 个 test-*.mjs + `smoke-dom` + `verify-assets` = 31 个脚本 / 3453 条断言）
 | 分类 | 脚本 |
 | --- | --- |
 | 核心纯函数 | `test-core`(43) `test-difficulty`(39) `test-arrange`(22) `test-pagination`(25) `test-resplit-levels`(26) `test-revlog`(58) |
-| 学习与题型 | `test-confusables`(82) `test-hardwords`(26) `test-level-retry`(78) `test-fill`(85) `test-listen`(21) `test-deck-test`(92) `test-eng-eng`(34) `test-multi-sense`(39) `test-review-complete`(11) `test-review-interaction`(18) |
+| 学习与题型 | `test-confusables`(82) `test-hardwords`(26) `test-level-retry`(78) `test-fill`(115，含移动端字母键盘) `test-listen`(21) `test-deck-test`(92) `test-eng-eng`(34) `test-multi-sense`(39) `test-review-complete`(11) `test-review-interaction`(18) |
 | 存储与主题 | `test-idb-store`(80) `test-theme`(150) |
-| 新功能 | `test-add-words`(110) `test-import-file`(336) `test-table-editor`(223) `test-export`(155) `test-xlsx`(125) `test-wordbook`(124) `test-match`(260，明牌配对：≥1 关解锁 / 分轮建牌与洗牌 / 爆炸消除 / 状态机 / 连击 / 薄 UI / 连击提示贴右下角 / 棋局只存内存重进即重洗) `test-crossword`(173，填字游戏：词条清洗与去重 / canPlace 四条规则 / 交叉排版生成与可复现 / 逐格状态机 / 打字只打补丁的薄 UI / 入口横幅) |
-| 无障碍 | `test-a11y`(109，键盘焦点环 / aria 覆盖 / 减少动效 / 弹窗焦点管理 / 配对页与填字页标注) |
-| DOM / 资源 | `smoke-dom`(253) `verify-assets`(446) |
+| 新功能 | `test-add-words`(110) `test-import-file`(336) `test-table-editor`(223) `test-export`(155) `test-xlsx`(125) `test-wordbook`(124) `test-match`(260，明牌配对：≥1 关解锁 / 分轮建牌与洗牌 / 爆炸消除 / 状态机 / 连击 / 薄 UI / 连击提示贴右下角 / 棋局只存内存重进即重洗) `test-crossword`(213，填字游戏：词条清洗与去重 / canPlace 四条规则 / 交叉排版生成与可复现 / 逐格状态机 / 移动端格子尺寸与字母键盘 / 打字只打补丁的薄 UI / 入口横幅) `test-keyboard`(52，移动端英文字母键盘：#kb-bar 单例 / 键位 / 四态 / 三态 DOM / inputmode 同步 / 事件派发) |
+| 无障碍 | `test-a11y`(124，键盘焦点环 / aria 覆盖 / 减少动效 / 弹窗焦点管理 / 配对页·填字页·字母键盘标注) |
+| DOM / 资源 | `smoke-dom`(267) `verify-assets`(476) |
 | 性能金丝雀 | `test-perf`(29，1 万词 / 500 关：统计/分组/抽题（含优先池读取次数）+ 耗时) |
 
 ## 已知问题 / 技术债

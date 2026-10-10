@@ -22,6 +22,7 @@
 
 import * as store from './store.js';
 import * as lv from './levels.js';
+import * as kb from './keyboard.js'; // v0.7.0 移动端英文字母键盘
 import { esc, on, icon, navigate, announce, toast } from './ui.js';
 
 /** 解锁所需「已通关关卡」数（含）——通关 1 关即可玩（与明牌配对同门槛） */
@@ -37,9 +38,25 @@ export const SIZES = [6, 8, 10, 12];
 /** 每局默认词数 */
 export const DEFAULT_SIZE = 8;
 
-/** 棋盘格子尺寸范围（px），由 cellSize() 按行列数 + 视口收敛 */
-export const MIN_CELL = 18;
+/**
+ * 棋盘格子尺寸范围（px），由 cellSize() 按行列数 + 视口收敛。
+ * 触屏下限高得多（30px）：手指点得准、字母看得清；棋盘放不下就由
+ * `.cw-board-wrap` 横向滚动，并把当前焦点格自动滚进视野（不再把格子压成 18px）。
+ */
+export const MIN_CELL = 24;
+export const TOUCH_MIN_CELL = 30;
 export const MAX_CELL = 40;
+
+/** 底部字母键盘展开时，棋盘可用高度（视口比例）—— 触屏比桌面更少 */
+export const TOUCH_HEIGHT_RATIO = 0.4;
+export const DESKTOP_HEIGHT_RATIO = 0.52;
+
+/** 棋盘外层横向留白（px）：触屏窄屏，留白更小 */
+export const TOUCH_H_PAD = 34;
+export const DESKTOP_H_PAD = 72;
+
+/** 移动端视口宽度阈值（未显式给 touch 时，按此推断是否触屏布局） */
+export const TOUCH_VIEWPORT_WIDTH = 600;
 
 export const SESSION_KEY = 'mycard-crossword-session';
 
@@ -624,12 +641,23 @@ export function formatDuration(ms) {
 }
 
 /** 棋盘格子尺寸（px）：按行列数 + 视口收敛，常见棋盘不横向溢出、也不至于太小 */
+/**
+ * 棋盘格子尺寸（px）：按行列数 + 视口收敛。
+ * 触屏（`viewport.touch === true`，缺省按「视口宽 ≤ TOUCH_VIEWPORT_WIDTH」推断）：
+ *   · 下限 TOUCH_MIN_CELL = 30px（手指可点、字母可读），横向放不下就让棋盘滚动；
+ *   · 可用高度按 40% 视口算（底部还压着字母键盘与线索区）。
+ * 桌面：下限 MIN_CELL = 24px、可用高度 52%，尽量整盘塞进一屏。
+ */
 export function cellSize(cols, rows, viewport = {}) {
   const vw = Number(viewport.width) > 0 ? Number(viewport.width) : 360;
   const vh = Number(viewport.height) > 0 ? Number(viewport.height) : 640;
-  const byWidth = Math.floor((Math.min(vw, 760) - 72) / Math.max(1, posInt(cols, 1)));
-  const byHeight = Math.floor((Math.min(vh, 900) * 0.52) / Math.max(1, posInt(rows, 1)));
-  return Math.max(MIN_CELL, Math.min(MAX_CELL, byWidth, byHeight));
+  const touch = viewport.touch == null ? vw <= TOUCH_VIEWPORT_WIDTH : !!viewport.touch;
+  const minCell = touch ? TOUCH_MIN_CELL : MIN_CELL;
+  const pad = touch ? TOUCH_H_PAD : DESKTOP_H_PAD;
+  const ratio = touch ? TOUCH_HEIGHT_RATIO : DESKTOP_HEIGHT_RATIO;
+  const byWidth = Math.floor((Math.min(vw, 760) - pad) / Math.max(1, posInt(cols, 1)));
+  const byHeight = Math.floor((Math.min(vh, 900) * ratio) / Math.max(1, posInt(rows, 1)));
+  return Math.max(minCell, Math.min(MAX_CELL, byWidth, byHeight));
 }
 
 
@@ -687,6 +715,7 @@ function startClock() {
 /** 清空会话与所有定时器（路由切换 / 重置数据 / 离开棋局调用） */
 export function clearCrosswordSession() {
   stopClock();
+  kb.closeKeyboard(); // 离开填字页 / 重置：收起底部字母键盘
   if (flashTimer) {
     clearTimeout(flashTimer);
     flashTimer = null;
@@ -768,7 +797,7 @@ function cellHtml(cell, state) {
       ${cell.num ? `<span class="cw-num" aria-hidden="true">${cell.num}</span>` : ''}
       <input class="cw-input" type="text" data-action="cw-type" data-cell="${key}" value="${esc(value)}"
         maxlength="1" autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false"
-        inputmode="latin" aria-label="${esc(cellAriaLabel(cell, value))}" />
+        inputmode="${kb.inputMode()}" aria-label="${esc(cellAriaLabel(cell, value))}" />
     </div>`;
 }
 
@@ -864,7 +893,8 @@ export function crosswordHtml(deck, state) {
   const st = playStats(state);
   const source = state.source || defaultSource(deck);
   const hasBoard = !!(board.cells && board.cells.length);
-  const size = cellSize(board.cols, board.rows, viewport());
+  const touch = kb.isTouchDevice();
+  const size = cellSize(board.cols, board.rows, { ...viewport(), touch });
 
   const body = hasBoard
     ? `
@@ -1007,6 +1037,7 @@ function paintAll() {
 function finishGame() {
   if (!S) return;
   stopClock();
+  kb.closeKeyboard(); // 已完成：收起字母键盘，腾出屏幕看结算
   paintAll();
   const panel = byId('cw-result');
   if (panel) {
@@ -1031,13 +1062,26 @@ function inputEl(key) {
   return all('.cw-input').find((el) => el.dataset && el.dataset.cell === key) || null;
 }
 
+/** 焦点落到某格；并把它滚进视野（移动端键盘展开时棋盘可能横向 / 纵向溢出） */
 function focusCell(cell) {
   if (!cell) return;
   const el = inputEl(cellKey(cell.row, cell.col));
-  if (el && el.focus) {
+  if (!el || !el.focus) return;
+  try {
+    el.focus();
+  } catch (e) {}
+  revealEl(el);
+}
+
+/** 把元素滚进最近的可视区域（老浏览器 / 测试桩没有 scrollIntoView 时安全跳过） */
+function revealEl(el) {
+  if (!el || typeof el.scrollIntoView !== 'function') return;
+  try {
+    el.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  } catch (e) {
     try {
-      el.focus();
-    } catch (e) {}
+      el.scrollIntoView();
+    } catch (e2) {}
   }
 }
 
@@ -1080,6 +1124,95 @@ function advance(row, col) {
 }
 
 /** 方向键 / 退格 / 删除 / 空格（棋盘 ≤ 144 格，线性找格足够快） */
+/** 清掉某一格（Delete / 退格在有字母时） */
+function clearCellAt(el) {
+  const key = el && el.dataset && el.dataset.cell;
+  if (!S || !key) return;
+  const [row, col] = parseKey(key);
+  S = setLetter(S, row, col, '');
+  saveSession();
+  paintAll();
+}
+
+/** 退格：有字母就清掉它；空格上退格 → 回到本线索上一格并清掉它 */
+function backspaceAt(el) {
+  const key = el && el.dataset && el.dataset.cell;
+  if (!S || !key) return;
+  if (String(el.value || '')) {
+    clearCellAt(el);
+    return;
+  }
+  const [row, col] = parseKey(key);
+  const w = wordAt(S, row, col);
+  const cells = w ? wordCells(S.board, w.id) : [];
+  const idx = cells.findIndex((c) => c.row === row && c.col === col);
+  const prev = idx > 0 ? cells[idx - 1] : null;
+  if (!prev) return;
+  S = setLetter(S, prev.row, prev.col, '');
+  saveSession();
+  paintAll();
+  focusCell(prev);
+}
+
+/* --------------------------- 屏幕字母键盘（移动端） --------------------------- */
+
+/** 字母键盘要写进哪一格：优先当前聚焦格（且该格确实在棋盘上），否则当前线索的第一个空格 */
+function keyboardTarget() {
+  if (!S || !S.board) return null;
+  const map = cellMap(S.board);
+  const d = typeof document !== 'undefined' ? document : null;
+  const active = d && d.activeElement;
+  if (
+    active &&
+    active.dataset &&
+    active.dataset.cell &&
+    map.has(active.dataset.cell) &&
+    active.classList &&
+    typeof active.classList.contains === 'function' &&
+    active.classList.contains('cw-input')
+  ) {
+    return active;
+  }
+  const w = wordById(S.board, S.selected);
+  const cell = w ? firstOpenCell(S, w.id) : null;
+  return cell ? inputEl(cellKey(cell.row, cell.col)) : null;
+}
+
+/** 屏幕键盘敲一个字母：与物理键盘走同一条处理链路（只打补丁、自动推进） */
+function keyboardType(ch) {
+  const el = keyboardTarget();
+  if (!el) return;
+  if ('value' in el) el.value = String(ch || '');
+  applyTypedLetter(el);
+}
+
+/** 屏幕键盘退格：等价于按 Backspace */
+function keyboardBackspace() {
+  const el = keyboardTarget();
+  if (el) backspaceAt(el);
+}
+
+/**
+ * 触屏设备进入填字页时接上字母键盘（`inputmode="none"` 抑制系统输入法）。
+ * 非触屏 / 已完成 / 棋盘为空 → 彻底关闭；触屏但用户已手动收起 → 保持隐藏但**保留配置**
+ * （页面上的「⌨ 字母键盘」按钮可再唤出；这一步在每次重渲染都会走到，所以不能清配置）。
+ */
+function attachCrosswordKeyboard() {
+  if (!S || !S.board || !S.board.cells.length || S.solved) {
+    kb.closeKeyboard();
+    return;
+  }
+  if (kb.shouldAutoOpen()) {
+    kb.openKeyboard({ inputs: '.cw-input', onKey: keyboardType, onBackspace: keyboardBackspace });
+    return;
+  }
+  if (kb.isTouchDevice() && kb.keyboardConfig()) {
+    kb.hideKeyboard(); // 尊重「收起」；配置仍在 → 「⌨ 字母键盘」按钮可再唤出
+    return;
+  }
+  kb.closeKeyboard();
+}
+
 function onKeyDown(evt) {
   const el = evt && evt.target;
   if (!S || !el || !el.classList || typeof el.classList.contains !== 'function') return;
@@ -1091,24 +1224,8 @@ function onKeyDown(evt) {
 
   if (k === 'Backspace' || k === 'Delete') {
     if (evt.preventDefault) evt.preventDefault();
-    const filled = String(el.value || '');
-    if (k === 'Backspace' && !filled) {
-      // 空格上退格 → 回到上一格并清掉它
-      const w = wordAt(S, row, col);
-      const cells = w ? wordCells(S.board, w.id) : [];
-      const idx = cells.findIndex((c) => c.row === row && c.col === col);
-      const prev = idx > 0 ? cells[idx - 1] : null;
-      if (prev) {
-        S = setLetter(S, prev.row, prev.col, '');
-        saveSession();
-        paintAll();
-        focusCell(prev);
-      }
-      return;
-    }
-    S = setLetter(S, row, col, '');
-    saveSession();
-    paintAll();
+    if (k === 'Backspace') backspaceAt(el);
+    else clearCellAt(el);
     return;
   }
   if (k === ' ') {
@@ -1201,7 +1318,9 @@ export function renderCrossword(root, deckId) {
   if (!s || !isValidSource(deck, s.source)) s = startGame(deck, defaultSource(deck), DEFAULT_SIZE);
   S = s;
 
+  attachCrosswordKeyboard(); // 先定键盘状态 → 生成的 inputmode 就是最终值
   root.innerHTML = crosswordHtml(deck, S);
+  kb.syncInputs(); // DOM 已就绪：把 inputmode 同步到这一批输入框
   if (S.solved) finishGame();
   else startClock();
 }
@@ -1216,33 +1335,34 @@ function regenerate(deck, source, size) {
   renderCrossword(rootView(), deck.id);
 }
 
-/* 输入一个字母：写入内核 → 跳到本线索下一个空格（只打补丁，不整页重渲染） */
-on(
-  'cw-type',
-  (el) => {
-    if (!S || !el || !el.dataset) return;
-    const key = el.dataset.cell;
-    if (!key) return;
-    const letter = normalizeLetter(el.value);
-    if (!letter) {
-      if ('value' in el) el.value = '';
-      return;
-    }
-    if (el.value !== letter) el.value = letter;
-    const [row, col] = parseKey(key);
-    S = setLetter(S, row, col, letter);
-    saveSession();
-    paintCells();
-    paintClues();
-    paintStatus();
-    if (S.solved) {
-      finishGame();
-      return;
-    }
-    advance(row, col);
-  },
-  'input'
-);
+/**
+ * 处理「某一格被输入了内容」——物理键盘的 input 事件与屏幕字母键盘共用这条路。
+ * 写入内核 → 跳到本线索下一个空格（只打补丁，不整页重渲染）。
+ */
+function applyTypedLetter(el) {
+  if (!S || !el || !el.dataset) return;
+  const key = el.dataset.cell;
+  if (!key) return;
+  const letter = normalizeLetter(el.value);
+  if (!letter) {
+    if ('value' in el) el.value = '';
+    return;
+  }
+  if (el.value !== letter) el.value = letter;
+  const [row, col] = parseKey(key);
+  S = setLetter(S, row, col, letter);
+  saveSession();
+  paintCells();
+  paintClues();
+  paintStatus();
+  if (S.solved) {
+    finishGame();
+    return;
+  }
+  advance(row, col);
+}
+
+on('cw-type', (el) => applyTypedLetter(el), 'input');
 
 /* 点线索：选中它并把焦点落到第一个空格 */
 on('cw-clue', (el) => {

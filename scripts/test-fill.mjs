@@ -19,7 +19,8 @@ globalThis.sessionStorage = mkStorage();
 function mkEl(tag = 'div') {
   return {
     tagName: String(tag).toUpperCase(),
-    innerHTML: '', textContent: '', className: '', style: {}, dataset: {},
+    innerHTML: '', textContent: '', className: '', style: {}, dataset: {}, hidden: false,
+    _attrs: {},
     _listeners: {},
     classList: {
       _s: new Set(),
@@ -33,22 +34,42 @@ function mkEl(tag = 'div') {
     querySelector() { return null; },
     querySelectorAll() { return []; },
     closest() { return null; },
-    setPointerCapture() {}, releasePointerCapture() {}, focus() {}, remove() {}, setAttribute() {}, appendChild() {}
+    setAttribute(k, v) { this._attrs[k] = String(v); },
+    getAttribute(k) { return k in this._attrs ? this._attrs[k] : null; },
+    setPointerCapture() {}, releasePointerCapture() {}, focus() {}, remove() {}, appendChild(c) { return c; }
   };
 }
 
 const ROOT = mkEl('div');
 ROOT.closest = (sel) => (sel === '#view' ? ROOT : null);
-// 模拟填空输入框（可读写 value，并捕获 keydown 监听）
-const fakeField = { value: '', _l: {}, addEventListener(t, fn) { (this._l[t] = this._l[t] || []).push(fn); }, focus() {} };
+// 模拟填空输入框（可读写 value，并捕获 keydown 监听 + inputmode 属性）
+const fakeField = {
+  value: '',
+  disabled: false,
+  _l: {},
+  _attrs: {},
+  addEventListener(t, fn) { (this._l[t] = this._l[t] || []).push(fn); },
+  focus() {},
+  setSelectionRange() {},
+  setAttribute(k, v) { this._attrs[k] = String(v); },
+  getAttribute(k) { return k in this._attrs ? this._attrs[k] : null; }
+};
+// 记录 keyboard.js 创建的底栏（模拟真实 DOM 里 <body> 下的 #kb-bar 单例）
+let kbBar = null;
+const bodyEl = mkEl('body');
+bodyEl.appendChild = (c) => {
+  if (c && c.id === 'kb-bar') kbBar = c;
+  return c;
+};
+const bar = () => kbBar;
 globalThis.document = {
-  body: mkEl('body'),
+  body: bodyEl,
   documentElement: mkEl(),
   addEventListener() {},
   removeEventListener() {},
   querySelector: (sel) => (sel === '.fill-field' ? fakeField : null),
-  querySelectorAll: () => [],
-  getElementById: (id) => (id === 'view' ? ROOT : null),
+  querySelectorAll: (sel) => (sel === '.fill-field' ? [fakeField] : []),
+  getElementById: (id) => (id === 'view' ? ROOT : id === 'kb-bar' ? kbBar : null),
   createElement: (t) => mkEl(t)
 };
 globalThis.window = { addEventListener() {}, dispatchEvent() {}, scrollTo() {} };
@@ -58,6 +79,7 @@ globalThis.requestAnimationFrame = (fn) => setTimeout(fn, 0);
 const store = await import('../js/store.js');
 const testMod = await import('../js/test.js');
 const ui = await import('../js/ui.js');
+const kb = await import('../js/keyboard.js'); // v0.7.0 移动端字母键盘
 await import('../js/decks.js');
 
 let pass = 0, fail = 0;
@@ -310,6 +332,78 @@ ok(imported === 1, 'addManyCards 导入 1 张');
 ok(store.getDeck(dIpa.id).cards.find((c) => c.front === 'apple').phonetic === '/ˈæpl/', 'addManyCards 保留 phonetic 字段');
 const store2 = await import('../js/store.js?reload=1');
 ok(store2.getDeck(dIpa.id).cards.find((c) => c.front === 'apple').phonetic === '/ˈæpl/', 'localStorage 重载后 phonetic 仍在（normalizeCard 保留）');
+
+console.log('\n[移动端：填空题接屏幕字母键盘（v0.7.0）]');
+/** 模拟触屏（pointer: coarse）—— keyboard.js / 页面都按这个信号判断 */
+const setTouch = (on) => {
+  globalThis.window.matchMedia = (q) => ({ matches: !!on && String(q).includes('coarse') });
+};
+/** 点一次屏幕键盘的键 */
+const pressKey = (key) => act('kb-key', { key });
+
+setTouch(false);
+seedWithAnswer('banana');
+ok(kb.isTouchDevice() === false && kb.isKeyboardOpen() === false, '非触屏：填空题不弹字母键盘（用系统键盘）');
+ok(bar() === null || bar().hidden === true, '非触屏：底部键盘条不存在 / 隐藏');
+ok(ROOT.innerHTML.includes('inputmode="latin"'), '非触屏：输入框 inputmode=latin');
+
+setTouch(true);
+seedWithAnswer('banana');
+ok(kb.isKeyboardOpen() === true, '触屏：进入填空题自动弹出字母键盘');
+ok(kb.inputMode() === 'none' && ROOT.innerHTML.includes('inputmode="none"'), '键盘展开 → inputmode=none（抑制系统输入法）');
+ok(!!bar() && bar().hidden === false && bar().classList.contains('is-open'), '底部键盘条已展开');
+ok((bar().innerHTML.match(/data-key="/g) || []).length === 28, '填空键盘 = 26 字母 + 空格 + 退格（28 键）');
+ok(bar().innerHTML.includes('data-key="SPACE"'), '填空键盘带空格键（多词答案需要）');
+ok(fakeField.getAttribute('inputmode') === 'none', 'syncInputs：输入框写成 inputmode=none');
+ok(ROOT.innerHTML.includes('输入后按 Enter'), '键盘提示文案仍在');
+
+// 敲字母 / 空格 / 退格 → 直接改输入框内容，并同步草稿（重渲染不丢）
+fakeField.value = '';
+pressKey('B');
+ok(fakeField.value === 'b', '点字母键 → 输入框追加小写字母');
+pressKey('A');
+pressKey('N');
+ok(fakeField.value === 'ban', '连续敲击 → ban');
+ok(readSession().questions[0].draft === '', '屏幕键盘打字不触发落盘（草稿只留在内存，避免每键都写库）');
+act('test-fill-hint'); // 触发一次重渲染
+ok(ROOT.innerHTML.includes('value="ban"'), '重渲染后输入框回填草稿（draft 同步到内核）');
+ok(kb.isKeyboardOpen() === true, '重渲染（提示）后键盘仍展开');
+fakeField.value = 'ban';
+act('kb-jump'); // 不存在的动作：验证 isKeyboardOpen 不受影响
+ok(kb.isKeyboardOpen() === true, '无关动作不影响键盘状态');
+pressKey('SPACE');
+ok(fakeField.value === 'ban ', '空格键写入空格');
+pressKey('BACK');
+ok(fakeField.value === 'ban', '退格键删掉末尾字符');
+pressKey('zz');
+ok(fakeField.value === 'ban', '非法键值被忽略');
+pressKey('ENTER');
+ok(readSession().questions[0].attempts === 1 && readSession().questions[0].answered === false, '键盘 Enter → 走提交判题（答错留本题重试）');
+ok(kb.isKeyboardOpen() === true, '答错重试时键盘保持可用');
+
+// 收起 → 迷你胶囊（不需要页面重渲染就能再唤出）
+act('kb-hide');
+ok(kb.isKeyboardOpen() === false && bar().classList.contains('is-mini'), '点「收起键盘」→ 收成迷你态');
+ok(fakeField.getAttribute('inputmode') === 'latin', '收起后输入框恢复系统键盘（inputmode=latin）');
+ok(bar().innerHTML.includes('data-action="kb-show"'), '迷你态里带「⌨ 字母键盘」胶囊');
+act('kb-show');
+ok(kb.isKeyboardOpen() === true && bar().classList.contains('is-open'), '点胶囊 → 键盘重新展开');
+ok(fakeField.getAttribute('inputmode') === 'none', '重新展开 → 再次抑制系统输入法');
+
+// 换到非填空题 → 键盘整条隐藏；答完/离场 → 清场
+const choiceQ = { ...qs[0], type: 'word2def', options: [], answered: false, correct: false, attempts: 0 };
+mem['mycard-test-session'] = JSON.stringify({ deckId: deck.id, level: 0, questions: [choiceQ], pos: 0, correct: 0 });
+testMod.renderTest(ROOT, deck.id, 0);
+ok(kb.isKeyboardOpen() === false && bar().hidden === true, '切到选择题 → 键盘整条隐藏（不再遮屏幕）');
+ok(kb.keyboardConfig() === null, '无输入框时清掉键盘宿主配置');
+
+seedWithAnswer('banana');
+fakeField.value = 'banana';
+act('test-fill-submit');
+ok(readSession().questions[0].correct === true, '用键盘敲出答案后提交 → 判对');
+testMod.clearTestSession();
+ok(kb.isKeyboardOpen() === false && kb.keyboardConfig() === null, '离开测试页 → 键盘清场');
+setTouch(false);
 
 console.log(`\n填空题结果: ${pass} 通过, ${fail} 失败`);
 process.exit(fail ? 1 : 0);

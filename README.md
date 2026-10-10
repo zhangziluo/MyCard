@@ -26,6 +26,7 @@
 - **整卡组可配置测试**：题数 **20~150** 可调（快速 20 / 标准 50 / 挑战 150 ＋ 滑块，步长 10），题型按权重分配、词数不足时循环覆盖，错题进优先池，支持中途退出续做
 - **明牌配对（v0.5.12，连击提示位置 v0.5.13，重进重洗 v0.6.1）**：卡组**通关 ≥ 1 关**后，详情页出现 **「明牌配对 · 玩一局」** 入口（路由 `#/match/{deck}`）——取某一**已通关关卡**的卡片，**每轮 5 对**（10 张明牌：5 张单词 ＋ 5 张释义，位置随机打乱、**全程可见**）铺进**固定两列**棋盘，多余的配对**自动排到后面的轮次**（如 20 张卡 = 4 轮，轮次行实时显示「第 R/T 轮 · 本轮还剩 N 对」）；**先点单词、再点它的释义**：配对成功 → **金色闪光 ＋ 爆炸消除**（这一对从棋盘上消失）、连击 +1（**连击 ≥2 在棋盘右下角弹「combo✖️N」提示并抖动**——提示落在棋盘底部留白条内，**不遮挡牌面文字**；「最大连击」格同步弹跳）；配对失败 → **抖动**、连击清零、失误 +1；一轮清完自动铺下一轮，全部配完结算 **用时 / 失误 / 最大连击** 并可「再玩一次」；**每次重新进入同一关（重新打开页面 / 刷新 / 从卡组页再进来）都重新洗牌开局**（牌面与牌底顺序全换），只有同一页内的重渲染（切主题 / 切主色）会保持当前棋局
 - **填字游戏（v0.6.0，第二种游戏）**：卡组**通关 ≥ 1 关**后，详情页出现 **「填字游戏 · 拼一局」** 入口（路由 `#/crossword/{deck}`）——**完全按当前词库生成**横竖交叉的填字棋盘（单词正面作为答案、释义作为线索），**词源可选「整卡组」或任一已通关关卡**、**每局词数 6 / 8 / 10 / 12 可切**，还有「换一批」（重新抽词 + 重新排版）；玩法：读线索 → **逐格填字母**（点线索/格自动选中所属线索、打字自动推进、Backspace 回上一格、方向键换线索），「检查」标出填错的格、「提示一字母」补一格、「显示本词」填全该线索，全部填对结算 **用时 / 提示次数 / 线索数**
+- **移动端英文字母键盘（v0.7.0）**：**填字游戏与填空题在触屏设备上自动弹出自绘 QWERTY 字母键盘**（26 字母 + 退格，填空题多一个空格键；带「收起键盘」），配合 `inputmode="none"` **抑制系统输入法** —— 不再弹出中文候选框 / 拼音键盘，也不会把页面顶飞；收起后收成右下角 **「⌨ 字母键盘」迷你胶囊**，点它随时唤回；**桌面端不显示**（继续用物理键盘）。填字页的格子同时按触屏放大（**≥30px**，放不下就横向滚动，并把当前焦点格自动滚进视野）
 - **导出词表 / Anki 卡包（v0.4.11，v0.4.13 扩至四种格式，v0.4.16 起带复习进度，v0.5.8 起带复习日志）**：卡组菜单（⋮）提供五种导出，纯前端下载（离线可用）；列序统一为 `正面 / 背面 / 例句 / 例句翻译 / 音标 / 标签(逗号)`，无正面的卡片不导出
   - **标准 txt（TSV）**：UTF-8 带 BOM、制表符分隔、一卡一行，首行为列名；单元格内的制表符与换行会被清洗为空格（保证「一卡一行」）
   - **CSV（带表头）**：UTF-8 带 BOM、逗号分隔、CRLF 行尾，首行为列名；按 **RFC 4180** 转义 —— 含 `,` / `"` / 换行的字段用双引号包裹、内部 `"` 加倍（因此多行释义在 Excel / 表格工具里也不会串行）
@@ -73,7 +74,7 @@
   - 整份文件解析后**一次事务批量写入**本地库，按单词去重并报告跳过数；新建牌组时 `source=null` 故可重复导入（各自新建卡组）
 - **数据存储（v0.4，v0.5.8 库升到 v3）**：卡片正文与学习进度存 **IndexedDB**（库 `mycard` v3，stores：`decks` / `cards` / `meta` / `lookup` / **`revlog`**），localStorage 只保留设置与卡组清单（key `mycard-meta`）；旧版 `mycard-v1` 整库会在首次启动时**自动迁移**到 IndexedDB 并删除旧键，v2 → v3 为**增量升级**（只补建 `revlog` store 与其 `byDeck` / `byCard` 索引，既有数据不动），从而支持万词级词库
 - **内置词库**：仅内置「英语高频词（示范）」约 60 词（`data/words.json` ＋ 易混分组 `data/confusables.json`），首次打开**自动导入**并按难度编排 3 关；应用不再内置其它词库，需要时可用首页「导入」按钮导入自己的 CSV / JSON 词表（见上一条）。旧版本曾内置的 10 本考试词库（考研 / 四级 / 六级 / 托福 / 雅思 / 专四 / 专八 / SAT / 初中 / 高中）已下线，浏览器里**遗留的历史卡组会在启动时自动清理**（按 `source` 精确匹配，仅删这些内置卡组，不影响你自建的卡组与「我的生词」）
-- **PWA**：`manifest.json` ＋ `sw.js`；**代码 / 数据走网络优先**（在线总是最新，离线回退缓存），图片走缓存优先；新版本 SW 接管后自动刷新一次，通常**一次刷新即可看到新功能**；顶栏显示当前版本号（当前 `v0.6.1`），设置页另提供「强制刷新到最新版（清理离线缓存）」应对极端缓存情况
+- **PWA**：`manifest.json` ＋ `sw.js`；**代码 / 数据走网络优先**（在线总是最新，离线回退缓存），图片走缓存优先；新版本 SW 接管后自动刷新一次，通常**一次刷新即可看到新功能**；顶栏显示当前版本号（当前 `v0.7.0`），设置页另提供「强制刷新到最新版（清理离线缓存）」应对极端缓存情况
 - **界面**：移动端优先、深色主题、毛玻璃（glassmorphism）卡片；**桌面端自适应** —— `#app` 按 640 / 960 / 1280 / 1600px 断点逐级放宽（600 → 760 → 1080 → 1280 → 1440px），卡组用 `auto-fill` 网格随宽度平铺 2–5 列，宽屏下关卡列表两列平铺
 - **无障碍（v0.5.10）**：全局键盘焦点环（`:focus-visible`）、「跳到主要内容」跳转链接、路由变化用 `#sr-announce` 实时区域播报页面名、可点击卡片（`role="button"`）支持 Enter / 空格、弹窗焦点陷阱与关闭后焦点还原、系统「减少动态效果」全局生效——详见下文「无障碍与键盘可达性」
 
@@ -109,6 +110,7 @@
 │   ├── test.js             # 测试题模式（7 种题型 + 整卡组可配置测试）
 │   ├── match.js            # 明牌配对游戏 #/match（通关 ≥1 关解锁；每轮 5 对 / 固定两列 / 爆炸消除 + combo✖️N；纯内核 + 薄 UI，点击只局部打补丁；棋局只存内存 → 重进同一关即重新洗牌）
 │   ├── crossword.js        # 填字游戏 #/crossword（通关 ≥1 关解锁；按当前词库交叉排版生成棋盘 / 每局 6~12 词 / 检查·提示·显示本词；纯内核 + 薄 UI，输入只局部打补丁）
+│   ├── keyboard.js         # 移动端英文字母键盘（#kb-bar 单例底栏：QWERTY + 退格 / 空格键 / 收起·唤出；inputmode=none 抑制系统输入法）
 │   ├── add-words.js        # 首页添加单词/词表：语种检测 / 分词 / 在线查词 / 缓存 / 预览
 │   ├── import-file.js      # 本地文件导入：CSV/TSV/JSON/XLSX 解析（零依赖）+ 预览 + 字段映射 + 多文件批量 + 拖拽区
 │   ├── import-history.js   # 导入历史与回滚（撤销导入：删新建卡组 / 移除追加卡片）
@@ -142,7 +144,7 @@
     ├── test-confusables.mjs# 干扰项 + 三种题型（82 项断言）
     ├── test-hardwords.mjs  # 整卡组翻转循环 / 困难词标记（26 项断言）
     ├── test-level-retry.mjs# 关卡重新挑战 / 直接测试 / 题型微调（含「关卡测试不含可选题型」，78 项断言）
-    ├── test-fill.mjs       # 填空题（85 项断言）
+    ├── test-fill.mjs       # 填空题（判题 / 单复数容错 / 提示 / 发音降级 / 移动端字母键盘，115 项断言）
     ├── test-listen.mjs     # 听音辨意（21 项断言）
     ├── test-deck-test.mjs  # 整卡组可配置测试（抽题/优先池/优先池快路径/权重/续做，92 项断言）
     ├── test-eng-eng.mjs    # 英英选择题型（34 项断言）
@@ -153,13 +155,14 @@
     ├── test-xlsx.mjs       # 极简 .xlsx 读取器（ZIP STORED/DEFLATE、共享字符串、日期、多工作表/公式求值/合并单元格，125 项断言）
     ├── test-table-editor.mjs # 表格编辑页 #/editor（模版列一致性 / 表格内核 / 草稿 / 载入 / 粘贴多行 / 预览报告 / 渲染 / 事件 / 导入为卡组 / xlsx 指定工作表，223 项断言）
     ├── test-export.mjs     # 导出 txt/CSV/Markdown/JSON/Anki apkg（RFC4180、meta protobuf、Anki 调度、revlog 日志、ZIP+CRC32、Python sqlite3 校验产物，155 项断言）
-    ├── smoke-dom.mjs       # 无头 DOM 冒烟（各界面渲染 + 分页 + 明暗切换 + 导出/导入入口 + 表格编辑页 + 生词本整理页 + 明牌配对 + 填字游戏，253 项断言）
+    ├── smoke-dom.mjs       # 无头 DOM 冒烟（各界面渲染 + 分页 + 明暗切换 + 导出/导入入口 + 表格编辑页 + 生词本整理页 + 明牌配对 + 填字游戏 + 移动端字母键盘，267 项断言）
     ├── test-perf.mjs       # 大卡组（1 万词 / 500 关）规模：统计/分组/抽题（含优先池读取次数）正确性 + 耗时金丝雀（29 项）
     ├── test-wordbook.mjs   # 生词本整理（同词归并 / 保留卡片优先级 / 合并语义 / 标签整理 / 筛选排序 / 多选批量 / 页面渲染与分页，124 项断言）
-    ├── test-a11y.mjs       # 无障碍（键盘焦点环 / aria 覆盖 / 减少动效 / 弹窗焦点管理，109 项断言）
+    ├── test-a11y.mjs       # 无障碍（键盘焦点环 / aria 覆盖 / 减少动效 / 弹窗焦点管理，124 项断言）
     ├── test-match.mjs      # 明牌配对（解锁 / 分轮建牌洗牌 / 牌面文案 / 点击状态机 / 连击 / 薄 UI 与入口横幅 / 棋局只存内存重进即重洗，260 项断言）
-    ├── test-crossword.mjs  # 填字游戏（解锁 / 词条清洗 / 交叉排版规则 / 棋盘生成 / 状态机 / 薄 UI 与入口横幅，173 项断言）
-    └── verify-assets.mjs   # 资源完整性校验（446 项）
+    ├── test-crossword.mjs  # 填字游戏（解锁 / 词条清洗 / 交叉排版规则 / 棋盘生成 / 状态机 / 移动端格子尺寸与字母键盘 / 薄 UI 与入口横幅，213 项断言）
+    ├── test-keyboard.mjs   # 移动端英文字母键盘（环境判定 / 键位 HTML / 四态状态机 / DOM 三态 / inputmode 同步 / 事件派发 / 只绑一次，52 项断言）
+    └── verify-assets.mjs   # 资源完整性校验（476 项）
 ```
 
 ## 本地运行
@@ -189,7 +192,7 @@ node scripts/test-theme.mjs           # 明暗模式（浅色/深色/跟随系�
 node scripts/test-confusables.mjs     # 干扰项 + 三种题型（释义/同组/兜底/单词池/挖空，82 项）
 node scripts/test-hardwords.mjs       # 整卡组翻转循环 / 困难词标记（26 项）
 node scripts/test-level-retry.mjs     # 关卡重新挑战 / 直接测试 / 题型微调（含关卡测试不含可选题型，78 项）
-node scripts/test-fill.mjs            # 填空题（判题容错 / 渲染 / 🔊 发音与降级，85 项）
+node scripts/test-fill.mjs            # 填空题（判题容错 / 渲染 / 🔊 发音与降级 / 移动端字母键盘，115 项）
 node scripts/test-listen.mjs          # 听音辨意（出题 / TTS 播放与降级，21 项）
 node scripts/test-deck-test.mjs       # 整卡组可配置测试（抽题/循环/优先池/优先池快路径/权重/续做，92 项）
 node scripts/test-eng-eng.mjs         # 英英选择题型（子模式 A/B、选项构成、回退，34 项）
@@ -200,17 +203,18 @@ node scripts/test-import-file.mjs     # 本地文件导入（解析/预览/字�
 node scripts/test-xlsx.mjs            # 极简 .xlsx 读取器（ZIP STORED/DEFLATE、共享字符串、日期、多工作表/公式求值/合并单元格，125 项）
 node scripts/test-table-editor.mjs    # 表格编辑页 #/editor（模版列一致性 / 表格内核 / 草稿 / 载入 / 粘贴多行 / 预览报告 / 导入为卡组 / xlsx 指定工作表，223 项）
 node scripts/test-export.mjs          # 导出 txt / CSV / Markdown / JSON / Anki apkg（RFC4180·meta protobuf·Anki 调度·revlog 日志·ZIP·CRC32，Python sqlite3 校验，155 项）
-node scripts/smoke-dom.mjs            # 无头 DOM 冒烟（各界面渲染 + 分页 + 明暗切换 + 导出/导入入口 + 表格编辑页 + 生词本整理页 + 明牌配对 + 填字游戏，253 项）
+node scripts/smoke-dom.mjs            # 无头 DOM 冒烟（各界面渲染 + 分页 + 明暗切换 + 导出/导入入口 + 表格编辑页 + 生词本整理页 + 明牌配对 + 填字游戏 + 移动端字母键盘，267 项）
 node scripts/test-perf.mjs            # 大卡组（1 万词）规模：单遍统计 / 复用关卡分组 / 抽题快路径（含优先池）× 读取次数 + 耗时（29 项）
 node scripts/test-wordbook.mjs        # 生词本整理（同词归并 / 保留卡片优先级 / 合并语义 / 标签整理 / 筛选排序 / 多选批量 / 页面渲染与分页，124 项）
-node scripts/test-a11y.mjs            # 无障碍（键盘焦点环 / aria 覆盖 / prefers-reduced-motion / 弹窗焦点陷阱与还原 / 配对页与填字页标注，109 项）
+node scripts/test-a11y.mjs            # 无障碍（键盘焦点环 / aria 覆盖 / prefers-reduced-motion / 弹窗焦点陷阱与还原 / 配对·填字·字母键盘标注，124 项）
 node scripts/test-match.mjs           # 明牌配对（解锁门槛 / 分轮建牌与可复现洗牌 / 点击状态机 / 连击与用时 / 薄 UI 与入口横幅 / 重进同一关重新洗牌，260 项）
-node scripts/test-crossword.mjs       # 填字游戏（解锁门槛 / 词条清洗 / 交叉排版规则 / 棋盘生成与可复现 / 状态机 / 薄 UI 与入口横幅，173 项）
-node scripts/verify-assets.mjs        # PWA 资源完整性 + 字段映射 / 明暗模式 / 导出（含 revlog）/ 导入增强（xlsx 多表·公式·合并）/ 表格编辑 / 生词本整理 / 明牌配对 / 填字游戏 / 性能校验（446 项）
+node scripts/test-crossword.mjs       # 填字游戏（解锁门槛 / 词条清洗 / 交叉排版规则 / 棋盘生成与可复现 / 状态机 / 移动端格子尺寸 + 字母键盘 / 薄 UI 与入口横幅，213 项）
+node scripts/test-keyboard.mjs        # 移动端英文字母键盘（环境判定 / 键位 HTML / 四态状态机 / DOM 三态 / inputmode 同步 / 事件派发，52 项）
+node scripts/verify-assets.mjs        # PWA 资源完整性 + 字段映射 / 明暗模式 / 导出（含 revlog）/ 导入增强（xlsx 多表·公式·合并）/ 表格编辑 / 生词本整理 / 明牌配对 / 填字游戏 / 移动端字母键盘 / 性能校验（476 项）
 node --check js/*.js                  # 语法检查
 ```
 
-当前合计 **3272 条校验**（30 个脚本，各套件输出的 `✓`）**全部通过、0 失败**（含纯函数单测、无头 DOM 冒烟、IndexedDB 存储与 v2→v3 升级、大词表导入、Anki 卡包产物（含 `revlog`）、明牌配对与填字游戏两套游戏断言、万级性能金丝雀）。
+当前合计 **3453 条校验**（31 个脚本，各套件输出的 `✓`）**全部通过、0 失败**（含纯函数单测、无头 DOM 冒烟、IndexedDB 存储与 v2→v3 升级、大词表导入、Anki 卡包产物（含 `revlog`）、明牌配对与填字游戏两套游戏断言、移动端字母键盘、万级性能金丝雀）。
 
 ## 部署：Cloudflare Pages
 
@@ -293,7 +297,7 @@ node --check js/*.js                  # 语法检查
 - **语义标注**：进度条 `role="progressbar"` ＋ `aria-valuemin/max/now`；分页 `role="navigation"` ＋ `aria-label`（「‹ 上一页」这类图标按钮都有中文 `aria-label`）；筛选 chips `aria-pressed`；生词本概览 `role="group"`；CSV 预览与表格编辑页表头 `<th scope="col">`；装饰性氛围光 `aria-hidden="true"`；**明牌配对（v0.5.12）**的牌面是原生 `<button>`（`aria-pressed` 反映选中，中文 `aria-label` 含「单词 / 释义」，已配对的牌爆炸后直接离开 DOM）、棋盘与关卡 chips 为 `role="group"` ＋ `aria-label`、配对进度 `role="progressbar"`、轮次行 `data-match="round"` 随点击更新，配对成功 / 连击 / 铺下一轮 / 完成都用 `announce()` 播报；「combo✖️N」提示是**纯装饰层**（`aria-hidden="true"`，读屏只听播报；v0.5.13 起贴在**棋盘右下角**的底部留白条内，不遮挡牌面文字）；**填字游戏（v0.6.0）**的答题格是原生 `<input>`（`maxlength=1` ＋ `inputmode="latin"` ＋ `autocapitalize="characters"`，`aria-label` 含「第 R 行第 C 列 / 线索号 / 已填字母」）、棋盘与词源·词数 chips 为 `role="group"` ＋ `aria-label`、chips 带 `aria-pressed`、填字进度 `role="progressbar"`，方向键移动 / 退格回上一格 / Delete 清格都有键盘等价操作（文档级委托，`bindKeysOnce` 只绑一次），完成与重新开始用 `announce()` 播报、提示与检查用 `toast()`（状态区自动朗读）
 - **弹窗焦点管理**（`ui.openModal`）：`role="dialog"` ＋ `aria-modal="true"` ＋ 标题 `aria-labelledby`（无标题时回退 `aria-label="对话框"`）；打开即聚焦首个可聚焦元素；`Tab` / `Shift+Tab` **焦点陷阱**在弹窗内循环；`Esc` 关闭并把焦点**还给触发元素**
 - **`prefers-reduced-motion`**：系统开启「减少动态效果」时动画 / 过渡时长收敛到 `0.001s`、`animation-iteration-count: 1`（呼吸光 / 发音脉冲不再循环闪烁）、`scroll-behavior: auto`，且同时覆盖 `::before` / `::after`
-- 校验：`node scripts/test-a11y.mjs`（109 项断言：CSS 焦点环与减少动效 / `index.html` 结构 / 各页面 `role`·`aria-*`（含明牌配对页与填字页）/ `activateOnKey`·`announce`·`openModal` 运行时行为）
+- 校验：`node scripts/test-a11y.mjs`（124 项断言：CSS 焦点环与减少动效 / `index.html` 结构 / 各页面 `role`·`aria-*`（含明牌配对页、填字页与移动端字母键盘）/ `activateOnKey`·`announce`·`openModal` 运行时行为）
 
 ## 复习日志（v0.5.8）
 
@@ -436,7 +440,23 @@ node --check js/*.js                  # 语法检查
 - **会话与性能**：棋盘（词源 / 每局词数 / 排版结果 / 已填与已提示的格 / 提示次数与用时）写入 `sessionStorage['mycard-crossword-session']`，重渲染（切主题等）**不重新抽词、不重新排版**；会话复活有完整性守门（缺格 / 越界 / 损坏一律丢弃重开）；路由切换 / 清空数据时由 `app.js` 调 `clearCrosswordSession()` 清场（同时清掉计时器）。
 - **实现分工**（见 `memory-bank/systemPatterns.md` 第 21 条）：`js/crossword.js` = **纯函数内核**（`UNLOCK_LEVELS` / `SIZES` / `DEFAULT_SIZE` / `MIN_LEN` / `MAX_LEN` / `passedLevels` / `unlockInfo` / `defaultSource` / `isValidSource` / `sourceCards` / `sanitizeAnswer` / `clueText` / `entryFromCard` / `candidateEntries` / `canPlace` / `findPlacement` / `placeWord` / `generateCrossword` / `buildBoard` / `cellMap` / `wordCells` / `wordAt` / `newGame` / `setLetter` / `checkAll` / `hintCell` / `revealCell` / `revealWord` / `progress` / `isSolved` / `playStats` / `formatDuration` / `cellSize`，随机源 `rng` 可注入）+ **薄 UI**（`renderCrossword` / `crosswordHtml` / `statusText` / `clearCrosswordSession`）。
 - **输入不整页重渲染**：每次打字 / 提示 / 显示本词只做局部打补丁（格子的值 · `is-wrong` · `is-revealed` · `is-active`、线索状态、状态行与四个统计格、进度条），只有「换词源 / 换词数 / 换一批 / 重新开始 / 路由重渲染」这类低频时刻才重写整页 `innerHTML` —— 否则会丢焦点、丢光标、丢输入法候选框。
-- **移动端适配**：格子边长由 `cellSize(列数, 行数, 视口)` 计算后内联 `--cw-cell`（限幅 18–40px），列数走 `--cw-cols`；棋盘过宽时由 `.cw-board-wrap` **横向滚动**兜底，不挤压线索文字。
+- **移动端适配（v0.7.0 加强）**：格子边长由 `cellSize(列数, 行数, { 视口, touch })` 计算后内联 `--cw-cell`；**触屏下限抬到 30px**（桌面 24px、上限 40px），可用高度按 40% 视口估算（底部压着字母键盘与线索区）——**宁可让棋盘横向滚动，也不把格子压成看不清的“蚂蚁格”**；棋盘用 `inline-grid` + 外层 `text-align: center`（横向溢出时不会切掉左端）；**焦点格会自动滚进视野**（`scrollIntoView({ block:'nearest', inline:'nearest' })`）；触屏进入即可用底部**英文字母键盘**（详见「移动端字母键盘」一节）。
+
+## 移动端字母键盘（`js/keyboard.js`，v0.7.0）
+
+一个**共享的屏幕字母键盘**，目前被 **填字页**（`#/crossword/{deck}`）与 **填空题**（`fill` 题型）使用 —— 手机做题不再被系统输入法打断。
+
+- **何时出现**：`isTouchDevice()`（`pointer: coarse` → `navigator.maxTouchPoints` → `ontouchstart` 三级兜底）为真、且本页没被手动收起过 → 进入页面即展开；**桌面端不显示**（用物理键盘）。
+- **抑制系统输入法**：展开时把宿主声明的输入框（`inputs: '.cw-input'` / `'.fill-field'`）的 `inputmode` 同步成 **`none`**（`syncInputs()`），于是**不弹中文候选框 / 拼音键盘、不把页面顶飞**；收起时还原为 `latin`。若某浏览器不支持 `inputmode="none"`，只会退化成「系统键盘 + 自绘键盘都能用」，功能不受影响。
+- **键位**：三行 QWERTY（10 / 9 / 7）+ **⌫ 退格** + 「收起键盘」；填空题额外有 **空格键**（多词答案如 `ice cream` 可用）。全是原生 `<button>`（Tab / Enter 天然可达），每键带中文 `aria-label`（`字母 A` / `退格` / `空格`）。
+- **三种形态**（单例 `#kb-bar`，挂在 `<body>` 下 —— 不进 `#view`，页面重渲染不会重建）：
+  1. **展开** → 完整键盘；同时给 `<body>` 加 `kb-open` 并把实测高度写进 CSS 变量 `--kb-h`，`#view` 据此追加底部留白，内容不会被压住；
+  2. **收起**（点「收起键盘」）→ 只剩右下角 **「⌨ 字母键盘」迷你胶囊**，点它随时唤回（**不依赖页面重渲染**）；同一页内不再自动弹回；
+  3. **无宿主**（离开页面 / 当前不是填空题 / 已完成 / 非触屏）→ 整条 `hidden`（退出 tab 序与无障碍树）。
+- **宿主接入**：`kb.openKeyboard({ inputs, space, onKey, onBackspace, onSpace, onEnter })` 声明「我要用键盘」——
+  - **填字页**：字母写进**当前聚焦格**（没有聚焦格时写当前线索的第一个空格），复用物理键盘同一条处理链路（自动推进 / 只打补丁）；退格等价 `Backspace`；完成 / 离场时 `closeKeyboard()`；
+  - **填空题**：字母小写追加进输入框并把草稿写回内核（重渲染不丢输入），退格删一个字符，**回车 = 提交**；已作答 / 离开测试页时 `closeKeyboard()`。
+- **实现约定**（见 `memory-bank/systemPatterns.md` 第 23 条）：键盘**不碰存储、不碰业务状态**，只负责「渲染 + 把按键派发给宿主」；按键走 Action 事件委托（`kb-key` / `kb-hide` / `kb-show`），宿主重渲染出新输入框后再调一次 `syncInputs()` 重新同步 `inputmode`。
 
 ## 间隔重复算法（简版说明）
 
@@ -480,6 +500,7 @@ node --check js/*.js                  # 语法检查
 - **英英选择 `eng_eng`（v0.5，可选）**：*建议考研及以上水平使用（需较强英文阅读理解能力）*。子模式 A「看单词选英文释义」/ 子模式 B「看英文释义猜单词」随机出现；选项均为英文，释义取自 **GCIDE**（`data/eng-defs.json`，14428 词，按需懒加载，不进 SW 预缓存）；词库缺少该词英文释义时自动回退到其它可用题型。
 - **多义多选 `multi_sense`（v0.5，可选）**：*建议考研及以上水平使用*。一词多义，勾选该词的**全部释义**后点「提交」判分，**全对才算对**（漏选 / 多选 / 错选均算错，错题进优先池）；左上角有「多选」标识。释义优先取**卡组内中文释义**（`back` + `extraBacks`），缺失时回退 GCIDE 英文释义；正确项 2–4 个 + 1 个其它词干扰（正确项 4 个时共 5 个选项）。
 - **填空题容错**：答案比对忽略**大小写**、**首尾 / 连续空格**，并容错**单复数与常见屈折**（`book`/`books`、`study`/`studies`、`run`/`runs`/`running` 均判对）；每题最多 3 次机会，输入框内 `Enter` 或点「提交」作答，用尽机会后展示完整信息卡。
+- **填空：移动端字母键盘（v0.7.0）**：触屏设备进入填空题会自动在底部弹出**自绘英文字母键盘**（26 字母 + **空格键** + 退格 + 收起），并把输入框 `inputmode` 置为 `none` **抑制系统输入法**（不再弹中文候选框 / 拼音键盘）；敲字母即追加到输入框（小写）、退格删一个字符、**回车 = 提交**，草稿写回内核所以「提示 / 重渲染」不丢输入；桌面端不显示（用物理键盘）。详见「移动端字母键盘」一节。
 - **填空 🔊 发音提示**：输入框右侧紧邻一个 **🔊 按钮**（32×32 圆形，触屏 ≥ 44px），点一下用浏览器 TTS 朗读**当前目标词**，**播放中再点即停止**（按钮变红 + 脉动动画），播放结束 / 出错后自动复原；切题或换词时先 `cancel()` 旧词，**同一时间只播放一个词**。语言自动判定（**英文 `en-US` / 中文 `zh-CN`**），语速 **0.8**。环境不支持 `speechSynthesis` 时降级为**音标 chip**：优先读卡片 `phonetic` 字段，无该数据则显示单词本身。
 - **填空首字母提示**：可随时点「💡 首字母提示」按钮（**不消耗作答机会**、并保留已输入内容），答错时也会自动提示；每次**多揭示一个字母 + 词长**（如 `b•••••（共 6 个字母）`），最多揭示到「词长 − 1」，始终不给出完整答案，答对即消失。困难词在填空题中同样**前置并额外多出一题**。
 - **答错（机会用尽）时**：除标出正确选项外，另展示完整信息卡 `front ＋ back ＋ example`（含例句翻译），便于即时回顾。

@@ -612,7 +612,7 @@ console.log('\n[我的生词批量整理（js/wordbook.js + js/wordbook-view.js�
   must(existsSync(rel('js/wordbook-view.js')), 'js/wordbook-view.js 存在（整理页）');
   must(sw.includes("'./js/wordbook.js'"), 'sw.js PRECACHE 含 ./js/wordbook.js');
   must(sw.includes("'./js/wordbook-view.js'"), 'sw.js PRECACHE 含 ./js/wordbook-view.js');
-  must(/const VERSION = 'v1\.11\.1'/.test(sw), 'sw.js VERSION 已递增（v1.11.1）');
+  must(/const VERSION = 'v1\.12\.0'/.test(sw), 'sw.js VERSION 已递增（v1.12.0）');
 
   // 内核：去重合并 / 标签 / 筛选排序 / 选中集 / 补查目标
   must(/export function normKey/.test(wbSrc), 'wordbook.js：normKey（大小写 / 空格归一为同一个词）');
@@ -630,7 +630,7 @@ console.log('\n[我的生词批量整理（js/wordbook.js + js/wordbook-view.js�
   must(/merge: true/.test(storeSrc2) && /extraBacks/.test(storeSrc2), 'store.js：addWords 支持 { merge: true } 合并释义');
 
   // 路由与入口
-  must(/0\.6\.1/.test(appSrc), 'app.js 版本号更新为 v0.6.1');
+  must(/0\.7\.0/.test(appSrc), 'app.js 版本号更新为 v0.7.0');
   must(/from '\.\/wordbook-view\.js'/.test(appSrc) && /renderWordbook\(root\)/.test(appSrc), 'app.js 挂载 renderWordbook');
   must(/seg\[0\] === 'words'/.test(appSrc) && /#\/words/.test(appSrc), 'app.js 解析 #/words 路由（含 ?page=N 分页）');
   must(/on\('nav-words'/.test(decksSrc3), 'decks.js 提供 nav-words 入口动作');
@@ -787,6 +787,56 @@ console.log('\n[填字游戏（v0.6.0，通关 ≥1 关解锁 · 按当前词库
   must(existsSync(rel('scripts/test-crossword.mjs')), '存在 scripts/test-crossword.mjs');
   must(readFileSync(rel('scripts/smoke-dom.mjs'), 'utf8').includes('#/crossword/'), 'smoke-dom 覆盖 #/crossword 界面渲染 + 会话清场');
   must(readFileSync(rel('scripts/test-a11y.mjs'), 'utf8').includes('#/crossword'), 'test-a11y 覆盖填字页键盘可达性与标注');
+}
+
+// 10) v0.7.0 移动端英文字母键盘（填字 / 填空题）
+console.log('\n[移动端英文字母键盘（v0.7.0，填字页 / 填空题）]');
+{
+  must(existsSync(rel('js/keyboard.js')), 'js/keyboard.js 存在');
+  must(sw.includes("'./js/keyboard.js'"), 'sw.js PRECACHE 含 ./js/keyboard.js');
+  const kbSrc = readFileSync(rel('js/keyboard.js'), 'utf8');
+  must(/export const KB_ROWS = \['QWERTYUIOP', 'ASDFGHJKL', 'ZXCVBNM'\]/.test(kbSrc), 'keyboard.js：三行 QWERTY 键位（26 字母）');
+  must(/export const BACK_KEY/.test(kbSrc) && /export const SPACE_KEY/.test(kbSrc), 'keyboard.js：退格 / 空格键常量');
+  must(/export function isTouchDevice/.test(kbSrc) && /export function shouldAutoOpen/.test(kbSrc), 'keyboard.js：触屏判定 + 是否自动弹出');
+  must(
+    /export function openKeyboard/.test(kbSrc) &&
+      /export function closeKeyboard/.test(kbSrc) &&
+      /export function hideKeyboard/.test(kbSrc) &&
+      /export function showKeyboard/.test(kbSrc),
+    'keyboard.js：open / hide / show / close 四态操作'
+  );
+  must(/export function syncInputs/.test(kbSrc) && /export function inputMode/.test(kbSrc), 'keyboard.js：inputmode 抑制系统输入法（inputMode / syncInputs）');
+  must(/export function keyboardInnerHtml/.test(kbSrc) && /export function keyboardMiniHtml/.test(kbSrc), 'keyboard.js：键位 HTML / 收起后的迷你胶囊');
+  must(!/sessionStorage|localStorage/.test(kbSrc), 'keyboard.js 不碰存储（纯 UI 模块）');
+  must(/from '\.\/ui\.js'/.test(kbSrc) && !/from '(?!\.\/)/.test(kbSrc), 'keyboard.js 只依赖本地 ui.js（零第三方依赖）');
+
+  const cwSrc2 = readFileSync(rel('js/crossword.js'), 'utf8');
+  must(/export const TOUCH_MIN_CELL = 30/.test(cwSrc2) && /export const MIN_CELL = 24/.test(cwSrc2), 'crossword.js：触屏格子下限 30px / 桌面 24px');
+  must(/viewport\.touch == null \? vw <= TOUCH_VIEWPORT_WIDTH/.test(cwSrc2), 'crossword.js：cellSize 支持 touch 参数（缺省按视口宽推断）');
+  must(/kb\.openKeyboard\(\{ inputs: '\.cw-input'/.test(cwSrc2), 'crossword.js：触屏接入字母键盘（inputs = .cw-input）');
+  must(/kb\.syncInputs\(\)/.test(cwSrc2), 'crossword.js：渲染后同步 inputmode');
+  must(/scrollIntoView/.test(cwSrc2), 'crossword.js：焦点格自动滚进视野（棋盘可横向滚动）');
+
+  const testSrc2 = readFileSync(rel('js/test.js'), 'utf8');
+  must(/kb\.openKeyboard\(\{/.test(testSrc2) && /inputs: '\.fill-field'/.test(testSrc2), 'test.js：填空题接入字母键盘（inputs = .fill-field）');
+  must(/space: true/.test(testSrc2), 'test.js：填空题键盘带空格键（多词答案）');
+  must(/kb\.closeKeyboard\(\)/.test(testSrc2), 'test.js：已作答 / 离场时收起键盘');
+
+  must(/\.kb-bar \{/.test(css) && /\.kb-key \{/.test(css) && /\.kb-mini \{/.test(css), 'css：键盘条 / 键位 / 迷你胶囊样式');
+  must(/\.kb-bar\[hidden\] \{ display: none; \}/.test(css), 'css：隐藏态用 [hidden] 退出 tab 序');
+  must(/body\.kb-open #view \{ padding-bottom: calc\(var\(--safe-b\) \+ 76px \+ var\(--kb-h/.test(css), 'css：键盘展开时内容区按 --kb-h 留白');
+  must(/@keyframes kbUp/.test(css), 'css：键盘升起关键帧（一次性 → reduced-motion 收敛）');
+  must(
+    /\.cw-board-wrap \{[\s\S]{0,120}display: block[\s\S]{0,80}text-align: center/.test(css) &&
+      /\.cw-board \{[\s\S]{0,60}display: inline-grid/.test(css),
+    'css：棋盘改 inline-grid + text-align 居中（横向滚动不会切掉左端）'
+  );
+  must(/@media \(max-width: 600px\) \{[\s\S]{0,160}\.cw-board-wrap/.test(css), 'css：移动端收窄棋盘内边距（把屏幕让给棋盘）');
+  must(/^\s*--kb-h: /m.test(css), 'css：:root 给 --kb-h 默认值（var 审计通过）');
+  must(existsSync(rel('scripts/test-keyboard.mjs')), '存在 scripts/test-keyboard.mjs');
+  must(readFileSync(rel('scripts/test-crossword.mjs'), 'utf8').includes('kb-key'), 'test-crossword 覆盖屏幕字母键盘');
+  must(readFileSync(rel('scripts/test-fill.mjs'), 'utf8').includes('kb-key'), 'test-fill 覆盖屏幕字母键盘');
+  must(readFileSync(rel('scripts/smoke-dom.mjs'), 'utf8').includes('kb-hide'), 'smoke-dom 覆盖触屏键盘（展开 / 收起 / 唤出）');
 }
 
 console.log('\n[大卡组性能（单遍统计 / 复用 levels / 抽题快路径）]');

@@ -15,6 +15,7 @@ import * as hw from './hardwords.js';
 import * as cfg from './test-config.js';
 import * as engine from './test-engine.js';
 import * as engdefs from './engdefs.js';
+import * as kb from './keyboard.js'; // v0.7.0 移动端英文字母键盘
 import { esc, on, navigate, toast, openModal } from './ui.js';
 
 const SESSION_KEY = 'mycard-test-session';
@@ -38,10 +39,10 @@ function paintHighlight() {
   });
 }
 
-/** 填空题：聚焦输入框，并支持 Enter 直接提交 */
+/** 填空题：聚焦输入框，并支持 Enter 直接提交（+ 触屏接上屏幕字母键盘） */
 function attachFillInput() {
   const el = document.querySelector ? document.querySelector('.fill-field') : null;
-  if (!el) return;
+  if (!el) return; // 非填空题 / 无输入框：键盘状态由 attachFillKeyboard() 决定，这里不动
   if (el.addEventListener) {
     el.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && !e.repeat) {
@@ -50,7 +51,51 @@ function attachFillInput() {
       }
     });
   }
+  attachFillKeyboard();
   if (el.focus) el.focus();
+}
+
+/**
+ * 填空题的屏幕字母键盘（移动端）：答案都是英文单词，用自绘键盘避免弹出中文输入法。
+ * 已作答 / 非触屏 / 本页手动收起过 → 关闭键盘（页面上的「⌨ 字母键盘」按钮可再唤出）。
+ */
+function attachFillKeyboard() {
+  const q = T && T.questions[T.pos];
+  if (!q || q.type !== 'fill' || q.answered || !kb.shouldAutoOpen()) {
+    kb.closeKeyboard();
+    return;
+  }
+  kb.openKeyboard({
+    inputs: '.fill-field',
+    space: true, // 多词答案（如 ice cream）需要空格
+    onKey: (ch) => fillKeyboardEdit(ch),
+    onSpace: () => fillKeyboardEdit(' '),
+    onBackspace: () => fillKeyboardEdit('', true),
+    onEnter: () => submitFill()
+  });
+}
+
+/** 屏幕键盘的一次编辑：改输入框内容 + 同步草稿（重渲染不丢），并把光标放到末尾 */
+function fillKeyboardEdit(ch, backspace = false) {
+  const el = document.querySelector ? document.querySelector('.fill-field') : null;
+  if (!el || el.disabled) return;
+  const cur = String(el.value || '');
+  const next = backspace
+    ? cur.slice(0, -1)
+    : cur + String(ch == null ? '' : ch).toLowerCase();
+  el.value = next;
+  const q = T && T.questions[T.pos];
+  if (q) q.draft = next; // 草稿：提示 / 重渲染后仍保留已输入内容
+  if (el.focus) {
+    try {
+      el.focus();
+    } catch (e) {}
+  }
+  if (el.setSelectionRange) {
+    try {
+      el.setSelectionRange(next.length, next.length);
+    } catch (e) {}
+  }
 }
 
 /** 听音辨意：进入题目时自动播放一次发音（未作答时） */
@@ -952,7 +997,7 @@ function fillInputHtml(q, card) {
       ${fillHintHtml(q)}
       <div class="fill-input">
         <input class="fill-field" type="text" name="fill" placeholder="输入英文单词…" value="${esc(q.draft || '')}"
-          autocomplete="off" autocapitalize="off" spellcheck="false" inputmode="latin"
+          autocomplete="off" autocapitalize="off" spellcheck="false" inputmode="${kb.inputMode()}"
           ${q.answered ? 'disabled' : ''}>
         ${fillAudioHtml(q, card)}
         <button class="btn btn-primary" data-action="test-fill-submit" ${q.answered ? 'disabled' : ''}>提交</button>
@@ -1093,8 +1138,10 @@ export function renderTest(root, deckId, levelIndex, { renderResolved = false, k
     advance(root);
     return;
   }
+  attachFillKeyboard(); // 先定键盘状态 → 生成的 inputmode 就是最终值
   root.innerHTML = `<div class="view">${questionHtml()}</div>`;
   paintHighlight();
+  kb.syncInputs(); // DOM 已就绪：把 inputmode 同步到输入框
   attachFillInput();
   attachListenAudio();
 }
@@ -1326,8 +1373,10 @@ function renderDeckTest(root, deckId, { renderResolved = false, kind = null } = 
     advance(root);
     return;
   }
+  attachFillKeyboard(); // 先定键盘状态 → 生成的 inputmode 就是最终值
   root.innerHTML = `<div class="view">${questionHtml()}</div>`;
   paintHighlight();
+  kb.syncInputs(); // DOM 已就绪：把 inputmode 同步到输入框
   attachFillInput();
   attachListenAudio();
 }
@@ -1686,6 +1735,7 @@ on('test-back', (el) => {
 export function clearTestSession() {
   clearAdvanceTimer();
   stopSpeaking(); // 停止正在播放的发音
+  kb.closeKeyboard(); // 离开测试页 / 重置：收起底部字母键盘
   T = null;
   hl = 0;
   hlOn = false;

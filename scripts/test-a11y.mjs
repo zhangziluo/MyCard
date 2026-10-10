@@ -303,8 +303,8 @@ console.log('\n[app.js / sw.js：播报接线与版本]');
 ok(/import \{[^}]*\bannounce\b[^}]*\} from '\.\/ui\.js'/.test(appSrc), 'app.js 从 ui.js 引入 announce');
 ok(/routeKey !== lastRouteKey/.test(appSrc), '仅路由变化时播报（同一路由重渲染不打扰读屏）');
 ok(/const pageTitle = renderAppbar\(route\)/.test(appSrc) && /announce\(pageTitle\)/.test(appSrc), 'render() 用顶栏标题播报当前页面');
-ok(/APP_VERSION = 'v0\.6\.1'/.test(appSrc), 'app.js 版本号 v0.6.1');
-ok(/const VERSION = 'v1\.11\.1'/.test(swSrc), 'sw.js VERSION v1.11.1');
+ok(/APP_VERSION = 'v0\.7\.0'/.test(appSrc), 'app.js 版本号 v0.7.0');
+ok(/const VERSION = 'v1\.12\.0'/.test(swSrc), 'sw.js VERSION v1.12.0');
 
 console.log('\n[明牌配对（#/match）的键盘可达性与标注]');
 {
@@ -364,8 +364,8 @@ console.log('\n[填字游戏（#/crossword）的键盘可达性与标注]');
   );
   ok(/<input class="cw-input"/.test(cwSrc), '答题格是原生 <input>（Tab / 输入法 / 移动端键盘天然可用）');
   ok(
-    /inputmode="latin"/.test(cwSrc) && /maxlength="1"/.test(cwSrc) && /autocapitalize="characters"/.test(cwSrc),
-    '答题格标注 inputmode / maxlength / autocapitalize（移动端拉起拉丁键盘）'
+    /inputmode="\$\{kb\.inputMode\(\)\}"/.test(cwSrc) && /maxlength="1"/.test(cwSrc) && /autocapitalize="characters"/.test(cwSrc),
+    '答题格标注 inputmode（字母键盘展开时抑制系统输入法）/ maxlength / autocapitalize'
   );
   ok(
     /aria-label="\$\{esc\(cellAriaLabel\(cell, value\)\)\}"/.test(cwSrc),
@@ -403,6 +403,29 @@ console.log('\n[填字游戏（#/crossword）的键盘可达性与标注]');
   const cwShake = css.slice(css.indexOf('@keyframes cw-shake'), css.indexOf('@keyframes cw-shake') + 200);
   ok(/@keyframes cw-shake/.test(css) && !/infinite/.test(cwShake), '填错抖动是一次性动画（不会循环闪烁）');
   ok(/role="button"/.test(cwSrc) === false, '答题格用原生 input，不重复造 role=button');
+}
+
+console.log('\n[移动端字母键盘（js/keyboard.js）的键盘可达性与系统输入法抑制]');
+{
+  const kbSrc = read('js/keyboard.js');
+  ok(kbSrc.includes('role="group" aria-label="英文键盘"'), '键盘容器 role=group + aria-label');
+  ok(kbSrc.includes('<button type="button" class="kb-key'), '每个键都是原生 <button>（Tab / Enter 天然可用）');
+  ok(
+    kbSrc.includes('`字母 ${key}`') && kbSrc.includes("'退格'") && kbSrc.includes("'空格'"),
+    '键位有中文 aria-label（字母 X / 退格 / 空格）'
+  );
+  ok(kbSrc.includes('aria-label="收起字母键盘"'), '「收起键盘」有中文 aria-label');
+  ok(kbSrc.includes('aria-label="显示字母键盘"'), '迷你胶囊「⌨ 字母键盘」有中文 aria-label');
+  ok(kbSrc.includes("return open ? 'none' : 'latin'"), '展开时把 inputMode 取成 none（抑制系统输入法）');
+  ok(kbSrc.includes("setAttribute('inputmode', open ? 'none' : 'latin')"), 'syncInputs 把 inputmode 同步到宿主输入框');
+  ok(kbSrc.includes('data-action="kb-hide"') && kbSrc.includes('data-action="kb-show"'), '收起 / 唤出都走 Action 委托');
+  ok(kbSrc.includes('export function syncInputs'), 'syncInputs 可被宿主在重渲染后调用');
+  ok(css.includes('.kb-bar[hidden] { display: none; }'), '收起态用 [hidden] 退出 tab 序（读屏与 Tab 都不会撞到）');
+  ok(css.includes('@keyframes kbUp') && !/infinite/.test(css.slice(css.indexOf('@keyframes kbUp'), css.indexOf('@keyframes kbUp') + 160)), '键盘升起是一次性动画（被 reduced-motion 收敛）');
+  ok(css.includes('body.kb-open #view'), '键盘展开时给内容区让出底部空间（--kb-h）');
+  ok(/kb\.openKeyboard\(/.test(read('js/crossword.js')), '填字页接入字母键盘');
+  ok(read('js/test.js').includes("inputs: '.fill-field'"), '填空题接入字母键盘（声明 .fill-field）');
+  ok(/kb\.closeKeyboard\(\)/.test(read('js/crossword.js')) && /kb\.closeKeyboard\(\)/.test(read('js/test.js')), '完成 / 离场时收起键盘');
 }
 
 /* ==========================================================================
