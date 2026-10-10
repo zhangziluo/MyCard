@@ -2,9 +2,12 @@
 // match.js — 明牌配对游戏（v0.6.1，路由 #/match/{deckId}）
 //
 // 解锁：卡组「已通关关卡」≥ UNLOCK_LEVELS（1）时，卡组详情页出现入口横幅。
-// 玩法：取某一「已通关关卡」的卡片，按 ROUND_PAIRS（5）对一轮切成多轮（多余的配对
-//       自动排到后面的轮次）；每轮把该轮卡片展开成 2N 张明牌（N 张单词 + N 张释义，
-//       位置随机打乱且**全程可见**）——先点单词、再点它的释义即配对成功：
+// 词源（v0.7.1 起可切）：**整个卡组** 或 某一个「已通关关卡」——两者都按 ROUND_PAIRS（5）
+//       对一轮切成多轮（多余的配对自动排到后面的轮次），所以「整卡组」就是一轮一轮一直
+//       配到本卡组没有对为止（不再 20 张就结束）；整卡组模式单局最多纳入 MAX_DECK_PAIRS(300)
+//       张卡（兜底），超出部分不纳入并在页头如实提示。
+// 玩法：每轮把该轮卡片展开成 2N 张明牌（N 张单词 + N 张释义，位置随机打乱且**全程可见**）
+//       ——先点单词、再点它的释义即配对成功：
 //         · 配对成功 → 金色闪光 + 爆炸，这一对**从棋盘移除**（不再显示），连击 +1；
 //           连击 ≥2 时在棋盘**右下角**弹出「combo✖️N」并抖一下（N = 当前连击；
 //           提示落在棋盘底部留白条内，不遮挡牌面文字）；
@@ -43,9 +46,12 @@ export const MAX_PAIRS = lv.MAX_PER_LEVEL;
 /** 一次「配对成功」的爆炸动画时长（ms）：动画播完才把这对牌从棋盘移除 */
 export const BOOM_MS = 420;
 
-/* ---------------------------- 解锁 / 可选关卡 ---------------------------- */
+/** 「整卡组」模式单局最多纳入的卡片数（300 对 = 600 张牌 = 60 轮；再多的部分不纳入并给出提示） */
+export const MAX_DECK_PAIRS = 300;
 
-/** 已通关的关卡索引（升序）——配对游戏只开放「已通关」的关卡 */
+/* ---------------------------- 解锁 / 词源 ---------------------------- */
+
+/** 已通关的关卡索引（升序）——配对游戏只开放「已通关」的关卡作为词源 */
 export function passedLevels(deck, levels = lv.deckLevels(deck)) {
   const states = lv.levelStates(deck, levels);
   return levels.filter((l) => states[l.index] === 'passed').map((l) => l.index);
@@ -66,10 +72,39 @@ export function unlockInfo(deck) {
   };
 }
 
-/** 默认开局关卡：最高的一关已通关关卡（没有则 null） */
-export function defaultLevel(deck) {
+/**
+ * 词源归一化：`{ kind:'deck' }` | `{ kind:'level', level:n }`。
+ * 兼容旧写法：数字 / 数字字符串 / 只有 `level` 字段的对象都当作「关卡词源」。
+ */
+export function normalizeSource(source) {
+  if (source && typeof source === 'object') {
+    if (source.kind === 'deck') return { kind: 'deck', level: null };
+    if (source.kind === 'level' || source.level != null) {
+      return { kind: 'level', level: Number(source.level) || 0 };
+    }
+    return { kind: 'deck', level: null };
+  }
+  if (source != null && source !== 'deck') return { kind: 'level', level: Number(source) || 0 };
+  return { kind: 'deck', level: null };
+}
+
+/** 会话的词源（老会话只有 `level` 字段 → 当作关卡词源） */
+export function stateSource(state) {
+  if (state && state.source) return normalizeSource(state.source);
+  return normalizeSource(state ? state.level : null);
+}
+
+/** 默认词源：最高的一关已通关关卡（没有已通关关卡时退回「整卡组」） */
+export function defaultSource(deck) {
   const list = passedLevels(deck);
-  return list.length ? list[list.length - 1] : null;
+  if (list.length) return { kind: 'level', level: list[list.length - 1] };
+  return { kind: 'deck', level: null };
+}
+
+/** 默认开局关卡（词源为关卡时返回其关卡号，否则 null） */
+export function defaultLevel(deck) {
+  const src = defaultSource(deck);
+  return src.kind === 'level' ? src.level : null;
 }
 
 /** 该关卡是否可玩（必须已通关） */
@@ -77,9 +112,50 @@ export function isPlayableLevel(deck, level) {
   return passedLevels(deck).includes(Number(level));
 }
 
-/** 取某关的卡片（作为配对牌面用；最多 MAX_PAIRS 张） */
+/** 词源是否仍然有效（「整卡组」永远有效；关卡词源必须仍已通关） */
+export function isValidSource(deck, source) {
+  const src = normalizeSource(source);
+  if (src.kind !== 'level') return true;
+  return isPlayableLevel(deck, src.level);
+}
+
+/** 词源文案：`整卡组` / `第 3 关` */
+export function sourceLabel(source) {
+  const src = normalizeSource(source);
+  return src.kind === 'level' ? `第 ${Number(src.level) + 1} 关` : '整卡组';
+}
+
+/** 页面标题：`明牌配对 · 整卡组` / `明牌配对 · 第 3 关` */
+export function matchTitle(source) {
+  return `明牌配对 · ${sourceLabel(source)}`;
+}
+
+/** 词源的取卡上限：「整卡组」比单关大得多 */
+export function sourceLimit(source) {
+  return normalizeSource(source).kind === 'level' ? MAX_PAIRS : MAX_DECK_PAIRS;
+}
+
+/** 词源可用卡片总数（未截断） */
+export function sourceTotal(deck, source) {
+  const src = normalizeSource(source);
+  if (src.kind === 'level') return lv.cardsInLevel(deck, Number(src.level) || 0).length;
+  return ((deck && deck.cards) || []).length;
+}
+
+/** 取词源的卡片（作为配对牌面用；「整卡组」最多 MAX_DECK_PAIRS 张、单关最多 MAX_PAIRS 张） */
+export function sourceCards(deck, source, limit = sourceLimit(source)) {
+  return sourceTotalCards(deck, source).slice(0, clampLimit(limit));
+}
+
+function sourceTotalCards(deck, source) {
+  const src = normalizeSource(source);
+  if (src.kind === 'level') return lv.cardsInLevel(deck, Number(src.level) || 0);
+  return ((deck && deck.cards) || []).slice();
+}
+
+/** 取某关的卡片（保留的旧入口 → 等价于关卡词源的 sourceCards） */
 export function levelCardsFor(deck, level, limit = MAX_PAIRS) {
-  return lv.cardsInLevel(deck, level).slice(0, clampLimit(limit));
+  return sourceCards(deck, { kind: 'level', level }, limit);
 }
 
 /** 单局牌数上限：非法值一律回落到 MAX_PAIRS，至少 1 张卡 */
@@ -265,13 +341,21 @@ export function nextSelection(state, tileId, map = tileMap(state.tiles)) {
  * 新会话：整关卡片按每轮 ROUND_PAIRS 对切分，每轮各自洗牌铺开。
  * roundPairs 写进会话 → 刷新 / 重渲染后轮次划分完全不变。
  */
-export function newSession(deckId, level, cards, now = Date.now(), rng = Math.random, per = ROUND_PAIRS) {
+/**
+ * 新会话：把词源的卡片按每轮 ROUND_PAIRS 对切分，每轮各自洗牌铺开。
+ * `source` 支持 `{ kind:'deck' }` / `{ kind:'level', level:n }`（也兼容旧写法：直接传关卡号）。
+ * roundPairs 写进会话 → 刷新 / 重渲染后轮次划分完全不变。
+ */
+export function newSession(deckId, source, cards, now = Date.now(), rng = Math.random, per = ROUND_PAIRS) {
+  const src = normalizeSource(source);
   const roundPairs = posInt(per, ROUND_PAIRS);
+  const list = Array.isArray(cards) ? cards : [];
   return {
     deckId,
-    level,
+    source: src,
+    level: src.kind === 'level' ? src.level : null, // 兼容旧字段（关卡词源才有）
     roundPairs,
-    tiles: buildBoard(cards, rng, roundPairs),
+    tiles: buildBoard(list, rng, roundPairs),
     round: 0, // 当前轮次（0 基）
     selectedId: null,
     matched: [], // 已消除的牌 id（跨轮累计）
@@ -458,20 +542,37 @@ function resultHtml(state) {
     </div>`;
 }
 
-/** 关卡选择 chips（只列已通关关卡；单关时不显示） */
-function levelPickerHtml(deck, current) {
-  const list = passedLevels(deck);
-  if (list.length <= 1) return '';
-  return `<div class="match-levels" role="group" aria-label="选择关卡">
-    ${list
-      .map(
-        (i) =>
-          `<button type="button" class="match-lv${i === current ? ' is-active' : ''}" data-action="match-level" data-level="${i}" aria-pressed="${
-            i === current ? 'true' : 'false'
-          }">第 ${i + 1} 关</button>`
+/** 词源选择 chips：整卡组 + 每个已通关关卡 */
+function levelPickerHtml(deck, source) {
+  const cur = normalizeSource(source);
+  const levels = passedLevels(deck);
+  const deckActive = cur.kind !== 'level';
+  const chip = (active, attrs, label) =>
+    `<button type="button" class="match-lv${active ? ' is-active' : ''}" ${attrs} aria-pressed="${active ? 'true' : 'false'}">${label}</button>`;
+  return `<div class="match-levels" role="group" aria-label="选择词源">
+    ${chip(deckActive, 'data-action="match-source" data-kind="deck"', `整卡组（${((deck && deck.cards) || []).length} 张）`)}
+    ${levels
+      .map((i) =>
+        chip(
+          !deckActive && cur.level === i,
+          `data-action="match-source" data-kind="level" data-level="${i}"`,
+          `第 ${i + 1} 关`
+        )
       )
       .join('')}
   </div>`;
+}
+
+/** 词源摘要：整卡组可能被兜底上限截断，这里如实说明 */
+function sourceNoteHtml(deck, state) {
+  const src = stateSource(state);
+  if (src.kind !== 'level') {
+    const total = sourceTotal(deck, src);
+    const used = boardStats(state).totalPairs;
+    if (used && used < total) return `<span class="hint">已纳入 ${used}/${total} 张卡（整卡组最多 ${MAX_DECK_PAIRS} 张，其余不纳入本局）</span>`;
+    return `<span class="hint">整卡组 ${total} 张卡全都在本局里（每轮 ${state.roundPairs || ROUND_PAIRS} 对，一轮一轮配完为止）</span>`;
+  }
+  return '';
 }
 
 /** 轮次文案：`第 2/6 轮 · 本轮还剩 3 对` */
@@ -503,15 +604,18 @@ export function boardHtml(deck, state) {
   const pct = b.tiles ? Math.round((b.matched / b.tiles) * 100) : 0;
   const st = playStats(state);
   const perRound = state.roundPairs || ROUND_PAIRS;
+  const src = stateSource(state);
   const tilesHtml = b.tiles
     ? boardTilesHtml(state)
-    : '<div class="empty glass"><h3>这一关还没有卡片</h3><p>先给关卡添加卡片，再来玩配对。</p></div>';
+    : `<div class="empty glass"><h3>${src.kind === 'level' ? '这一关还没有卡片' : '这个卡组还没有卡片'}</h3><p>${
+        src.kind === 'level' ? '先给关卡添加卡片，再来玩配对。' : '先给卡组添加卡片，再来玩配对。'
+      }</p></div>`;
 
   return `
     <div class="view view-match">
       <div class="match-head glass">
         <div class="match-title-row">
-          <h2 class="screen-title">明牌配对 · 第 ${state.level + 1} 关</h2>
+          <h2 class="screen-title">${esc(matchTitle(src))}</h2>
           <span class="sub-note">每轮 ${perRound} 对 · 点单词再点它的释义</span>
         </div>
         <div class="match-round" data-match="round">${esc(roundText(state))}</div>
@@ -522,7 +626,8 @@ export function boardHtml(deck, state) {
           ${statCellHtml('combo', '最大连击', String(st.maxCombo))}
         </div>
         <div class="progress-track" id="match-progress" role="progressbar" aria-label="配对进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}"><i class="progress-fill" style="width:${pct}%"></i></div>
-        ${levelPickerHtml(deck, state.level)}
+        ${sourceNoteHtml(deck, state)}
+        ${levelPickerHtml(deck, src)}
       </div>
       <div class="match-board-wrap">
         <div class="match-board" id="match-board" role="group" aria-label="配对棋盘">${tilesHtml}</div>
@@ -760,9 +865,11 @@ function paintPick(event, pair, roundCleared) {
 /**
  * 开一局（可注入 rng 便于单测复现洗牌）。
  * 只写内存会话，不落 sessionStorage —— 「重新进入同一关」必须拿到新洗的牌面。
+ * 词源：`{ kind:'deck' }`（整个卡组，一轮一轮配完）/ `{ kind:'level', level:n }`（某个已通关关卡）。
  */
-function startGame(deck, level, rng = Math.random) {
-  S = newSession(deck.id, level, levelCardsFor(deck, level), Date.now(), rng);
+function startGame(deck, source, rng = Math.random) {
+  const src = isValidSource(deck, source) ? normalizeSource(source) : defaultSource(deck);
+  S = newSession(deck.id, src, sourceCards(deck, src), Date.now(), rng);
   return S;
 }
 
@@ -783,7 +890,7 @@ export function renderMatch(root, deckId) {
   // 内存里已有本卡组的棋局 → 属于「同一页内的重渲染」（切主题 / 切主色），沿用不动；
   // 其余情况（首次加载 / 刷新 / 路由切换 / 点入口）一律**重新洗牌开局**。
   let s = S && S.deckId === deckId ? S : null;
-  if (!s || !isPlayableLevel(deck, s.level)) s = startGame(deck, defaultLevel(deck));
+  if (!s || !isValidSource(deck, stateSource(s))) s = startGame(deck, defaultSource(deck));
   S = s;
 
   root.innerHTML = boardHtml(deck, S);
@@ -800,25 +907,29 @@ on('match-pick', (el) => {
   paintPick(out.event, out.pair, out.roundCleared);
 });
 
-/* 换一关：重新洗牌开局 */
-on('match-level', (el) => {
+/* 换词源：整卡组（一直配到本卡组没有对为止）/ 某个已通关关卡 */
+on('match-source', (el) => {
   if (!S || !el || !el.dataset) return;
   const deck = store.getDeck(S.deckId);
-  const level = Number(el.dataset.level);
-  if (!deck || !isPlayableLevel(deck, level)) return;
+  if (!deck) return;
+  const kind = el.dataset.kind === 'level' ? 'level' : 'deck';
+  const source = kind === 'level' ? { kind, level: Number(el.dataset.level) } : { kind: 'deck', level: null };
+  if (!isValidSource(deck, source)) return; // 未通关的关卡不可切换
+  const cur = stateSource(S);
+  if (cur.kind === source.kind && cur.level === source.level) return; // 点同一个词源不重开
   clearMatchSession();
-  startGame(deck, level);
+  startGame(deck, source);
   renderMatch(rootView(), deck.id);
 });
 
-/* 再玩一次：同一关重新洗牌 */
+/* 再玩一次：同一词源重新洗牌 */
 on('match-replay', () => {
   if (!S) return;
   const deck = store.getDeck(S.deckId);
   if (!deck) return;
-  const level = S.level;
+  const source = stateSource(S);
   clearMatchSession();
-  startGame(deck, level);
+  startGame(deck, source);
   renderMatch(rootView(), deck.id);
 });
 

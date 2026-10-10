@@ -303,8 +303,8 @@ console.log('\n[app.js / sw.js：播报接线与版本]');
 ok(/import \{[^}]*\bannounce\b[^}]*\} from '\.\/ui\.js'/.test(appSrc), 'app.js 从 ui.js 引入 announce');
 ok(/routeKey !== lastRouteKey/.test(appSrc), '仅路由变化时播报（同一路由重渲染不打扰读屏）');
 ok(/const pageTitle = renderAppbar\(route\)/.test(appSrc) && /announce\(pageTitle\)/.test(appSrc), 'render() 用顶栏标题播报当前页面');
-ok(/APP_VERSION = 'v0\.7\.0'/.test(appSrc), 'app.js 版本号 v0.7.0');
-ok(/const VERSION = 'v1\.12\.0'/.test(swSrc), 'sw.js VERSION v1.12.0');
+ok(/APP_VERSION = 'v0\.9\.0'/.test(appSrc), 'app.js 版本号 v0.9.0');
+ok(/const VERSION = 'v1\.14\.0'/.test(swSrc), 'sw.js VERSION v1.14.0');
 
 console.log('\n[明牌配对（#/match）的键盘可达性与标注]');
 {
@@ -327,10 +327,15 @@ console.log('\n[明牌配对（#/match）的键盘可达性与标注]');
     '配对进度 role=progressbar + aria-valuemin/max/now'
   );
   ok(
-    /role="group" aria-label="配对棋盘"/.test(matchSrc) && /role="group" aria-label="选择关卡"/.test(matchSrc),
-    '棋盘 / 关卡 chips 均为 role=group + aria-label'
+    /role="group" aria-label="配对棋盘"/.test(matchSrc) && /role="group" aria-label="选择词源"/.test(matchSrc),
+    '棋盘 / 词源 chips 均为 role=group + aria-label'
   );
-  ok(/data-action="match-level" data-level="\$\{i\}" aria-pressed=/.test(matchSrc), '关卡 chips 带 aria-pressed（当前关为 true）');
+  ok(
+    matchSrc.includes('data-action="match-source" data-kind="deck"') &&
+      matchSrc.includes('data-action="match-source" data-kind="level" data-level="${i}"') &&
+      /aria-pressed="\$\{active \? 'true' : 'false'\}"/.test(matchSrc),
+    '词源 chips（整卡组 / 各关卡）为原生 button + aria-pressed'
+  );
   ok(
     /announce\(`配对成功，连击 ×\$\{S\.combo\}`\)/.test(matchSrc) && /announce\(`全部配对完成/.test(matchSrc),
     '配对成功 / 全部完成用 announce 播报（读屏可感知）'
@@ -426,6 +431,62 @@ console.log('\n[移动端字母键盘（js/keyboard.js）的键盘可达性与�
   ok(/kb\.openKeyboard\(/.test(read('js/crossword.js')), '填字页接入字母键盘');
   ok(read('js/test.js').includes("inputs: '.fill-field'"), '填空题接入字母键盘（声明 .fill-field）');
   ok(/kb\.closeKeyboard\(\)/.test(read('js/crossword.js')) && /kb\.closeKeyboard\(\)/.test(read('js/test.js')), '完成 / 离场时收起键盘');
+}
+
+console.log('\n[设置页「多端同步（WebDAV）」的表单与标注]');
+{
+  const appSrc2 = read('js/app.js');
+  ok(
+    appSrc2.includes('<label class="field"><span>服务器地址</span>') && appSrc2.includes('id="sync-url"'),
+    '同步表单字段都有可见 <label> 文本（读屏可懂）'
+  );
+  ok(
+    appSrc2.includes('id="sync-pass" type="password"') && appSrc2.includes('autocomplete="current-password"'),
+    '密码框是 type=password + autocomplete=current-password'
+  );
+  ok(
+    appSrc2.includes('id="sync-remember" type="checkbox"') && appSrc2.includes('class="sync-check"'),
+    '三个开关都是原生 checkbox（Tab / 空格可用）+ 可见文案'
+  );
+  ok(
+    appSrc2.includes('data-action="sync-now"') &&
+      appSrc2.includes('data-action="sync-test"') &&
+      appSrc2.includes('data-action="sync-save"') &&
+      appSrc2.includes('data-action="sync-clear"'),
+    '同步动作都是原生 <button> + Action 委托'
+  );
+  ok(appSrc2.includes('class="sync-status'), '状态区用 .sync-status 展示（含成功 / 失败配色类）');
+  ok(/esc\(cfg\.url\)/.test(appSrc2) && /esc\(cfg\.user\)/.test(appSrc2), '表单值经 esc() 转义（避免属性注入）');
+  ok(appSrc2.includes('placeholder="${esc(passPlaceholder)}"'), '密码框只给占位提示，不回填明文');
+  ok(css.includes('@media (max-width: 520px) { .sync-row'), 'CSS：窄屏同步表单自动单列（不挤压）');
+  ok(/\.sync-status\.is-bad b \{ color: var\(--soft-danger-tx\)/.test(css), 'CSS：失败状态用语义危险色变量（两种主题都对）');
+  ok(/\.sync-check input \{[^}]*accent-color: var\(--accent-tx\)/.test(css), 'CSS：checkbox 走 accent-color（跟随主题色）');
+  ok(appSrc2.includes('需要网盘允许跨域'), '页内说明跨域限制与可用地址（用户能自救）');
+  ok(/toast\(`同步失败：\$\{webdav\.explainError\(e\)\}`/.test(appSrc2), '同步失败用 toast 提示（状态区自动朗读给读屏）');
+  ok(!/type="text"[\s\S]{0,80}id="sync-pass"/.test(appSrc2), '密码框不是明文输入');
+  // v0.9.0：预览差异（弹窗走 openModal：焦点陷阱 / Esc 关闭 / 焦点还原都由 ui.js 保证）
+  ok(
+    appSrc2.includes('data-action="sync-preview"') && appSrc2.includes('previewSync'),
+    '「预览差异」是原生按钮 + Action 委托（键盘可用）'
+  );
+  ok(/openModal\(\{\s*title: '同步预览（未改动任何数据）'/.test(appSrc2), '预览用 openModal 弹窗（复用焦点陷阱 / Esc / 焦点还原）');
+  ok(appSrc2.includes('<table class="sync-table">') && appSrc2.includes('<th scope="col">'), '预览明细表表头带 scope=col（读屏可对齐列）');
+  ok(appSrc2.includes('aria-'), '预览弹窗仍复用 aria 标注（openModal 内建）');
+  ok(
+    /openModal\(\{[\s\S]{0,120}wide: true/.test(appSrc2) && /\.modal-wide \{ max-width: 720px/.test(css),
+    '预览弹窗用 modal-wide（表格不被挤爆）'
+  );
+  ok(appSrc2.includes('预览是只读的：只读取了网盘上的文件'), '预览明确说明「只读、未改动数据」（用户知情）');
+  // 本机专用卡组：勾选框有可见文案 + 卡组页有文字标记（不只靠颜色）
+  ok(
+    read('js/decks.js').includes('<span>本机专用（不参与多端同步）</span>') && read('js/decks.js').includes('class="sync-check"'),
+    '卡组编辑弹窗的「本机专用」是原生 checkbox + 可见文案'
+  );
+  ok(
+    read('js/decks.js').includes('<span class="pill pill-local">本机专用（不参与同步）</span>'),
+    '卡组页用文字 pill 标记「本机专用」（不靠颜色区分）'
+  );
+  ok(/\.pill-local \{/.test(css), 'CSS：.pill-local 有样式（浅深色都可读）');
 }
 
 /* ==========================================================================

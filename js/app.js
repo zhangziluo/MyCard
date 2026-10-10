@@ -6,8 +6,10 @@ import * as store from './store.js';
 import * as difficulty from './difficulty.js';
 import * as engdefs from './engdefs.js';
 import * as theme from './theme.js';
-import { on, bindDocument, navigate, toast, confirmDialog, announce } from './ui.js';
+import { esc, on, bindDocument, navigate, toast, confirmDialog, announce, openModal } from './ui.js';
 import * as decks from './decks.js';
+import * as sync from './sync.js'; // v0.8.0 多端同步（WebDAV）
+import * as webdav from './webdav.js';
 import { renderReview, clearReviewSession } from './review.js';
 import { renderTest, clearTestSession } from './test.js';
 import { renderTableEditor } from './table-editor.js';
@@ -15,7 +17,7 @@ import { renderWordbook } from './wordbook-view.js'; // v0.5.9 生词本批量�
 import { renderMatch, clearMatchSession } from './match.js'; // v0.5.12 明牌配对（#/match/{deck}）
 import { renderCrossword, clearCrosswordSession } from './crossword.js'; // v0.6.0 填字游戏（#/crossword/{deck}）
 
-const APP_VERSION = 'v0.7.0';
+const APP_VERSION = 'v0.9.0';
 
 /* ------------------------------ 路由解析 ------------------------------ */
 
@@ -205,6 +207,216 @@ export function render() {
 }
 /* ------------------------------ 设置页 ------------------------------ */
 
+/** 多端同步（WebDAV）设置区块（v0.9.0：增量传输 + 预览差异 + 本机专用卡组） */
+function syncSectionHtml() {
+  const cfg = sync.loadConfig();
+  const st = sync.syncStatus();
+  const last = st.lastResult;
+  const lastAt = st.lastSyncAt ? fmtTime(st.lastSyncAt) : '—';
+  const statusCls = !last ? '' : last.ok ? 'is-good' : 'is-bad';
+  const statusText = !st.configured ? '未配置：填好地址 / 用户名 / 密码后即可同步' : sync.lastResultText(last);
+  const passPlaceholder = cfg.pass ? '已保存（留空沿用）' : '应用密码 / 登录密码';
+  const localOnly = sync.localOnlyDeckIds();
+  const total = store.getDb().decks.length;
+  return `
+    <section class="panel glass">
+      <h3 class="panel-title">多端同步（WebDAV）</h3>
+      <p class="panel-desc">把<b>词库、学习进度与复习日志</b>同步到<b>你自己的</b> WebDAV 网盘（坚果云 / Nextcloud / Synology…），多台设备共用一份数据。合并规则：<b>内容看最后修改时间、学习进度看最后学习时间</b>（只进不退），删除也会同步过去。同步采用<b>按卡组分文件 + 只传变化</b>的方式，改一个卡组只传这个卡组；同步前可以<b>先预览差异</b>再决定。</p>
+      <div class="sync-grid">
+        <label class="field"><span>服务器地址</span>
+          <input id="sync-url" type="text" inputmode="url" autocomplete="off" spellcheck="false" placeholder="https://dav.jianguoyun.com/dav/" value="${esc(cfg.url)}">
+        </label>
+        <div class="sync-row">
+          <label class="field"><span>用户名</span>
+            <input id="sync-user" type="text" autocomplete="username" spellcheck="false" value="${esc(cfg.user)}">
+          </label>
+          <label class="field"><span>密码</span>
+            <input id="sync-pass" type="password" autocomplete="current-password" placeholder="${esc(passPlaceholder)}">
+          </label>
+        </div>
+        <label class="field"><span>同步目录（不存在会自动创建）</span>
+          <input id="sync-dir" type="text" autocomplete="off" spellcheck="false" placeholder="mycard" value="${esc(cfg.dir)}">
+        </label>
+        <label class="sync-check"><input id="sync-remember" type="checkbox" data-action="sync-toggle" data-field="remember" ${cfg.remember ? 'checked' : ''}><span>记住密码（明文保存在本机浏览器，公共设备请勿勾选）</span></label>
+        <label class="sync-check"><input id="sync-auto-load" type="checkbox" data-action="sync-toggle" data-field="autoOnLoad" ${cfg.autoOnLoad ? 'checked' : ''}><span>打开应用时自动同步一次</span></label>
+        <label class="sync-check"><input id="sync-auto-change" type="checkbox" data-action="sync-toggle" data-field="autoOnChange" ${cfg.autoOnChange ? 'checked' : ''}><span>数据变更后自动同步（每 5 分钟检查一次）</span></label>
+      </div>
+      <div class="sync-status ${statusCls}">
+        <b>${esc(statusText)}</b>
+        <span>上次同步：${esc(lastAt)}${cfg.device ? ` · 本机标识 ${esc(cfg.device)}` : ''}</span>
+      </div>
+      ${
+        localOnly.length
+          ? `<p class="sync-note">已排除 ${localOnly.length} / ${total} 个「本机专用」卡组：它们不上传，也不会被其他设备改动或删除（在卡组编辑弹窗里可以开关）。</p>`
+          : ''
+      }
+      <div class="sync-actions">
+        <button class="btn btn-primary" data-action="sync-now">立即同步</button>
+        <button class="btn btn-ghost" data-action="sync-preview">预览差异</button>
+        <button class="btn btn-ghost" data-action="sync-test">测试连接</button>
+        <button class="btn btn-ghost" data-action="sync-save">保存设置</button>
+        <button class="btn btn-ghost" data-action="sync-clear">清除密码</button>
+      </div>
+      <p class="hint">网盘上的文件：<code>mycard-sync.json</code>（索引：每个卡组的摘要与指纹）＋ <code>mycard-decks/卡组id.json</code>（各卡组内容）＋ <code>mycard-sync.prev.json</code>（索引备份，可手工回滚）＋ <code>mycard-sync.lock.json</code>（同步锁，同步结束后自动删除）。浏览器直连 WebDAV 需要网盘允许跨域；「测试连接」若报跨域失败，请改用支持 CORS 的地址（坚果云 <code>https://dav.jianguoyun.com/dav/</code>、Nextcloud <code>https://你的域名/remote.php/dav/files/用户名/</code>）。</p>
+    </section>`;
+}
+
+/** 时间戳 → `MM-DD HH:mm`（设置页同步状态用） */
+function fmtTime(ts) {
+  try {
+    const d = new Date(ts);
+    const p = (n) => String(n).padStart(2, '0');
+    return `${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+  } catch (e) {
+    return '—';
+  }
+}
+
+/** 读设置页同步表单 */
+function readSyncForm() {
+  const el = (id) => (typeof document !== 'undefined' && document.getElementById ? document.getElementById(id) : null);
+  const val = (id) => {
+    const node = el(id);
+    return node && 'value' in node ? String(node.value || '').trim() : '';
+  };
+  const raw = (id) => {
+    const node = el(id);
+    return node && 'value' in node ? String(node.value || '') : '';
+  };
+  const chk = (id) => {
+    const node = el(id);
+    return !!(node && node.checked);
+  };
+  return {
+    url: val('sync-url'),
+    user: val('sync-user'),
+    pass: raw('sync-pass'),
+    dir: val('sync-dir'),
+    remember: chk('sync-remember'),
+    autoOnLoad: chk('sync-auto-load'),
+    autoOnChange: chk('sync-auto-change')
+  };
+}
+
+/** 保存同步表单（密码仅在填了新值时覆盖；勾「记住密码」才落本机） */
+function saveSyncForm() {
+  const f = readSyncForm();
+  const cur = sync.loadConfig();
+  const patch = {
+    url: f.url,
+    user: f.user,
+    dir: f.dir,
+    remember: f.remember,
+    autoOnLoad: f.autoOnLoad,
+    autoOnChange: f.autoOnChange
+  };
+  if (f.pass) patch.pass = f.pass;
+  else if (!cur.pass) patch.pass = '';
+  const next = sync.saveConfig(patch);
+  sync.initAutoSync({ runNow: false }); // 开关变化 → 立刻按新配置重挂定时器（不在保存时抢跑同步）
+  return next;
+}
+
+/** 一个卡组在预览里的变化文案 */
+function syncChangeText(d) {
+  if (d.status === 'added') return `远端新增卡组（${d.cardsAdded} 张卡${d.revlogs ? `、${d.revlogs} 条日志` : ''}）`;
+  if (d.status === 'removed') return `删除卡组（${d.cardsRemoved} 张卡）`;
+  const parts = [];
+  if (d.cardsAdded) parts.push(`新增 ${d.cardsAdded} 张`);
+  if (d.cardsUpdated) parts.push(`更新 ${d.cardsUpdated} 张`);
+  if (d.cardsRemoved) parts.push(`删除 ${d.cardsRemoved} 张`);
+  if (d.revlogs) parts.push(`日志 +${d.revlogs}`);
+  return parts.length ? parts.join('、') : '无变化';
+}
+
+/** 冲突明细（同一张卡两端都改过：内容看修改时间、进度看学习时间） */
+function syncConflictText(list) {
+  if (!list || !list.length) return '—';
+  const shown = list.slice(0, 4).map((c) => {
+    const bits = [];
+    if (c.contentFrom) bits.push(`内容取${c.contentFrom === 'local' ? '本机' : '远端'}`);
+    if (c.progressFrom) bits.push(`进度取${c.progressFrom === 'local' ? '本机' : '远端'}`);
+    return `<li>「${esc(c.front || c.cardId)}」${esc(bits.join('，'))}</li>`;
+  });
+  if (list.length > 4) shown.push(`<li>…等 ${list.length} 张</li>`);
+  return `<ul class="sync-conflict-list">${shown.join('')}</ul>`;
+}
+
+/** 同步预览弹窗（只读对比；确认后再执行同步） */
+function syncPreviewModal(pv) {
+  const c = pv.counts;
+  const rep = pv.report || { decks: [], conflicts: 0 };
+  const rows = rep.decks.filter((d) => d.status !== 'unchanged' || d.conflicts.length);
+  const remoteLine = pv.remoteExists
+    ? `远端已有数据${pv.remoteDevice ? `（来自 ${pv.remoteDevice}` : '（'}${
+        pv.remoteSavedAt ? `${pv.remoteDevice ? '，' : ''}${fmtTime(pv.remoteSavedAt)}` : ''
+      }）；只下载了 ${pv.fetched.length} 个卡组文件。`
+    : '远端还没有同步文件，本次会新建（首次同步 = 全量上传）。';
+  const body = `
+    <p class="panel-desc">${esc(sync.previewText(pv))}</p>
+    <div class="sync-counts">
+      <div><span>本机</span><b>${c.local.decks} 组 / ${c.local.cards} 卡 / ${c.local.revlogs} 日志</b></div>
+      <div><span>网盘</span><b>${c.remote.decks} 组 / ${c.remote.cards} 卡 / ${c.remote.revlogs} 日志</b></div>
+      <div><span>合并后</span><b>${c.merged.decks} 组 / ${c.merged.cards} 卡 / ${c.merged.revlogs} 日志</b></div>
+    </div>
+    <p class="hint">${esc(remoteLine)}${pv.legacy ? ' 检测到旧版单文件快照，本次会升级为「索引 + 分卡组」的新布局。' : ''}</p>
+    ${
+      rows.length
+        ? `<table class="sync-table">
+            <thead><tr><th scope="col">卡组</th><th scope="col">本次变化</th><th scope="col">冲突（采用）</th></tr></thead>
+            <tbody>${rows
+              .map(
+                (d) =>
+                  `<tr><td>${esc(d.name || d.id)}</td><td>${esc(syncChangeText(d))}</td><td>${syncConflictText(
+                    d.conflicts
+                  )}</td></tr>`
+              )
+              .join('')}</tbody>
+          </table>`
+        : '<p class="hint">两边内容完全一致，不需要传输任何卡组文件（只会刷新索引）。</p>'
+    }
+    <p class="hint">网络传输：下载 ${pv.fetched.length} 个卡组，上传 ${pv.toUpload.length} 个卡组${
+      pv.toRemove.length ? `，删除远端 ${pv.toRemove.length} 个卡组文件` : ''
+    }；冲突 ${rep.conflicts} 处（合并后多端内容一致）。${
+      pv.localOnly && pv.localOnly.length ? `${pv.localOnly.length} 个「本机专用」卡组不参与本次同步。` : ''
+    }</p>
+    <p class="hint">预览是只读的：只读取了网盘上的文件，没有写入、也没有改动本机数据。</p>`;
+  openModal({
+    title: '同步预览（未改动任何数据）',
+    wide: true,
+    body,
+    actions: [
+      {
+        label: '开始同步',
+        cls: 'btn-primary',
+        onClick: () => {
+          runSync();
+          return true;
+        }
+      },
+      { label: '取消', cls: 'btn-ghost' }
+    ]
+  });
+}
+
+/** 执行一次同步（「立即同步」与预览弹窗的「开始同步」共用） */
+async function runSync() {
+  const cfg = saveSyncForm();
+  if (!sync.isConfigured(cfg)) {
+    toast('请先填好服务器地址、用户名与密码', 'bad');
+    return;
+  }
+  toast('正在同步…');
+  try {
+    const res = await sync.syncNow();
+    const extra = res.uploaded ? `（上传 ${res.uploaded} 个卡组）` : '';
+    toast(`同步完成：${sync.statsText(res.stats)}${extra}`, 'good');
+  } catch (e) {
+    toast(`同步失败：${webdav.explainError(e)}`, 'bad');
+  }
+  render();
+}
+
 function renderSettings(root) {
   const db = store.getDb();
   const per = db.settings.cardsPerLevel;
@@ -255,6 +467,8 @@ function renderSettings(root) {
       <p class="hint">修改后会立即按新词数重新划分「跟随全局设置」的卡组（每关词汇数即时更新）；给卡组单独设置过词数的，请在卡组编辑里单独调整。小于 30 张的小卡组始终作为单关卡；关卡超过 15 关时按页显示（每页 15 关）。</p>
     </section>
 
+    ${syncSectionHtml()}
+
     <section class="panel glass">
       <h3 class="panel-title">数据</h3>
       <ul class="data-list">
@@ -274,7 +488,7 @@ function renderSettings(root) {
       <p class="panel-desc">基于艾宾浩斯遗忘曲线的间隔重复记忆卡片。翻转记忆 + 关卡闯关 + 离线可用。</p>
       <ul class="about-list">
         <li>版本：${APP_VERSION}（${db.seededDemo ? '已初始化示范词库' : '未导入示范词库'}）</li>
-        <li>数据保存在本机浏览器（IndexedDB + localStorage），不会上传任何服务器</li>
+        <li>数据保存在本机浏览器（IndexedDB + localStorage）；<b>默认不上传任何服务器</b>，只有你自己在设置页开启「多端同步（WebDAV）」后，才会把数据写到你的网盘</li>
         <li>离线可用：Service Worker 已缓存应用与内置词库</li>
         <li>推荐：从浏览器菜单选择「添加到主屏幕」安装为 App</li>
       </ul>
@@ -291,6 +505,66 @@ on('set-per-plus', () => {
   const d = store.getDb();
   store.setSetting('cardsPerLevel', Math.min(30, d.settings.cardsPerLevel + 1));
   render();
+});
+
+/* ------------------------------ 多端同步（WebDAV） ------------------------------ */
+
+on('sync-save', () => {
+  saveSyncForm();
+  toast('同步设置已保存');
+  render();
+});
+
+on('sync-toggle', (el) => {
+  const field = (el && el.dataset && el.dataset.field) || '';
+  if (!field) return;
+  const checked = !!(el && el.checked);
+  const patch = { [field]: checked };
+  if (field === 'remember' && !checked) patch.pass = ''; // 取消「记住密码」→ 立刻清掉本机明文密码
+  sync.saveConfig(patch);
+  sync.initAutoSync({ runNow: false });
+  render();
+});
+
+on('sync-clear', () => {
+  sync.clearCredentials();
+  toast('已清除本机保存的同步密码');
+  render();
+});
+
+on('sync-test', async () => {
+  const cfg = saveSyncForm();
+  if (!sync.isConfigured(cfg)) {
+    toast('请先填好服务器地址、用户名与密码', 'bad');
+    return;
+  }
+  toast('正在测试连接…');
+  try {
+    await webdav.probe(cfg.url, { auth: { user: cfg.user, pass: cfg.pass }, dir: cfg.dir });
+    toast('连接成功：目录可读写，可以开始同步了', 'good');
+  } catch (e) {
+    toast(webdav.explainError(e), 'bad');
+  }
+  render();
+});
+
+on('sync-now', () => {
+  runSync();
+});
+
+on('sync-preview', async () => {
+  const cfg = saveSyncForm();
+  if (!sync.isConfigured(cfg)) {
+    toast('请先填好服务器地址、用户名与密码', 'bad');
+    return;
+  }
+  toast('正在对比…');
+  try {
+    const pv = await sync.previewSync({ cfg });
+    syncPreviewModal(pv);
+  } catch (e) {
+    toast(`预览失败：${webdav.explainError(e)}`, 'bad');
+  }
 });
 
 /* ------------------------------ 主题色 ------------------------------ */
@@ -431,12 +705,22 @@ function boot() {
     }
 
     render();
+
+    // 多端同步（WebDAV）：配了「自动同步」就按配置挂上（进 App 同步一次 + 定期检查变更）
+    try {
+      sync.initAutoSync();
+    } catch (e) {
+      console.warn('[mycard] 自动同步初始化失败', e);
+    }
   })();
 
   // 离开页面前把待写数据落盘（IndexedDB 写入是防抖批量的）
   window.addEventListener('pagehide', () => {
     try {
       store.flushPending();
+    } catch (e) {}
+    try {
+      sync.notifyDataChanged(); // 「变更后自动同步」：关页面时尝试推一次（不阻塞）
     } catch (e) {}
   });
 

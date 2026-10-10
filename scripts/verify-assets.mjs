@@ -612,7 +612,7 @@ console.log('\n[我的生词批量整理（js/wordbook.js + js/wordbook-view.js�
   must(existsSync(rel('js/wordbook-view.js')), 'js/wordbook-view.js 存在（整理页）');
   must(sw.includes("'./js/wordbook.js'"), 'sw.js PRECACHE 含 ./js/wordbook.js');
   must(sw.includes("'./js/wordbook-view.js'"), 'sw.js PRECACHE 含 ./js/wordbook-view.js');
-  must(/const VERSION = 'v1\.12\.0'/.test(sw), 'sw.js VERSION 已递增（v1.12.0）');
+  must(/const VERSION = 'v1\.14\.0'/.test(sw), 'sw.js VERSION 已递增（v1.14.0）');
 
   // 内核：去重合并 / 标签 / 筛选排序 / 选中集 / 补查目标
   must(/export function normKey/.test(wbSrc), 'wordbook.js：normKey（大小写 / 空格归一为同一个词）');
@@ -630,7 +630,7 @@ console.log('\n[我的生词批量整理（js/wordbook.js + js/wordbook-view.js�
   must(/merge: true/.test(storeSrc2) && /extraBacks/.test(storeSrc2), 'store.js：addWords 支持 { merge: true } 合并释义');
 
   // 路由与入口
-  must(/0\.7\.0/.test(appSrc), 'app.js 版本号更新为 v0.7.0');
+  must(/0\.8\.0/.test(appSrc), 'app.js 版本号更新为 v0.8.0');
   must(/from '\.\/wordbook-view\.js'/.test(appSrc) && /renderWordbook\(root\)/.test(appSrc), 'app.js 挂载 renderWordbook');
   must(/seg\[0\] === 'words'/.test(appSrc) && /#\/words/.test(appSrc), 'app.js 解析 #/words 路由（含 ?page=N 分页）');
   must(/on\('nav-words'/.test(decksSrc3), 'decks.js 提供 nav-words 入口动作');
@@ -660,6 +660,25 @@ console.log('\n[明牌配对（v0.6.1，通关 ≥1 关解锁 · 每轮 5 对 ·
   must(/export const ROUND_PAIRS = 5/.test(mSrc), 'match.js：每轮 ROUND_PAIRS = 5（多余的配对自动往后排）');
   must(/export const BOOM_MS = \d+/.test(mSrc), 'match.js：BOOM_MS（爆炸动画播完才把这对牌从棋盘移除）');
   must(/export const MAX_PAIRS/.test(mSrc), 'match.js：单局对数上限 MAX_PAIRS（兜底防异常数据）');
+  must(/export const MAX_DECK_PAIRS = \d+/.test(mSrc), 'match.js：整卡组词源上限 MAX_DECK_PAIRS（兜底防超大卡组）');
+  must(
+    /export function normalizeSource/.test(mSrc) &&
+      /export function defaultSource/.test(mSrc) &&
+      /export function isValidSource/.test(mSrc) &&
+      /export function sourceCards/.test(mSrc) &&
+      /export function sourceTotal/.test(mSrc) &&
+      /export function sourceLimit/.test(mSrc),
+    'match.js：词源内核（normalizeSource / defaultSource / isValidSource / sourceCards / sourceTotal / sourceLimit）'
+  );
+  must(
+    /export function sourceLabel/.test(mSrc) && /export function matchTitle/.test(mSrc) && /export function stateSource/.test(mSrc),
+    'match.js：词源文案与取值（sourceLabel / matchTitle / stateSource）'
+  );
+  must(
+    /data-action="match-source" data-kind="deck"/.test(mSrc) && /on\('match-source'/.test(mSrc),
+    'match.js：词源 chips（整卡组 / 已通关关卡）+ match-source 动作'
+  );
+  must(/matchTitle\(src\)/.test(mSrc) && /sourceNoteHtml\(deck, state\)/.test(mSrc), 'match.js：页头标题与「整卡组已全部纳入 / 已纳入 X/Y 张」说明');
   must(/export function buildTiles/.test(mSrc) && /export function shuffle/.test(mSrc), 'match.js：buildTiles / shuffle（随机源可注入）');
   must(
     /export function splitRounds/.test(mSrc) && /export function buildBoard/.test(mSrc),
@@ -697,6 +716,7 @@ console.log('\n[明牌配对（v0.6.1，通关 ≥1 关解锁 · 每轮 5 对 ·
   must(/data-action="open-match"/.test(decksSrc4) && /on\('open-match'/.test(decksSrc4), 'decks.js 卡组详情页入口横幅 + open-match 动作');
   must(/from '\.\/match\.js'/.test(decksSrc4), 'decks.js 复用 match.js 解锁判定（规则只写一处）');
   must(/match\.ROUND_PAIRS/.test(decksSrc4), 'decks.js 横幅文案复用 ROUND_PAIRS（每轮对数只写一处）');
+  must(/整卡组 \$\{deck\.cards\.length\} 张/.test(decksSrc4), 'decks.js 入口横幅写明「整卡组 N 张」（v0.7.1）');
 
   must(/\.match-banner/.test(css) && /\.match-board/.test(css) && /\.match-tile/.test(css), 'css：配对横幅 / 棋盘 / 牌面样式');
   must(/\.match-board \{[^}]*repeat\(2, minmax\(0, 1fr\)\)/.test(css), 'css：棋盘固定两列（不再随屏宽变多列）');
@@ -837,6 +857,131 @@ console.log('\n[移动端英文字母键盘（v0.7.0，填字页 / 填空题）]
   must(readFileSync(rel('scripts/test-crossword.mjs'), 'utf8').includes('kb-key'), 'test-crossword 覆盖屏幕字母键盘');
   must(readFileSync(rel('scripts/test-fill.mjs'), 'utf8').includes('kb-key'), 'test-fill 覆盖屏幕字母键盘');
   must(readFileSync(rel('scripts/smoke-dom.mjs'), 'utf8').includes('kb-hide'), 'smoke-dom 覆盖触屏键盘（展开 / 收起 / 唤出）');
+}
+
+// 11) v0.8.0 多端同步（WebDAV）
+console.log('\n[多端同步（v0.8.0，WebDAV：词库 + 学习进度 + 复习日志）]');
+{
+  must(existsSync(rel('js/webdav.js')), 'js/webdav.js 存在（极简 WebDAV 客户端）');
+  must(existsSync(rel('js/sync.js')), 'js/sync.js 存在（同步引擎 + 合并内核）');
+  must(sw.includes("'./js/webdav.js'"), 'sw.js PRECACHE 含 ./js/webdav.js');
+  must(sw.includes("'./js/sync.js'"), 'sw.js PRECACHE 含 ./js/sync.js');
+
+  const wdSrc = readFileSync(rel('js/webdav.js'), 'utf8');
+  must(/export const DEFAULT_TIMEOUT/.test(wdSrc) && /export class WebdavError/.test(wdSrc), 'webdav.js：超时常量与 WebdavError');
+  must(/export function explainError/.test(wdSrc) && /export function normalizeBase/.test(wdSrc) && /export function normalizeDir/.test(wdSrc), 'webdav.js：错误说明 + URL 规范化');
+  must(/export function buildUrl/.test(wdSrc) && /export function authHeader/.test(wdSrc), 'webdav.js：地址拼接（逐段编码）+ Basic 认证');
+  must(/export async function probe/.test(wdSrc) && /export async function ensureCollection/.test(wdSrc), 'webdav.js：probe（PROPFIND）+ ensureCollection（递归 MKCOL）');
+  must(/export async function getText/.test(wdSrc) && /export async function putText/.test(wdSrc) && /export async function remove/.test(wdSrc), 'webdav.js：GET / PUT（含 createOnly 抢锁）/ DELETE');
+  must(!/from '(?!\.\/)/.test(wdSrc) && !/import \*/.test(wdSrc), 'webdav.js 零依赖（只用内置 fetch / AbortController / btoa）');
+
+  const syncSrc = readFileSync(rel('js/sync.js'), 'utf8');
+  must(/export const SNAPSHOT_VERSION = \d+/.test(syncSrc), 'sync.js：快照格式版本 SNAPSHOT_VERSION');
+  must(/export const SNAPSHOT_FILE = 'mycard-sync\.json'/.test(syncSrc) && /export const BACKUP_FILE/.test(syncSrc) && /export const LOCK_FILE/.test(syncSrc), 'sync.js：快照 / 备份 / 锁文件名');
+  must(/export function loadConfig/.test(syncSrc) && /export function saveConfig/.test(syncSrc) && /export function clearCredentials/.test(syncSrc) && /export function isConfigured/.test(syncSrc), 'sync.js：配置读写 / 清凭据 / 是否已配置');
+  must(/export async function buildSnapshot/.test(syncSrc) && /export function parseSnapshot/.test(syncSrc) && /export function normalizeSnapshot/.test(syncSrc), 'sync.js：快照构造 / 解析 / 归一化');
+  must(
+    /export function mergeCard/.test(syncSrc) && /export function mergeRevlog/.test(syncSrc) && /export function mergeTombstones/.test(syncSrc),
+    'sync.js：合并内核（卡片 / 日志 / 墓碑）'
+  );
+  must(/export function cardDeletedAt/.test(syncSrc) && /export function deckDeletedAt/.test(syncSrc), 'sync.js：删除墓碑判定（删除晚会真删，对方改过则保留）');
+  must(/export function mergeDeckEntry/.test(syncSrc) && /export function mergeSnapshots/.test(syncSrc), 'sync.js：卡组 / 快照合并');
+  must(/export function diffSnapshots/.test(syncSrc) && /export function statsText/.test(syncSrc) && /export function lastResultText/.test(syncSrc), 'sync.js：变更统计与文案');
+  must(/export async function syncNow/.test(syncSrc) && /export async function acquireLock/.test(syncSrc) && /export async function releaseLock/.test(syncSrc), 'sync.js：执行同步 + 抢锁 / 释放锁');
+  must(/export function initAutoSync/.test(syncSrc) && /export async function notifyDataChanged/.test(syncSrc) && /export function signature/.test(syncSrc), 'sync.js：自动同步（启动一次 + 变更后检查）');
+  must(
+    /const SCHED_FIELDS = \['state', 'repetitions', 'interval', 'easeFactor', 'due', 'lastReview'\]/.test(syncSrc),
+    'sync.js：调度字段清单（进度按 lastReview 合并，保证只进不退）'
+  );
+  must(/from '\.\/(store|webdav)\.js'/.test(syncSrc) && !/from '(?!\.\/)/.test(syncSrc), 'sync.js 只依赖本地 store / webdav（零第三方依赖）');
+
+  const storeSrc3 = readFileSync(rel('js/store.js'), 'utf8');
+  must(/export const TOMBSTONE_KEY/.test(storeSrc3) && /export const TOMBSTONE_TTL/.test(storeSrc3), 'store.js：删除墓碑 key 与保留期');
+  must(/export function recordTombstone/.test(storeSrc3) && /export function syncTombstones/.test(storeSrc3) && /export function setTombstones/.test(storeSrc3), 'store.js：墓碑记录 / 读取 / 覆盖');
+  must(/export function applySyncDecks/.test(storeSrc3), 'store.js：applySyncDecks（保留 id 的合并落库，含 revlog 回写）');
+  must(/updatedAt: c\.updatedAt \|\| c\.createdAt/.test(storeSrc3) && /updatedAt: d\.updatedAt \|\| d\.createdAt/.test(storeSrc3), 'store.js：卡片 / 卡组都带 updatedAt（同步冲突判定依据）');
+  must(/const CARD_CONTENT_KEYS/.test(storeSrc3) && /CARD_CONTENT_KEYS\.some/.test(storeSrc3), 'store.js：只有内容编辑才推进卡片的 updatedAt（纯学习动作不推进）');
+
+  const appSrc3 = readFileSync(rel('js/app.js'), 'utf8');
+  must(/from '\.\/sync\.js'/.test(appSrc3) && /from '\.\/webdav\.js'/.test(appSrc3), 'app.js 引入 sync.js / webdav.js');
+  must(/function syncSectionHtml/.test(appSrc3) && /多端同步（WebDAV）/.test(appSrc3), 'app.js：设置页「多端同步（WebDAV）」区块');
+  must(/on\('sync-now'/.test(appSrc3) && /on\('sync-test'/.test(appSrc3) && /on\('sync-save'/.test(appSrc3) && /on\('sync-toggle'/.test(appSrc3), 'app.js：立即同步 / 测试连接 / 保存 / 开关动作');
+  must(/sync\.initAutoSync\(\)/.test(appSrc3) && /sync\.notifyDataChanged\(\)/.test(appSrc3), 'app.js：启动时初始化自动同步 + 离开页面时尝试推送变更');
+  must(/未勾「记住密码」|记住密码/.test(appSrc3) && /esc\(passPlaceholder\)/.test(appSrc3), 'app.js：密码默认不落盘，框内只给占位提示');
+
+  must(/\.sync-grid/.test(css) && /\.sync-check/.test(css) && /\.sync-status/.test(css) && /\.sync-actions/.test(css), 'css：同步区块（网格 / 开关 / 状态 / 按钮组）样式');
+  must(/\.sync-status\.is-good b \{ color: var\(--teal-tx\)/.test(css) && /\.sync-status\.is-bad b \{ color: var\(--soft-danger-tx\)/.test(css), 'css：成功 / 失败状态用语义变量（浅深色都可读）');
+  must(/@media \(max-width: 520px\) \{ \.sync-row/.test(css), 'css：窄屏同步表单单列');
+  must(existsSync(rel('scripts/test-sync.mjs')), '存在 scripts/test-sync.mjs');
+  must(readFileSync(rel('scripts/smoke-dom.mjs'), 'utf8').includes('data-action="sync-now"'), 'smoke-dom 覆盖同步设置页（渲染 + 动作）');
+  must(readFileSync(rel('scripts/test-a11y.mjs'), 'utf8').includes('同步表单字段都有可见'), 'test-a11y 覆盖同步表单标注');
+}
+
+// 12) v0.9.0 同步增强：增量传输（索引 + 分卡组文件）/ 预览差异 / 本机专用卡组
+console.log('\n[同步增强（v0.9.0：增量 + 预览差异 + 本机专用）]');
+{
+  const syncSrc = readFileSync(rel('js/sync.js'), 'utf8');
+  const storeSrc4 = readFileSync(rel('js/store.js'), 'utf8');
+  const appSrc4 = readFileSync(rel('js/app.js'), 'utf8');
+  const decksSrc3 = readFileSync(rel('js/decks.js'), 'utf8');
+  // 增量布局
+  must(/export const SNAPSHOT_VERSION = 2/.test(syncSrc), 'sync.js：快照格式升到 v2（索引 + 分卡组文件）');
+  must(
+    /export const DECK_DIR = 'mycard-decks'/.test(syncSrc) && /export const DECK_BACKUP_SUFFIX/.test(syncSrc),
+    'sync.js：分卡组目录与备份后缀常量'
+  );
+  must(/export function deckFileOf/.test(syncSrc) && /export function deckBackupFileOf/.test(syncSrc), 'sync.js：分卡组文件路径 / 备份路径');
+  must(/export function deckFileName/.test(syncSrc) && !/encodeURIComponent\(String\(deckId\)\)/.test(syncSrc), 'sync.js：文件名自带安全化（不重复编码，避免 %25）');
+  must(/export function stableStringify/.test(syncSrc) && /export function deckHash/.test(syncSrc), 'sync.js：稳定序列化 + 内容指纹（与字段顺序无关）');
+  must(/export function manifestEntry/.test(syncSrc) && /export function manifestOf/.test(syncSrc) && /export function emptyManifest/.test(syncSrc), 'sync.js：索引（manifest）生成');
+  must(
+    /maxCardUpdated/.test(syncSrc) && /maxLastReview/.test(syncSrc),
+    'sync.js：索引带「最新修改 / 最新复习」摘要（判删除时不必多拉一次文件）'
+  );
+  must(/export function isLegacyManifest/.test(syncSrc), 'sync.js：识别 v0.8 单文件老格式');
+  must(/export async function readRemote/.test(syncSrc) && /export async function writeRemote/.test(syncSrc), 'sync.js：readRemote / writeRemote（增量读写）');
+  must(/export function uploadPlan/.test(syncSrc), 'sync.js：uploadPlan（哪些卡组要重传 / 哪些远端文件要删）');
+  must(/指纹相同|hash === entry\.hash/.test(syncSrc), 'sync.js：指纹相同就跳过下载（增量读）');
+  must(/toRemove/.test(syncSrc) && /webdav\.remove\(cfg\.url, deckFileOf\(id\)/.test(syncSrc), 'sync.js：合并后消失的卡组 → 删掉远端文件（不留垃圾）');
+  must(
+    /deckBackupFileOf\(id\)/.test(syncSrc) && /SNAPSHOT_FILE, JSON\.stringify\(manifest/.test(syncSrc),
+    'sync.js：覆盖前先备份（索引 + 每个卡组文件）'
+  );
+  // 预览差异
+  must(/export function buildReport/.test(syncSrc) && /contentFrom/.test(syncSrc) && /progressFrom/.test(syncSrc), 'sync.js：合并明细报告（逐卡组变化 + 冲突来源）');
+  must(/export async function planSync/.test(syncSrc) && /export async function previewSync/.test(syncSrc), 'sync.js：planSync / previewSync（只算不写）');
+  must(/export function previewText/.test(syncSrc) && /export function countsOf/.test(syncSrc), 'sync.js：预览文案与规模统计');
+  must(/export function mergeSnapshots\(local, remote, \{ now = Date\.now\(\), device = '', report = true \}/.test(syncSrc), 'sync.js：mergeSnapshots 支持 report（预览明细与正式同步共用同一套计算）');
+  must(!/previewSync[\s\S]{0,600}putText/.test(syncSrc.slice(syncSrc.indexOf('export async function previewSync'), syncSrc.indexOf('export function previewText'))), 'previewSync 不写任何文件（只 GET）');
+  // 本机专用
+  must(/export function isLocalOnlyDeck/.test(syncSrc) && /export function localOnlyDeckIds/.test(syncSrc), 'sync.js：isLocalOnlyDeck / localOnlyDeckIds');
+  must(/if \(isLocalOnlyDeck\(deck\)\) continue|if \(isLocalOnlyDeck\(deck\)\) \{/.test(syncSrc), 'sync.js：buildSnapshot 跳过本机专用卡组');
+  must(/localOnlyCards/.test(syncSrc) && /墓碑：本机专用卡组（及其卡片）的删除记录不外传/.test(syncSrc), 'sync.js：本机专用卡组的墓碑不外传');
+  must(/keepDeckIds: localOnly/.test(syncSrc) && /keepDeckIds: plan\.keepDeckIds/.test(syncSrc), 'sync.js：同步落库时把本机专用 id 传给 keepDeckIds');
+  must(/syncLocal: !!d\.syncLocal/.test(storeSrc4) && /syncLocal: !!deck\.syncLocal/.test(storeSrc4), 'store.js：syncLocal 随卡组规范化 / 元信息持久化');
+  must(/keepDeckIds/.test(storeSrc4) && /keepLocal\.has\(String\(deck\.id\)\)/.test(storeSrc4), 'store.js：applySyncDecks 支持 keepDeckIds（不删本机专用卡组）');
+  must(
+    /if \(deck && !deck\.syncLocal\) recordTombstone\('deck'/.test(storeSrc4) &&
+      /if \(!deck\.syncLocal\) recordTombstone\('card'/.test(storeSrc4) &&
+      /if \(!deck\.syncLocal\) for \(const c of removed\) recordTombstone/.test(storeSrc4),
+    'store.js：本机专用卡组（及其卡片）的删除不记墓碑'
+  );
+  must(/'syncLocal' in patch/.test(storeSrc4) && /syncLocal: !!fields\.syncLocal/.test(storeSrc4), 'store.js：createDeck / updateDeck 都支持 syncLocal');
+  // UI 接线
+  must(/on\('sync-preview'/.test(appSrc4) && /sync\.previewSync\(\{ cfg \}\)/.test(appSrc4) && /syncPreviewModal/.test(appSrc4), 'app.js：预览差异动作 + 弹窗渲染');
+  must(/function runSync\(\)/.test(appSrc4) && /on\('sync-now', \(\) => \{\s*runSync\(\)/.test(appSrc4), 'app.js：立即同步 / 预览确认共用 runSync');
+  must(/openModal\(/.test(appSrc4) && /from '\.\/ui\.js'/.test(appSrc4), 'app.js：预览用 ui.openModal（复用焦点陷阱 / Esc）');
+  must(/class="sync-counts"/.test(appSrc4) && /class="sync-table"/.test(appSrc4), 'app.js：预览里展示规模对比与逐卡组明细');
+  must(/data-action="deck-local"/.test(decksSrc3) && /on\('deck-local'/.test(decksSrc3) && /syncLocal: next/.test(decksSrc3), 'decks.js：卡组菜单可切换「本机专用」');
+  must(/name="syncLocal"/.test(decksSrc3) && /本机专用（不参与多端同步）/.test(decksSrc3), 'decks.js：卡组编辑弹窗有「本机专用」勾选框');
+  must(/pill-local/.test(decksSrc3) && /pill-local/.test(css), 'decks.js + css：卡组页用 .pill-local 标记');
+  must(/\.sync-counts/.test(css) && /\.sync-table/.test(css) && /\.sync-note/.test(css) && /\.modal-wide/.test(css), 'css：预览弹窗（规模 / 表格 / 提示 / 宽弹窗）样式');
+  const testSyncSrc = readFileSync(rel('scripts/test-sync.mjs'), 'utf8');
+  must(/previewSync/.test(testSyncSrc) && /makeServer/.test(testSyncSrc) && /本机专用/.test(testSyncSrc), 'test-sync 覆盖增量同步 / 预览 / 本机专用（假 WebDAV 服务端）');
+  must(
+    readFileSync(rel('scripts/smoke-dom.mjs'), 'utf8').includes('data-action="sync-preview"'),
+    'smoke-dom 覆盖「预览差异」弹窗'
+  );
 }
 
 console.log('\n[大卡组性能（单遍统计 / 复用 levels / 抽题快路径）]');

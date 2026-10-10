@@ -24,6 +24,12 @@ import { arrangeCards } from './arrange.js';
 export const STORAGE_KEY = 'mycard-v1';
 /** 精简元数据 key（设置 + 卡组清单摘要） */
 export const META_KEY = 'mycard-meta';
+/** 删除墓碑 key（v0.8.0 多端同步：让「删除」也能同步，而不是被别的设备复活） */
+export const TOMBSTONE_KEY = 'mycard-sync-tombstones';
+/** 墓碑保留时长：90 天（超过则丢弃，避免 localStorage 无限增长） */
+export const TOMBSTONE_TTL = 90 * 24 * 3600 * 1000;
+/** 墓碑条数上限 */
+export const MAX_TOMBSTONES = 4000;
 const MIGRATION_KEY = 'migrated';
 
 export function uid() {
@@ -32,7 +38,7 @@ export function uid() {
 }
 
 function defaultDb() {
-  return { version: 1, seededDemo: false, settings: { cardsPerLevel: DEFAULT_PER_LEVEL }, decks: [] };
+  return { version: 1, seededDemo: false, settings: { cardsPerLevel: DEFAULT_PER_LEVEL, updatedAt: 0 }, decks: [] };
 }
 
 /* ------------------------------ 数据规范化 ------------------------------ */
@@ -73,6 +79,7 @@ function normalizeCard(c) {
     groups: Array.isArray(c.groups) ? c.groups.map(String) : [],
     extraBacks: Array.isArray(c.extraBacks) ? c.extraBacks.map(String) : [],
     createdAt: c.createdAt || now,
+    updatedAt: c.updatedAt || c.createdAt || now, // 最后修改（v0.8.0 同步冲突判定；缺省回落到 createdAt，保持稳定）
     level: Number.isInteger(c.level) && c.level >= 0 ? c.level : 0,
     ...pickScheduling(c),
     src: typeof c.src === 'string' && c.src ? c.src : null, // 来源（online_lookup / batch_import / …）
@@ -89,8 +96,10 @@ function normalizeDeck(d) {
     paused: !!d.paused,
     cardsPerLevel: d.cardsPerLevel == null ? null : clampPerLevel(d.cardsPerLevel),
     createdAt: d.createdAt || Date.now(),
+    updatedAt: d.updatedAt || d.createdAt || Date.now(), // 最后修改（v0.8.0 同步冲突判定）
     demo: !!d.demo,
     source: typeof d.source === 'string' && d.source ? d.source : null,
+    syncLocal: !!d.syncLocal, // v0.9.0：本机专用（不参与多端同步）
     passedLevels: d.passedLevels ? { ...d.passedLevels } : {},
     cards: Array.isArray(d.cards) ? d.cards.map(normalizeCard) : [],
     // 复习日志：IndexedDB 模式下独立存于 revlog 表；回退模式下随卡组整库保存
@@ -104,6 +113,7 @@ function normalize(raw) {
     d.seededDemo = !!raw.seededDemo;
     if (raw.settings && typeof raw.settings === 'object') {
       d.settings.cardsPerLevel = clampPerLevel(raw.settings.cardsPerLevel);
+      d.settings.updatedAt = Number(raw.settings.updatedAt) || 0; // 最后改动时间（v0.9.0 同步合并「每关词数」时用）
     }
     d.decks = Array.isArray(raw.decks) ? raw.decks.map(normalizeDeck) : [];
   }
@@ -120,11 +130,24 @@ function deckMetaOf(deck) {
     paused: !!deck.paused,
     cardsPerLevel: deck.cardsPerLevel ?? null,
     createdAt: deck.createdAt,
+    updatedAt: deck.updatedAt || deck.createdAt, // 同步用：最后修改时间要随元信息一起持久化
     demo: !!deck.demo,
     source: deck.source ?? null,
+    syncLocal: !!deck.syncLocal, // 本机专用标记要随元信息持久化
     passedLevels: { ...(deck.passedLevels || {}) },
     cardCount: (deck.cards || []).length
   };
+}
+
+/** 打「最后修改」时间戳（内容编辑 / 关卡编排才打；纯学习动作只更新调度字段） */
+function touchCard(card, at = Date.now()) {
+  if (card) card.updatedAt = at;
+  return card;
+}
+
+function touchDeck(deck, at = Date.now()) {
+  if (deck) deck.updatedAt = at;
+  return deck;
 }
 
 /* ------------------------------ 内存库 / 读取 ------------------------------ */
@@ -376,12 +399,12 @@ export async function init() {
     else byDeck.set(rec.deckId, [rec]);
   }
   const meta = readJson(META_KEY);
-  const settings = meta && meta.settings ? { cardsPerLevel: clampPerLevel(meta.settings.cardsPerLevel) } : null;
+  const settings = meta && meta.settings ? { cardsPerLevel: clampPerLevel(meta.settings.cardsPerLevel), updatedAt: Number(meta.settings.updatedAt) || 0 } : null;
   idbReady = true;
   db = {
     version: 1,
     seededDemo: !!(meta && meta.seededDemo),
-    settings: settings || { cardsPerLevel: DEFAULT_PER_LEVEL },
+    settings: settings || { cardsPerLevel: DEFAULT_PER_LEVEL, updatedAt: 0 },
     decks: metaDecks.map((m) => ({
       ...normalizeDeck({ ...m, cards: [] }),
       // 旧版示范卡组没有 source → 回填 'demo'，避免首页把它当成未导入而重复导入
@@ -401,6 +424,7 @@ export function setSetting(key, value) {
     const next = clampPerLevel(value);
     const changed = d.settings.cardsPerLevel !== next;
     d.settings.cardsPerLevel = next;
+    if (changed) d.settings.updatedAt = Date.now(); // v0.9.0：记「最后改动时间」，多端同步时用它比较（而不是快照 savedAt）
     persist();
     // 跟随全局设置的卡组（cardsPerLevel == null）需要按新词数重新分组
     if (changed) {
@@ -429,6 +453,8 @@ export function resplitDeck(deckId, per = null) {
   const before = deck.cards.map((c) => (Number.isInteger(c.level) ? c.level : 0));
   const groups = resplitLevels(deck.cards, use);
   const changed = deck.cards.filter((c, i) => c.level !== before[i]);
+  touchDeck(deck);
+  for (const c of changed) touchCard(c); // 关卡归属变了 → 内容修改时间同步推进
   persist();
   queueDeck(deck);
   if (changed.length) queueCards(deckId, changed); // 只写回关卡发生变化的卡片
@@ -446,6 +472,7 @@ export function resetAll() {
   try {
     localStorage.removeItem(STORAGE_KEY);
     localStorage.removeItem(META_KEY);
+    localStorage.removeItem(TOMBSTONE_KEY); // 同步墓碑一并清掉（不要拿着旧删除记录去同步）
   } catch (e) {}
   if (idb.isAvailable()) {
     idb
@@ -471,6 +498,7 @@ export function storageInfo() {
 
 export function createDeck(fields = {}) {
   const d = getDb();
+  const now = Date.now();
   const deck = {
     id: uid(),
     name: String(fields.name || '新卡组'),
@@ -479,9 +507,11 @@ export function createDeck(fields = {}) {
     paused: false,
     cardsPerLevel:
       fields.cardsPerLevel == null || fields.cardsPerLevel === '' ? null : clampPerLevel(fields.cardsPerLevel),
-    createdAt: Date.now(),
+    createdAt: now,
+    updatedAt: now,
     demo: false,
     source: fields.source ? String(fields.source) : null,
+    syncLocal: !!fields.syncLocal, // 本机专用（不参与多端同步）
     passedLevels: {},
     cards: []
   };
@@ -507,12 +537,14 @@ export function updateDeck(id, patch) {
   if ('description' in patch) deck.description = String(patch.description);
   if ('tags' in patch) deck.tags = (patch.tags || []).map(String);
   if ('paused' in patch) deck.paused = !!patch.paused;
+  if ('syncLocal' in patch) deck.syncLocal = !!patch.syncLocal; // v0.9.0 本机专用（不参与同步）
   if ('cardsPerLevel' in patch) {
     const next =
       patch.cardsPerLevel == null || patch.cardsPerLevel === '' ? null : clampPerLevel(patch.cardsPerLevel);
     if (deck.cardsPerLevel !== next) perChanged = true;
     deck.cardsPerLevel = next;
   }
+  touchDeck(deck);
   persist();
   queueDeck(deck);
   // 每关词数变化 → 立即按新词数重新划分该卡组的关卡（保持卡片顺序与学习进度）
@@ -528,6 +560,7 @@ export function deleteDeck(id) {
     for (const c of deck.cards) queueDeleteCard(c.id);
     queueDeleteDeck(id);
   }
+  if (deck && !deck.syncLocal) recordTombstone('deck', id); // v0.8.0：删卡组也要能同步（本机专用卡组除外，v0.9.0）
   persist();
 }
 
@@ -535,6 +568,7 @@ export function togglePause(id) {
   const deck = getDeck(id);
   if (!deck) return null;
   deck.paused = !deck.paused;
+  touchDeck(deck);
   persist();
   queueDeck(deck);
   return deck;
@@ -624,6 +658,7 @@ export function addWords(items, { src = 'online_lookup', merge = false } = {}) {
 export function addCard(deckId, fields = {}) {
   const deck = getDeck(deckId);
   if (!deck) return null;
+  const now = Date.now();
   const level = suggestLevelForNewCard(deck);
   const card = {
     id: uid(),
@@ -635,7 +670,8 @@ export function addCard(deckId, fields = {}) {
     tags: Array.isArray(fields.tags) ? fields.tags.map(String) : [],
     groups: Array.isArray(fields.groups) ? fields.groups.map(String) : [],
     extraBacks: Array.isArray(fields.extraBacks) ? fields.extraBacks.map(String) : [],
-    createdAt: Date.now(),
+    createdAt: now,
+    updatedAt: now,
     level,
     state: 'new',
     repetitions: 0,
@@ -647,6 +683,7 @@ export function addCard(deckId, fields = {}) {
     addedAt: fields.addedAt || null
   };
   deck.cards.push(card);
+  touchDeck(deck, now);
   persist();
   queueCard(deck.id, card);
   queueDeck(deck);
@@ -658,6 +695,7 @@ export function addManyCards(deckId, items) {
   const deck = getDeck(deckId);
   if (!deck || !Array.isArray(items) || !items.length) return 0;
   const per = clampPerLevel(deck.cardsPerLevel ?? getDb().settings.cardsPerLevel ?? DEFAULT_PER_LEVEL);
+  const now = Date.now();
   const newCards = items.map((f) => ({
     id: uid(),
     front: String(f.front ?? ''),
@@ -668,7 +706,8 @@ export function addManyCards(deckId, items) {
     tags: Array.isArray(f.tags) ? f.tags.map(String) : [],
     groups: Array.isArray(f.groups) ? f.groups.map(String) : [],
     extraBacks: Array.isArray(f.extraBacks) ? f.extraBacks.map(String) : [],
-    createdAt: Date.now(),
+    createdAt: now,
+    updatedAt: now,
     ...pickScheduling(f), // 复习进度随导入保留（缺省 = 新卡）
     src: typeof f.src === 'string' && f.src ? f.src : null,
     addedAt: f.addedAt || null
@@ -676,6 +715,7 @@ export function addManyCards(deckId, items) {
   const groups = splitCards([...deck.cards, ...newCards], per);
   groups.forEach((g, gi) => g.forEach((c) => (c.level = gi)));
   deck.cards = groups.flat();
+  touchDeck(deck, now);
   persist();
   queueCards(deck.id, deck.cards);
   queueDeck(deck);
@@ -692,6 +732,13 @@ export function updateCard(deckId, cardId, patch) {
   queueCard(deckId, card);
   return card;
 }
+
+/**
+ * 卡面 / 编排类字段（这些变了才算「内容修改」→ 打 updatedAt，参与同步冲突判定）。
+ * 纯调度字段（state / repetitions / interval / easeFactor / due / lastReview）不算，
+ * 它们按 lastReview 走「进度合并」（保证多端学习进度只进不退）。
+ */
+const CARD_CONTENT_KEYS = ['front', 'back', 'example', 'exampleZh', 'phonetic', 'tags', 'groups', 'extraBacks', 'level', 'src', 'addedAt'];
 
 /**
  * 把卡片字段补丁写进卡片对象（不改内存库以外的东西）。
@@ -716,6 +763,7 @@ function applyCardFields(card, patch = {}) {
   if ('lastReview' in patch) card.lastReview = patch.lastReview;
   if ('src' in patch) card.src = typeof patch.src === 'string' && patch.src ? patch.src : null;
   if ('addedAt' in patch) card.addedAt = patch.addedAt || null;
+  if (CARD_CONTENT_KEYS.some((k) => k in patch)) touchCard(card); // v0.8.0：内容编辑才打时间戳
   return card;
 }
 
@@ -791,7 +839,10 @@ export function deleteCards(deckId, cardIds) {
   const dead = new Set(cardIds.map(String));
   const removed = deck.cards.filter((c) => dead.has(String(c.id)));
   if (!removed.length) return deck;
+  const now = Date.now();
   deck.cards = deck.cards.filter((c) => !dead.has(String(c.id)));
+  touchDeck(deck, now);
+  if (!deck.syncLocal) for (const c of removed) recordTombstone('card', c.id, now); // 本机专用卡组的删除不外传（v0.9.0）
   persist();
   if (idbReady) for (const c of removed) queueDeleteCard(c.id);
   queueDeck(deck);
@@ -801,7 +852,10 @@ export function deleteCards(deckId, cardIds) {
 export function deleteCard(deckId, cardId) {
   const deck = getDeck(deckId);
   if (!deck) return null;
+  const now = Date.now();
   deck.cards = deck.cards.filter((c) => c.id !== cardId);
+  touchDeck(deck, now);
+  if (!deck.syncLocal) recordTombstone('card', cardId, now); // 本机专用卡组的删除不外传（v0.9.0）
   persist();
   queueDeleteCard(cardId);
   queueDeck(deck);
@@ -816,6 +870,7 @@ export function markLevelPassed(deckId, levelIndex) {
   if (!deck) return null;
   if (!deck.passedLevels) deck.passedLevels = {};
   deck.passedLevels[levelIndex] = true;
+  touchDeck(deck); // 关卡进度属于卡组级「学习进度」，要同步出去
   persist();
   queueDeck(deck);
   return deck;
@@ -827,6 +882,7 @@ export function unmarkLevelPassed(deckId, levelIndex) {
   if (!deck) return null;
   if (deck.passedLevels) {
     delete deck.passedLevels[levelIndex];
+    touchDeck(deck);
     persist();
     queueDeck(deck);
   }
@@ -977,6 +1033,7 @@ export function seedBuiltinDeck(payload, { demo = true, source = null, meta = nu
   const extraDefs = payload.extraDefs && typeof payload.extraDefs === 'object' ? payload.extraDefs : {};
 
   const per = clampPerLevel(meta?.levelSize ?? payload.levelSize ?? d.settings.cardsPerLevel ?? DEFAULT_PER_LEVEL);
+  const now = Date.now();
   const deck = {
     id: uid(),
     name: String(meta?.name || payload.name || '内置词库'),
@@ -984,7 +1041,8 @@ export function seedBuiltinDeck(payload, { demo = true, source = null, meta = nu
     tags: Array.isArray(meta?.tags) ? meta.tags.map(String) : Array.isArray(payload.tags) ? payload.tags.map(String) : demo ? ['示范'] : ['内置'],
     paused: false,
     cardsPerLevel: null, // 跟随全局设置
-    createdAt: Date.now(),
+    createdAt: now,
+    updatedAt: now,
     demo,
     source: source ? String(source) : null,
     passedLevels: {},
@@ -1007,7 +1065,8 @@ export function seedBuiltinDeck(payload, { demo = true, source = null, meta = nu
       tags: Array.isArray(w.tags) ? w.tags.map(String) : [],
       groups: Array.isArray(w.groups) && w.groups.length ? w.groups.map(String) : groupsFromDefs,
       extraBacks: Array.isArray(w.extraBacks) && w.extraBacks.length ? w.extraBacks.map(String) : extraFromDefs,
-      createdAt: Date.now(),
+      createdAt: now,
+      updatedAt: now,
       ...pickScheduling(w) // 复习进度随导入保留（缺省 = 新卡）
     };
   });
@@ -1134,8 +1193,147 @@ export function rearrangeDeck(deckId, opts = {}) {
 
   let moved = 0;
   for (const c of deck.cards) if (before.get(c.id) !== c.level) moved += 1;
+  touchDeck(deck);
+  for (const c of deck.cards) if (before.get(c.id) !== c.level) touchCard(c);
   persist();
   queueDeck(deck);
   queueCards(deckId, deck.cards);
   return { levels: levels.length, moved };
+}
+
+
+/* --------------------------- 多端同步（v0.8.0） --------------------------- */
+
+/**
+ * 当前删除墓碑：`{ decks: { id: 删除时间 }, cards: { id: 删除时间 } }`。
+ * 同步合并时用它判定「本地/远端多出来的条目到底是删除还是新增」——
+ * 只有「删除时间 > 对方副本的最后修改 / 复习时间」才真删，否则视为对方又改过 → 保留。
+ */
+export function syncTombstones() {
+  const raw = readJson(TOMBSTONE_KEY);
+  return {
+    decks: raw && raw.decks && typeof raw.decks === 'object' ? { ...raw.decks } : {},
+    cards: raw && raw.cards && typeof raw.cards === 'object' ? { ...raw.cards } : {}
+  };
+}
+
+/** 记一条删除墓碑（deleteDeck / deleteCard(s) 内部调用） */
+export function recordTombstone(kind, id, at = Date.now()) {
+  if (id == null || id === '') return syncTombstones();
+  const key = kind === 'deck' ? 'decks' : 'cards';
+  const t = syncTombstones();
+  const prev = Number(t[key][id]) || 0;
+  if (at < prev) return t; // 已有更晚的删除记录
+  t[key][String(id)] = at;
+  return writeTombstones(t, at);
+}
+
+/** 覆盖墓碑（同步合并后回写：取两端并集） */
+export function setTombstones(next, now = Date.now()) {
+  return writeTombstones(
+    {
+      decks: (next && next.decks) || {},
+      cards: (next && next.cards) || {}
+    },
+    now
+  );
+}
+
+/** 清空墓碑 */
+export function clearTombstones() {
+  try {
+    localStorage.removeItem(TOMBSTONE_KEY);
+  } catch (e) {}
+  return { decks: {}, cards: {} };
+}
+
+/** 写入墓碑：顺带按 TTL / 条数上限裁剪（按时间新→旧保留） */
+function writeTombstones(t, now = Date.now()) {
+  const out = { decks: {}, cards: {} };
+  for (const key of ['decks', 'cards']) {
+    const rows = Object.entries(t[key] || {})
+      .map(([id, at]) => [id, Number(at) || 0])
+      .filter(([, at]) => at > 0 && now - at <= TOMBSTONE_TTL)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, MAX_TOMBSTONES);
+    for (const [id, at] of rows) out[key][id] = at;
+  }
+  writeJson(TOMBSTONE_KEY, out);
+  return out;
+}
+
+/**
+ * 用同步合并结果覆盖本地卡组（**保留 id**，只写有变化的卡组 / 卡片；本地多出来的会被删除）。
+ * 由 js/sync.js 在合并完成后调用 —— 这是「拉取 + 合并」唯一的落库入口。
+ * @param {Array} decks 合并后的卡组（含 cards）
+ * @param {{ settings?: object, keepDeckIds?: string[]|Set<string> }} [opts]
+ *        `keepDeckIds` = 本地「本机专用」卡组：**不参与同步、也不允许同步流程删掉 / 覆盖它们**
+ * @returns {{ decks:number, removedDecks:number, cards:number, removedCards:number, logsWritten:number }}
+ */
+export function applySyncDecks(decks, { settings = null, keepDeckIds = null } = {}) {
+  const d = getDb();
+  const list = Array.isArray(decks) ? decks : [];
+  const keepLocal = keepDeckIds instanceof Set ? keepDeckIds : new Set(Array.isArray(keepDeckIds) ? keepDeckIds : []);
+  const keep = new Set();
+  const logsByDeck = new Map();
+  const stats = { decks: 0, removedDecks: 0, cards: 0, removedCards: 0, logsWritten: 0 };
+
+  for (const raw of list) {
+    if (!raw || !raw.id || keepLocal.has(String(raw.id))) continue;
+    const next = normalizeDeck(raw);
+    // 快照字段名是 `revlog`（单数），老格式 / store 内部用的是 `revlogs` —— 两种都接受
+    const logs = Array.isArray(raw.revlog) ? raw.revlog : Array.isArray(raw.revlogs) ? raw.revlogs : [];
+    if (logs.length) logsByDeck.set(next.id, logs);
+    keep.add(next.id);
+    const idx = d.decks.findIndex((x) => x.id === next.id);
+    if (idx < 0) {
+      d.decks.push(next);
+      stats.decks += 1;
+      stats.cards += next.cards.length;
+      continue;
+    }
+    const prev = d.decks[idx];
+    const prevIds = new Set(prev.cards.map((c) => c.id));
+    stats.cards += next.cards.filter((c) => !prevIds.has(c.id)).length;
+    stats.removedCards += prev.cards.filter((c) => !next.cards.some((n) => n.id === c.id)).length;
+    if (JSON.stringify(prev) !== JSON.stringify(next)) {
+      d.decks[idx] = next;
+      stats.decks += 1;
+    }
+  }
+
+  for (const deck of [...d.decks]) {
+    if (keep.has(deck.id) || keepLocal.has(String(deck.id))) continue; // 本机专用卡组不删
+    d.decks = d.decks.filter((x) => x.id !== deck.id);
+    stats.removedDecks += 1;
+    stats.removedCards += deck.cards.length;
+    if (idbReady) {
+      for (const c of deck.cards) queueDeleteCard(c.id);
+      queueDeleteDeck(deck.id);
+    }
+  }
+
+  persist();
+  for (const deck of d.decks) {
+    if (!keep.has(deck.id)) continue;
+    queueDeck(deck);
+    queueCards(deck.id, deck.cards);
+    const logs = logsByDeck.get(deck.id);
+    if (!logs) continue;
+    for (const raw of logs) {
+      const entry = revlog.sanitizeEntry(raw);
+      if (!entry || !entry.id) continue;
+      queueRevlog({ ...entry, deckId: deck.id }); // 复习日志一并回写（IndexedDB / 回退模式都走同一入口）
+      stats.logsWritten += 1;
+    }
+  }
+  if (settings && settings.cardsPerLevel != null) {
+    setSetting('cardsPerLevel', settings.cardsPerLevel);
+    // 采用合并结果里的改动时间（本机没改过就是远端那次改动的时间）——避免落库后「本机」又被当成更新的一方
+    if (Number(settings.updatedAt) > 0) {
+      d.settings.updatedAt = Number(settings.updatedAt);
+      persist();
+    }
+  }
+  return stats;
 }

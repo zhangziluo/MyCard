@@ -26,7 +26,7 @@
 # 本地运行（必须 http(s)，file:// 下模块与 SW 受限）
 python3 -m http.server 8080
 
-# 全量校验（29 个 test-*.mjs + smoke-dom + verify-assets = 31 个脚本，3453 条断言）
+# 全量校验（30 个 test-*.mjs + smoke-dom + verify-assets = 32 个脚本，3788 条断言）
 for f in scripts/test-*.mjs scripts/smoke-dom.mjs scripts/verify-assets.mjs; do node "$f"; done
 node --check js/*.js sw.js scripts/*.mjs      # 语法检查
 node scripts/verify-assets.mjs                # 资源/一致性校验（含 CSS 变量审计）
@@ -37,9 +37,10 @@ node scripts/test-revlog.mjs                  # 复习日志（ease/type 映射 
 node scripts/test-idb-store.mjs               # 存储层（v2→v3 升级 / 迁移 / 写穿 / 重载水合 / 复习日志 / 级联清理）
 node scripts/test-table-editor.mjs            # 表格编辑页 #/editor（模版列一致性 / 表格内核 / 草稿 / 载入 / 粘贴多行 / 预览报告 / 渲染 / 事件 / 导入为卡组 / xlsx 指定工作表）
 node scripts/test-wordbook.mjs                # 生词本整理 #/words（同词归并 / 保留优先级 / 合并语义 / 标签整理 / 筛选排序 / 多选批量 / 页面渲染分页）
-node scripts/test-match.mjs                   # 明牌配对 #/match（解锁 ≥1 关 / 分轮建牌（每轮 5 对）与可复现洗牌 / 六态点击状态机 / 连击·失误·用时 / 薄 UI 局部打补丁与入口横幅 / 连击提示贴棋盘右下角 / 棋局只存内存：同一页内重渲染不重排、**重进同一关重新洗牌**）
+node scripts/test-match.mjs                   # 明牌配对 #/match（解锁 ≥1 关 / **词源：整卡组与已通关关卡（normalizeSource·sourceCards·MAX_DECK_PAIRS）** / 分轮建牌（每轮 5 对）与可复现洗牌 / 六态点击状态机 / 连击·失误·用时 / 薄 UI 局部打补丁与入口横幅 / 连击提示贴棋盘右下角 / 棋局只存内存：同一页内重渲染不重排、**重进同一关重新洗牌**）
 node scripts/test-crossword.mjs               # 填字游戏 #/crossword（解锁 ≥1 关 / 词条清洗（纯字母·长度·去重）/ canPlace 四条排版规则 · findPlacement 评分 / 棋盘生成与可复现 / 逐格状态机（检查·提示·显示本词）/ **移动端：cellSize 触屏下限 30px + 屏幕字母键盘** / 薄 UI（打字只打补丁、焦点推进、结算、会话复活与清场）与入口横幅）
 node scripts/test-keyboard.mjs                # 移动端英文字母键盘 #kb-bar（环境判定 / 键位 HTML / open·hide·show·close 四态 / DOM 三态（键盘·迷你胶囊·隐藏）/ inputmode 同步 / 事件派发 / 视口监听只绑一次）
+node scripts/test-sync.mjs                    # 多端同步（WebDAV 客户端：URL 规范化·Basic·PROPFIND/MKCOL/GET/PUT/DELETE·错误映射·超时·无 fetch；合并内核：内容按 updatedAt / 进度按 lastReview / 日志并集 / 墓碑与复活 / 幂等 / 变更统计；快照往返：本地→快照→清库→应用（id / 进度 / revlog 全还原）；墓碑与配置；**v0.9.0 增量布局：内存假 WebDAV 服务端 `makeServer` + 只传变化 / 只下载变化 / 预览只读 / 本机专用 / v1 单文件自动升级**）
 
 # 数据准备（可选，需本地具备 gcide-0.51/）
 node scripts/split-gcide.mjs
@@ -51,7 +52,7 @@ node scripts/gen-examples.mjs --data data/words.json --sample 8
 
 ## 版本号约定
 - **两处必须同步递增**：`sw.js` 的 `VERSION`（缓存键）与 `js/app.js` 的 `APP_VERSION`（顶栏显示）
-- 当前：`APP v0.7.0` / `SW v1.12.0`
+- 当前：`APP v0.9.0` / `SW v1.14.0`
 
 ## 测试工程要点（写新测试时照抄）
 - 每个测试是独立 `.mjs`，自建浏览器桩（localStorage/document/window/location/requestAnimationFrame/HashChangeEvent）
@@ -78,3 +79,9 @@ node scripts/gen-examples.mjs --data data/words.json --sample 8
 12. **评分日志必须传「评分前」快照**：`store.updateCard()` 原地改卡片对象，直接把卡片对象交给 `recordReview` 会让 `lastIvl` / `type` 失真（`test-review-interaction.mjs` 有守卫断言）。
 13. **配对棋局不落盘（v0.6.1）**：`js/match.js` 的棋局只存在模块级 `S`（内存），**不写 sessionStorage**；`renderMatch` 只承认「内存里已有本卡组的会话」这一种沿用情形（= 同一页内的重渲染，如切主题），其余路（首次加载 / 刷新 / 路由切换 / 点入口）一律 `startGame` 重新洗牌。**别再把棋局写回 sessionStorage**——那等于把「重进同一关」变成「接着上一局」，与需求相反。随之下线的 `isRoundComplete` / `isBoardComplete`（只服务于「复活损坏棋局」）改由 `test-match.mjs` 直接断言 `buildBoard` 产物的「每轮词义成对完整」性质。
 14. **移动端抑制系统输入法只能用 `inputmode="none"`（v0.7.0）**：自绘字母键盘（`js/keyboard.js`）靠把宿主输入框的 `inputmode` 在 `none` / `latin` 之间切换来「不弹系统键盘」。**不要改用 `readonly`**——`readonly` 会连 `input` 事件一起掐掉（物理键盘与部分浏览器的手写/语音输入就废了）；`inputmode="none"` 不支持时只会退化成「两种键盘都能用」，不会坏。另一个坑：`inputmode` 是**属性**，必须在 `focus` **之前**写到 DOM 上（所以 `renderCrossword` / `renderTest` 都是**先 `openKeyboard` / `attachFillKeyboard`，再写 `innerHTML`**，最后再 `syncInputs()` 一次），否则 iOS 可能已经按旧属性把系统键盘弹起来了。
+15. **WebDAV 直连受 CORS 限制（v0.8.0）**：浏览器 `fetch` 打 WebDAV 会带 `Authorization` 且用 `PROPFIND` / `MKCOL` 等非简单方法 → **一定触发预检**，服务端必须允许跨域才行（坚果云 `dav.jianguoyun.com/dav`、Nextcloud `remote.php/dav/files/…` 通常可以；被拦时 fetch 直接抛错，`webdav.explainError()` 会提示「网络失败 / 跨域被拦」）。**不要**在文档或 UI 里承诺「任何 WebDAV 都能连」。另外：Node 单测里 `globalThis.navigator` 是只读 getter（≥21）**不可赋值**，桩里别写 `globalThis.navigator = {...}`。
+16. **同步的落库入口只有一个（v0.8.0 起）**：`store.applySyncDecks(decks, { settings, keepDeckIds })` —— 保留 id、写卡片、**连 `revlog` 一起回写**、把本地多出来的卡组 / 卡片删掉，但**跳过 `keepDeckIds`（「本机专用」卡组）**。**新增任何同步相关写入都不要绕过它**，否则会出现「卡组回来了但日志没回来」这类半截状态。另：`store.flushPending()` 是 **async**，测试里要 `await`（复习日志是防抖落盘的）。
+17. **同步「只传变化」靠内容指纹，且要按卡组粒度（v0.9.0）**：网盘上是 `mycard-sync.json`（索引：每卡组摘要 + `hash`）+ `mycard-decks/{deckId}.json`（内容）。指纹必须**与字段顺序无关**（`stableStringify` 先给键名排序再 `JSON.stringify`）——本地 payload（`deckPayload` 的字段顺序）与合并后 payload（`normalizeSnapshot` 的顺序）并不相同，若直接用 `JSON.stringify` 算指纹，**每次同步都会误判为「变了」而全量重传**（`test-sync` 有「数据没变 → 零卡组传输」的守卫断言）。`buildUrl` 会逐段 `encodeURIComponent`，所以**卡组文件名不能再预先 encode**（否则路径里出现 `%25`）；文件名只把 `/ \ : * ? " < > | %` 与控制字符换成 `-`，若改动过则追加 `deckHash(id)` 防撞。合并后消失的卡组要 `DELETE` 掉远端文件，否则网盘越积越多。
+18. **`verify-assets` / 其他脚本里的正则字面量别再夹带 `/`**：写 `must(/…/.test(src), …)` 时，被匹配的片段本身若含 `/`（例如要匹配 `store.js` 里的 `!/deck.syncLocal/`），**必须先转义成 `\/` 或改用 `new RegExp(...)`**——否则正则提前结束、脚本直接 `SyntaxError`（本次 v0.9.0 就踩过一次；表现为「grep 不到 ✗ 但脚本没跑完」）。
+19. **「最后改动时间」要落在数据自己身上，别借快照时间（v0.9.0）**：v0.8.0 用「快照 `savedAt`」决定「每关词数」取谁，但本地快照的 `savedAt` 恒为 `now` → **远端永远赢不了（等于单向同步）**。现在全局设置自带 `settings.updatedAt`（`setSetting` 只在值真变时推进），合并优先比它、老数据退回 `savedAt`；`applySyncDecks` 落库后要把它一起写回（否则「本机刚采纳」会被当成「本机刚改」）。**新增任何需要跨端比新旧的全局偏好，都照这个来：先给它一个自己的时间戳，再进合并规则。**
+20. **测试里的服务端桩要「按路径存文本」而不是「按顺序消费路由」（v0.9.0）**：增量同步会出现「同一方法打不同路径」的请求（`GET mycard-sync.json` / `GET mycard-decks/x.json` / 多个 `PUT`），顺序消费的路由表非常容易写歪。`test-sync` 现在用内存假服务端 `makeServer()`（`Map<路径, 文本>` + 记录 `ops`），既能断言最终文件内容，也能断言「这次到底发了几个 PUT / 有没有多余的 GET」——**写「只传变化」这类断言时，记得把 `.prev.json` 备份 PUT 一起算或显式排除**（否则计数会多一个）。

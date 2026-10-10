@@ -101,6 +101,8 @@ const appbarSideEl = fakeEl();
 const htmlEl = fakeEl();
 /** 文档级监听表（type → handlers[]），用于验证粘贴绑定 */
 const docListeners = {};
+/** 同步设置表单字段桩（app.js 通过 getElementById 读写） */
+const docFields = {};
 globalThis.localStorage = storage;
 globalThis.sessionStorage = { ...storage };
 globalThis.document = {
@@ -119,6 +121,10 @@ globalThis.document = {
   getElementById(id) {
     if (id === 'view') return appViewEl;
     if (id === 'appbar-side') return appbarSideEl;
+    if (id.startsWith('sync-')) {
+      if (!docFields[id]) docFields[id] = { value: '', checked: false, type: '', setAttribute() {}, focus() {} };
+      return docFields[id];
+    }
     return fakeEl();
   },
   createElement() {
@@ -157,6 +163,9 @@ function ok(cond, msg) {
 }
 
 /** 模拟 data-action 点击（走 ui.handleEvent 事件委托） */
+/** 等一小会儿（async 动作 / 定时器在 Node 里是下一轮事件循环才落地） */
+const tick = (ms = 5) => new Promise((r) => setTimeout(r, ms));
+
 async function fire(action, dataset = {}) {
   const ui = await import('../js/ui.js');
   const btn = { dataset: { action, ...dataset }, classList: { add() {}, remove() {} } };
@@ -509,6 +518,137 @@ console.log('\n[设置页 · 主题色]');
   ok(appViewEl.innerHTML.includes('#34d399'), '设置页重渲染后新主题色高亮');
 }
 
+// ---- 设置页：多端同步（WebDAV，v0.8.0）----
+console.log('\n[设置页 · 多端同步（WebDAV）]');
+{
+  const syncMod = await import('../js/sync.js');
+  syncMod.clearCredentials();
+  globalThis.location.hash = '#/settings';
+  (winListeners['hashchange'] || []).forEach((fn) => fn({ type: 'hashchange' }));
+  const html = appViewEl.innerHTML;
+  ok(html.includes('多端同步（WebDAV）'), '设置页渲染「多端同步（WebDAV）」区块');
+  ok(html.includes('id="sync-url"') && html.includes('id="sync-user"') && html.includes('id="sync-pass"'), '渲染服务器地址 / 用户名 / 密码输入框');
+  ok(html.includes('id="sync-dir"') && html.includes('id="sync-remember"'), '渲染同步目录与「记住密码」');
+  ok(html.includes('id="sync-auto-load"') && html.includes('id="sync-auto-change"'), '渲染两个自动同步开关');
+  ok(html.includes('data-action="sync-now"') && html.includes('data-action="sync-test"') && html.includes('data-action="sync-save"'), '渲染「立即同步 / 测试连接 / 保存设置」按钮');
+  ok(html.includes('未配置'), '未填信息时状态区提示「未配置」');
+
+  // 无配置点「立即同步」→ 只给提示，不发起网络请求
+  let fetchCalls = 0;
+  const savedFetch = globalThis.fetch;
+  globalThis.fetch = async () => {
+    fetchCalls++;
+    return { status: 207, text: async () => '' };
+  };
+  await fire('sync-now');
+  ok(fetchCalls === 0, '未填地址 / 密码时点「立即同步」不发请求（只提示）');
+  await fire('sync-test');
+  ok(fetchCalls === 0, '未填信息时「测试连接」同样不发请求');
+
+  // 保存设置（含密码）→ 落配置；「测试连接」会真的发 PROPFIND
+  const field = (id) => {
+    if (!docFields[id]) docFields[id] = { value: '', checked: false };
+    return docFields[id];
+  };
+  field('sync-url').value = 'https://dav.example.com/dav/';
+  field('sync-user').value = 'me';
+  field('sync-pass').value = 'pw';
+  field('sync-dir').value = 'mycard';
+  field('sync-auto-load').checked = true;
+  await fire('sync-save');
+  const cfg = syncMod.loadConfig();
+  ok(cfg.url === 'https://dav.example.com/dav' && cfg.user === 'me' && cfg.dir === 'mycard', '「保存设置」写入配置（URL 规范化）');
+  ok(cfg.pass === 'pw' && mem['mycard-sync'] && !mem['mycard-sync'].includes('pw'), '未勾「记住密码」→ 密码不落 localStorage');
+
+  const urls = [];
+  globalThis.fetch = async (url, opts = {}) => {
+    fetchCalls++;
+    urls.push(`${opts.method || 'GET'} ${url}`);
+    return { status: 207, text: async () => '' };
+  };
+  await fire('sync-test');
+  await tick(30); // 动作是 async 的，等它跑完
+  ok(fetchCalls === 1 && urls[0].startsWith('PROPFIND https://dav.example.com/dav/mycard'), '填齐后「测试连接」发出 PROPFIND：' + urls[0]);
+
+  // 立即同步：MKCOL → GET(404) → PUT → 本地落库
+  fetchCalls = 0;
+  globalThis.fetch = async (url, opts = {}) => {
+    fetchCalls++;
+    const method = opts.method || 'GET';
+    if (method === 'GET') return { status: 404, text: async () => '' };
+    return { status: 201, text: async () => '' };
+  };
+  await fire('sync-now');
+  await tick(60);
+  ok(fetchCalls >= 3, '「立即同步」走完建目录 / 拉取 / 写回（' + fetchCalls + ' 次请求）');
+  const last = syncMod.loadConfig().lastResult;
+  ok(last && last.ok === true, '同步结果写入配置（成功）');
+  ok(syncMod.lastResultText(last).includes('已是最新') || syncMod.lastResultText(last).includes('新增'), '状态区文案：' + syncMod.lastResultText(last));
+  globalThis.fetch = savedFetch;
+  syncMod.clearCredentials();
+  syncMod.stopAutoSync();
+}
+
+// ---- 设置页：同步预览（只读对比）+ 本机专用卡组（v0.9.0）----
+console.log('\n[同步预览（只读对比）＋ 本机专用卡组]');
+{
+  const syncMod = await import('../js/sync.js');
+  const uiMod = await import('../js/ui.js');
+  const storeMod = await import('../js/store.js');
+  const localOnly = storeMod.createDeck({ name: '私人卡组' });
+  storeMod.updateDeck(localOnly.id, { syncLocal: true });
+  globalThis.location.hash = '#/settings';
+  (winListeners['hashchange'] || []).forEach((fn) => fn({ type: 'hashchange' }));
+  ok(appViewEl.innerHTML.includes('data-action="sync-preview"'), '设置页渲染「预览差异」按钮');
+  ok(appViewEl.innerHTML.includes('本机专用') && appViewEl.innerHTML.includes('不上传'), '设置页提示「本机专用」卡组不参与同步');
+  ok(appViewEl.innerHTML.includes('mycard-decks/'), '说明文字列出网盘上的文件布局（索引 + 分卡组）');
+
+  globalThis.location.hash = `#/deck/${localOnly.id}`;
+  (winListeners['hashchange'] || []).forEach((fn) => fn({ type: 'hashchange' }));
+  ok(appViewEl.innerHTML.includes('本机专用（不参与同步）'), '卡组页显示「本机专用」标记');
+
+  await fire('deck-options', { id: localOnly.id });
+  const menuM = fakeBody.children.filter((c) => c && c.className === 'modal-overlay').pop();
+  ok(menuM && String(menuM.innerHTML).includes('data-action="deck-local"'), '卡组菜单含「设为本机专用 / 允许同步」开关');
+  uiMod.closeModal();
+  await fire('deck-edit', { id: localOnly.id });
+  const formM = fakeBody.children.filter((c) => c && c.className === 'modal-overlay').pop();
+  const formHtml = formM ? String(formM.innerHTML) : '';
+  ok(formHtml.includes('name="syncLocal"') && formHtml.includes('本机专用（不参与多端同步）'), '卡组编辑弹窗里有「本机专用」勾选框');
+  ok(/name="syncLocal"[^>]*checked/.test(formHtml), '已设为本机专用的卡组 → 勾选框为选中态');
+  uiMod.closeModal();
+
+  // 预览差异：接一个「空的远端」，只发 GET、不改任何数据
+  syncMod.saveConfig({ url: 'https://dav.example.com/dav', user: 'me', pass: 'pw', dir: 'mycard' });
+  const ops = [];
+  const savedFetch2 = globalThis.fetch;
+  globalThis.fetch = async (url, opts = {}) => {
+    const method = String(opts.method || 'GET').toUpperCase();
+    ops.push(method);
+    if (method === 'GET') return { status: 404, text: async () => '' };
+    return { status: 201, text: async () => '' };
+  };
+  const decksBefore = storeMod.getDb().decks.length;
+  await fire('sync-preview');
+  await tick(60);
+  const pvM = fakeBody.children.filter((c) => c && c.className === 'modal-overlay').pop();
+  const pvHtml = pvM ? String(pvM.innerHTML) : '';
+  ok(pvHtml.includes('同步预览'), '点「预览差异」弹出预览弹窗（标题：' + (pvHtml.match(/modal-title[^>]*>([^<]*)/) || [])[1] + '）');
+  ok(pvHtml.includes('远端还没有同步文件'), '首次同步时提示「远端没有同步文件，本次会新建」');
+  ok(pvHtml.includes('本机') && pvHtml.includes('网盘') && pvHtml.includes('合并后'), '预览给出本机 / 网盘 / 合并后的规模');
+  ok(pvHtml.includes('上传'), '预览写明本次会下载 / 上传多少卡组');
+  ok(pvHtml.includes('本机专用') && pvHtml.includes('不参与本次同步'), '预览里提示本机专用卡组不参与');
+  ok(pvHtml.includes('data-ui="modal-act"'), '预览弹窗带「开始同步 / 取消」按钮');
+  ok(ops.length > 0 && ops.every((m) => m === 'GET'), '预览只发 GET 请求：' + ops.join(','));
+  ok(!ops.includes('PUT') && !ops.includes('DELETE') && !ops.includes('MKCOL'), '预览没有写网盘（无 PUT / DELETE / MKCOL）');
+  ok(storeMod.getDb().decks.length === decksBefore, '预览没有改动本地数据');
+  globalThis.fetch = savedFetch2;
+  uiMod.closeModal();
+  storeMod.deleteDeck(localOnly.id);
+  globalThis.location.hash = '#/settings'; // 后续用例仍看设置页
+  (winListeners['hashchange'] || []).forEach((fn) => fn({ type: 'hashchange' }));
+}
+
 // ---- 设置页：外观（明暗模式）+ 顶栏快捷切换 ----
 console.log('\n[设置页 · 外观（明暗模式）]');
 {
@@ -698,7 +838,8 @@ console.log('\n[明牌配对 · 棋盘页（#/match）]');
   ok(html.includes('第 1/4 轮'), '轮次行显示「第 1/4 轮」（20 张卡 → 4 轮）');
   ok((html.match(/data-action="match-pick"/g) || []).length === 10, '本轮只铺 10 张明牌（5 对，不再整关平铺）');
   ok(html.includes('id="match-combo"'), '棋盘上带 combo✖️N 连击提示层');
-  ok(html.includes('aria-label="选择关卡"'), '已通关关卡 chips 可切换（3 关都在）');
+  ok(html.includes('aria-label="选择词源"'), '词源 chips 可切换（整卡组 + 3 个已通关关卡）');
+  ok(html.includes('整卡组（60 张）'), '「整卡组」chip 写明本卡组卡片数');
   ok(html.includes('match-tile-word') && html.includes('match-tile-def'), '词牌 / 义牌外观区分');
   ok(html.includes('role="progressbar" aria-label="配对进度"'), '进度条带 aria 标注');
   ok(html.includes('id="match-result"'), '结算面板容器已渲染');
@@ -715,6 +856,22 @@ console.log('\n[明牌配对 · 棋盘页（#/match）]');
   ok(after.matched.length === 2, '词 + 义（同卡）→ 配对成功');
   ok(after.combo === 1 && after.mistakes === 0, '配对成功 → 连击 +1、失误不变');
   ok(match.roundLeft(after) === 4, '本轮还剩对数 5 → 4（配对的牌离开棋盘）');
+
+  // ---- 整卡组词源（v0.7.1）：一轮一轮配到本卡组没有对为止 ----
+  await fire('match-source', { kind: 'deck' });
+  const whole = match.getMatchSession();
+  ok(whole.source.kind === 'deck' && whole.level === null, '点「整卡组」→ 会话词源切到 deck');
+  ok(whole.tiles.length === 120, '整卡组 60 张卡全进本局（120 张牌，不再是 20 张那一关）');
+  ok(match.roundCount(whole) === 12 && match.liveTiles(whole).length === 10, '共 12 轮，棋盘仍只铺当前轮的 10 张');
+  ok(appViewEl.innerHTML.includes('明牌配对 · 整卡组'), '页头标题切到「明牌配对 · 整卡组」');
+  ok(appViewEl.innerHTML.includes('整卡组 60 张卡全都在本局里'), '页头如实说明整卡组已全部纳入');
+  await fire('match-source', { kind: 'level', level: '0' });
+  ok(
+    match.getMatchSession().source.kind === 'level' && match.getMatchSession().tiles.length === 40,
+    '点关卡 chip → 切回单关词源（40 张牌）'
+  );
+  await fire('match-source', { kind: 'level', level: '9' });
+  ok(match.getMatchSession().source.level === 0, '未通关的关卡词源被忽略（仍停在第 1 关）');
 
   globalThis.location.hash = '#/deck/' + mp.id;
   (winListeners['hashchange'] || []).forEach((fn) => fn({ type: 'hashchange' }));

@@ -1,6 +1,6 @@
 # Progress — 完成度与遗留
 
-> 更新时间：2026-10-10 ｜ APP `v0.7.0` / SW `v1.12.0` ｜ **3453 条校验全绿**
+> 更新时间：2026-10-10 ｜ APP `v0.9.0` / SW `v1.14.0` ｜ **3796 条校验全绿**
 
 ## 已交付（按版本）
 
@@ -213,15 +213,46 @@
 - **接线**：`js/app.js` `APP_VERSION = 'v0.7.0'`；`sw.js` `VERSION = 'v1.12.0'` ＋ PRECACHE 增 `./js/keyboard.js`；`css/style.css` 新增 `.kb-bar` / `.kb-bar[hidden]` / `.kb-key` / `.kb-key-wide` / `.kb-key-back` / `.kb-mini` / `@keyframes kbUp` / `body.kb-open #view`，`:root` 补 `--kb-h: 190px`
 - 测试：新增 `scripts/test-keyboard.mjs`（**52** 条：环境判定 / 键位 HTML / open·hide·show·close 四态 / DOM 三态 / `syncInputs` / 事件派发（字母·退格·空格·回车·非法值·未展开不派发）/ 视口监听只绑一次 / 无 DOM 降级）；`test-crossword` 173 → **213**（触屏格子尺寸语义 + 键盘三态 + 敲字母 / 退格 / 收起 / 唤出 / 完成后收场）；`test-fill` 85 → **115**（键盘接入 + 空格键 + 草稿不落盘 + 切选择题收场）；`smoke-dom` 253 → **267**（触屏进填字页 / 填空题自动展开、`inputmode=none`、点键写格、收起-唤出、离场收起；桩新增 `.cw-input` 重建与 `document.querySelectorAll` 委托）；`test-a11y` 109 → **124**（键盘 role/aria-label/`[hidden]`/一次性动画/两处接入）；`verify-assets` 446 → **476**（第 10 节：模块导出符号 / 两处接入 / CSS 三态与媒体查询 / `--kb-h` / 三个测试覆盖）
 
-## 测试资产（29 个 test-*.mjs + `smoke-dom` + `verify-assets` = 31 个脚本 / 3453 条断言）
+**v0.7.1** 明牌配对支持「整个卡组」词源（不再 20 张就结束）
+- **词源抽象**：新增 `source` 纯数据（`{kind:'deck'}` / `{kind:'level', level:n}`）+ `normalizeSource`（**兼容旧写法**：数字 / 数字字符串 / 只有 `level` 字段的对象 → 关卡词源，保证老调用与老会话不炸）、`stateSource(state)`、`defaultSource`（默认仍是最高已通关关卡）、`isValidSource`（整卡组恒有效、关卡必须仍已通关）、`sourceLabel` / `matchTitle`、`sourceLimit`（单关 `MAX_PAIRS = 30` / 整卡组 **`MAX_DECK_PAIRS = 300`**）、`sourceTotal`、`sourceCards`；`levelCardsFor` 保留为关卡词源的薄包装
+- **机制不变即实现需求**：`buildBoard` 只管把「卡片数组」按每轮 5 对切轮，所以整卡组 80 张 → 160 张牌 → **16 轮一轮一轮配完**，棋盘仍然只渲染当前轮 10 张（DOM 不膨胀）；`newSession(deckId, source, cards, …)` 写 `source`（并保留 `level = source.level ?? null` 兼容旧字段）
+- **UI**：头部 chips = 词源选择（`data-action="match-source"` + `data-kind` + `data-level`；「整卡组（N 张）」+ 各已通关关卡；点当前词源直接 return 不白洗一局；未通关 / 非法关卡被 `isValidSource` 挡掉）；页头标题 `matchTitle(source)`、空态文案（卡组 / 关卡分别措辞）、`sourceNoteHtml`（整卡组 > 300 张时提示「已纳入 300/2000 张卡」，否则说明「整卡组 N 张卡全都在本局里」）；`js/decks.js` 入口横幅补「整卡组 N 张」
+- **接线**：`js/app.js` `APP_VERSION = 'v0.7.1'`；`sw.js` `VERSION = 'v1.12.1'`
+- 测试：`test-match` 260 → **292**（词源归一化兼容 / sourceLimit·sourceTotal·sourceCards / 整卡组 80 张 → 160 张牌 = 16 轮 / 棋盘只铺 10 张 / 点当前词源不重开 / 再玩一次仍是整卡组 / 切回关卡词源 / 页头标题与说明）；`smoke-dom` 267 → **275**（`#/match` 点「整卡组」→ 120 张牌 / 12 轮 / 标题与说明切换 / 未通关关卡被忽略 / 切回单关）；`verify-assets` 476 → **482**（词源内核 / chips 动作 / 横幅文案）；`test-a11y` 124（chips 断言改为「选择词源」+ `match-source` + `aria-pressed`）
+
+**v0.8.0** 多端同步（WebDAV：词库 + 学习数据 + 学习进度）
+- **`js/webdav.js`（新）**：零依赖极简客户端 —— `normalizeBase` / `normalizeDir` / `buildUrl`（逐段 `encodeURIComponent`，中文/空格目录可用）/ `authHeader`（Basic，UTF-8 安全）/ `probe`（PROPFIND，207 视为可用）/ `ensureCollection`（**逐级 MKCOL**，405 = 已存在）/ `getText`（404 → `{exists:false}`，不是错误）/ `putText`（`createOnly` 带 `If-None-Match: *` 抢锁）/ `remove`；失败统一 `WebdavError(status)`，`explainError()` 翻成中文（401/403/404/409/412/423/507/5xx/跨域）；`AbortController` 超时（缺省 20s）；无 `fetch` 环境明确报错
+- **`js/sync.js`（新）**：**纯函数合并内核 `mergeSnapshots(local, remote, {now, device})` → `{snapshot, stats}`**（不碰 DOM / 网络 / 存储）+ `syncNow()` 编排（建目录 → 抢锁 → 拉远端 → 合并 → 有旧文件则备份 → 写回 → `applySyncDecks` 落库 → 存墓碑）+ 配置读写 + 自动同步（`signature()` 数据指纹 + `initAutoSync()` + `notifyDataChanged()` + `AUTO_MIN_GAP`）
+- **同步范围**：全部卡组与卡片字段 + 每卡复习调度（`state/repetitions/interval/easeFactor/due/lastReview`）+ `revlog` + `passedLevels` + `cardsPerLevel`
+- **冲突分治**：内容（卡面 / 卡组元信息 / 关卡归属）按 `updatedAt` 新者胜；调度按 `lastReview` 新者胜（**进度只进不退**）；日志按 id 并集；`passedLevels` 并集；设置按快照 `savedAt`；**合并幂等**（`test-sync` 有断言）
+- **删除同步**：`store` 在 `deleteCard/deleteCards/deleteDeck` 记墓碑（`mycard-sync-tombstones`，TTL 90 天 / 上限 4000）；`cardDeletedAt` / `deckDeletedAt` 只在「删除时间 > 对方副本的最后修改/复习时间」时真删 —— **对方删后又改过/背过则保留**（防误删数据）
+- **存储层配套**：卡片 / 卡组新增 `updatedAt`（`CARD_CONTENT_KEYS` 判定 → 只有内容编辑才推进，纯学习动作不推进）；`deckMetaOf` 带上 `updatedAt`；`createDeck/addCard/addManyCards/updateDeck/togglePause/markLevelPassed/resplitDeck/rearrangeDeck/seedBuiltinDeck` 全部打时间戳；`applySyncDecks()` = **唯一合并落库入口**（保留 id、`revlog` 一起回写、删除本地多出来的卡组/卡片）；`resetAll()` 连墓碑一起清
+- **设置页 UI**：新增「多端同步（WebDAV）」区块（服务器地址 / 用户名 / 密码 / 同步目录 / 记住密码 / 打开应用时自动同步 / 数据变更后自动同步 + 测试连接 / 立即同步 / 保存设置 / 清除密码 + 状态区（成功/失败配色 + 上次时间 + 本机标识）+ 跨域提示），动作 `sync-save` / `sync-toggle` / `sync-clear` / `sync-test` / `sync-now`；`app.js` 启动 `sync.initAutoSync()`、`pagehide` 时 `sync.notifyDataChanged()`；「关于」区块同步改写为「默认不上传任何服务器」
+- **接线**：`js/app.js` `APP_VERSION = 'v0.8.0'`；`sw.js` `VERSION = 'v1.13.0'` ＋ PRECACHE 增 `./js/webdav.js` / `./js/sync.js`；`css/style.css` 新增 `.sync-grid` / `.sync-row`（窄屏单列）/ `.sync-check` / `.sync-status`（is-good / is-bad）/ `.sync-actions`
+- **「每关词数」也能双向同步（v0.9.0 顺手修掉的老问题）**：以前合并规则是「设置取快照 `savedAt` 更新的一方」，但本地快照的 `savedAt` 恒等于 `now` → **远端永远赢不了**（等于单向）。现在 `store` 给全局设置加了 `settings.updatedAt`（`setSetting('cardsPerLevel', …)` 只在值真的变了时推进），合并改为**优先比它**、老数据没这个字段才退回 `savedAt`；`applySyncDecks()` 落库时把合并结果里的 `updatedAt` 一起写回（否则「本机刚采纳」会被当成「本机刚改」）。
+- 测试：新增 `scripts/test-sync.mjs`（**103** 条：WebDAV（URL/认证/五个动作/错误映射/超时/无 fetch）+ 合并内核（卡片内容与进度分治 / 日志并集 / 墓碑与复活 / 卡组与快照合并 / 幂等 / 统计）+ 快照往返（buildSnapshot → resetAll → applySyncDecks → id/进度/revlog 全还原）+ 墓碑 TTL + 配置（记住密码与否 / 清凭据 / 状态文案）+ 自动同步接线）；`smoke-dom` 275 → **289**（设置页同步区块渲染 + 无配置不发请求 + 保存/测试连接/立即同步的请求序列与结果落盘）；`test-a11y` 124 → **137**（同步表单 label/type=password/checkbox/原生 button/状态区/esc 转义/窄屏单列/危险色变量）；`verify-assets` 482 → **522**（第 11 节：两个模块的存在与 PRECACHE、导出符号、字段语义、接线与 CSS）
+
+**v0.9.0** 多端同步增强：增量传输（索引 + 分卡组文件）+ 同步前预览差异 + 「本机专用」卡组
+- **网盘布局（`SNAPSHOT_VERSION = 2`）**：`mycard-sync.json` = **索引**（每卡组的 `name/cardCount/updatedAt/maxCardUpdated/maxLastReview/hash` + 设置 + 墓碑），`mycard-decks/{deckId}.json` = 各卡组完整内容（卡面 + 调度 + revlog），`mycard-decks/{deckId}.prev.json` / `mycard-sync.prev.json` = 覆盖前备份，`mycard-sync.lock.json` = 锁；`deckFileName` 把 URL/路径不友好字符换成 `-` 并追加指纹（**不预先 encode**，`webdav.buildUrl` 已逐段编码）；兼容 v0.8.0 单文件快照（读到老格式照常合并，第一次同步后升级为新布局，老文件原样存进 `mycard-sync.prev.json`）
+- **指纹**：`stableStringify`（键名排序、递归）+ `deckHash`（FNV-1a 32 位十六进制）→ **与字段顺序无关**，两端内容一致必同指纹（只影响「要不要传」，不影响合并正确性）
+- **增量读 `readRemote`**：先 GET 索引 → 逐卡组比对指纹，**相同就不下载**（直接用本地那份当远端）、本地记了墓碑的卡组必须拉下来判删除、索引里有但文件缺失 → 按「远端没有」处理并标记 `missing`（稍后强制重传）
+- **增量写 `writeRemote` + `uploadPlan`**：只 PUT 内容变化的卡组（先 `ensureCollection` 建 `mycard-decks`）、被覆盖的卡组文件先存 `.prev.json`、索引覆盖前存 `mycard-sync.prev.json`、合并后消失的卡组 `DELETE` 掉远端文件
+- **预览差异（只读）**：`mergeSnapshots` 增加 `report`（`buildReport`：逐卡组 新增/更新/删除卡片数、日志条数、**冲突明细**——同卡两端都改过时内容取谁（比 `updatedAt`）、进度取谁（比 `lastReview`））；`planSync()`（只 GET，不写、不抢锁）→ `previewSync()`（本机/网盘/合并后规模 + report + `fetched`/`missing`/`toUpload`/`toRemove`/`localOnly`）+ `previewText()` / `countsOf()`；`syncNow()` = 抢锁 → `planSync()` → `writeRemote()` → `applySyncDecks()`
+- **本机专用卡组（`deck.syncLocal`）**：`isLocalOnlyDeck` / `localOnlyDeckIds`；`buildSnapshot` 跳过它并**过滤它（及其卡片）的墓碑**；`signature()` 不计它（改它不触发自动同步）；落库时以 `keepDeckIds` 传给 `applySyncDecks`（**不覆盖也不删除**）；`deleteDeck` / `deleteCard(s)` 对它是**不记墓碑**（删除不外传）；`deckPayload` 不外带该标记（每台设备各自选择）；`DB` 侧 `normalizeDeck` / `deckMetaOf` / `createDeck` / `updateDeck` 都带上它
+- **UI**：`app.js` 设置页新增「预览差异」按钮 + `syncPreviewModal`（`ui.openModal({ wide: true })`：本机/网盘/合并后规模 `sync-counts`、逐卡组变化表 `sync-table`（`th scope=col`）、冲突列表 `sync-conflict-list`、传输量与「只读」说明；「开始同步」与「立即同步」共用 `runSync()`）、「已排除 N / M 个本机专用卡组」提示、网盘文件布局说明；`decks.js` 卡组编辑弹窗 `name="syncLocal"` 勾选框 + 卡组页 ⋮ 菜单 `deck-local` 开关 + 卡组卡片 / 详情页 `.pill-local` 标记
+- **接线**：`js/app.js` `APP_VERSION = 'v0.9.0'`；`sw.js` `VERSION = 'v1.14.0'`；`css/style.css` 新增 `.pill-local` / `.sync-note` / `.sync-counts` / `.sync-table` / `.sync-conflict-list` / `.modal-wide`（窄屏 `.sync-counts` 单列）
+- 测试：`test-sync` 103 → **169**（新增**假 WebDAV 服务端桩** `makeServer`：首次全量上传 / 空索引不产生 prev / **数据没变 → 零卡组传输** / **只改一个卡组 → 只 PUT 它** / 另一端新增卡组 → **只 GET 它** / 墓碑删除 + 远端残留文件被 DELETE / 本机专用不上传·不被删·不外传墓碑·不影响指纹 / **预览只发 GET 且冲突来源正确** / **v1 单文件快照自动升级**）；`smoke-dom` 289 → **305**（设置页「预览差异」按钮与提示、卡组页「本机专用」标记、卡组菜单开关、编辑弹窗勾选框选中态、预览弹窗内容与「只发 GET、不改数据」）；`test-a11y` 137 → **146**（预览按钮 / openModal 复用 / 表格 `scope=col` / modal-wide / 只读说明 / 本机专用 checkbox 与文字标记）；`verify-assets` 522 → **558**（第 12 节：常量、指纹、manifest、增量读写、预览、本机专用、UI 接线与 CSS）
+- **限制（已在 README 说明）**：增量粒度是**整卡组**（改一张卡重传该卡组文件）；索引每次同步都会刷新；不做三方合并（但预览能提前看到冲突取哪一端）
+
+## 测试资产（30 个 test-*.mjs + `smoke-dom` + `verify-assets` = 32 个脚本 / 3796 条断言）
 | 分类 | 脚本 |
 | --- | --- |
 | 核心纯函数 | `test-core`(43) `test-difficulty`(39) `test-arrange`(22) `test-pagination`(25) `test-resplit-levels`(26) `test-revlog`(58) |
 | 学习与题型 | `test-confusables`(82) `test-hardwords`(26) `test-level-retry`(78) `test-fill`(115，含移动端字母键盘) `test-listen`(21) `test-deck-test`(92) `test-eng-eng`(34) `test-multi-sense`(39) `test-review-complete`(11) `test-review-interaction`(18) |
 | 存储与主题 | `test-idb-store`(80) `test-theme`(150) |
-| 新功能 | `test-add-words`(110) `test-import-file`(336) `test-table-editor`(223) `test-export`(155) `test-xlsx`(125) `test-wordbook`(124) `test-match`(260，明牌配对：≥1 关解锁 / 分轮建牌与洗牌 / 爆炸消除 / 状态机 / 连击 / 薄 UI / 连击提示贴右下角 / 棋局只存内存重进即重洗) `test-crossword`(213，填字游戏：词条清洗与去重 / canPlace 四条规则 / 交叉排版生成与可复现 / 逐格状态机 / 移动端格子尺寸与字母键盘 / 打字只打补丁的薄 UI / 入口横幅) `test-keyboard`(52，移动端英文字母键盘：#kb-bar 单例 / 键位 / 四态 / 三态 DOM / inputmode 同步 / 事件派发) |
-| 无障碍 | `test-a11y`(124，键盘焦点环 / aria 覆盖 / 减少动效 / 弹窗焦点管理 / 配对页·填字页·字母键盘标注) |
-| DOM / 资源 | `smoke-dom`(267) `verify-assets`(476) |
+| 新功能 | `test-add-words`(110) `test-import-file`(336) `test-table-editor`(223) `test-export`(155) `test-xlsx`(125) `test-wordbook`(124) `test-match`(292，明牌配对：≥1 关解锁 / 词源（整卡组·已通关关卡）/ 分轮建牌与洗牌 / 爆炸消除 / 状态机 / 连击 / 薄 UI / 连击提示贴右下角 / 棋局只存内存重进即重洗) `test-crossword`(213，填字游戏：词条清洗与去重 / canPlace 四条规则 / 交叉排版生成与可复现 / 逐格状态机 / 移动端格子尺寸与字母键盘 / 打字只打补丁的薄 UI / 入口横幅) `test-keyboard`(52，移动端英文字母键盘) `test-sync`(169，多端同步：WebDAV 客户端 / 合并内核 / 快照往返 / 墓碑 / 配置 / 增量布局（假服务端：只传变化·只下载变化·预览只读·本机专用·v1 升级）) |
+| 无障碍 | `test-a11y`(146，键盘焦点环 / aria 覆盖 / 减少动效 / 弹窗焦点管理 / 配对页·填字页·字母键盘·同步表单标注) |
+| DOM / 资源 | `smoke-dom`(305) `verify-assets`(558) |
 | 性能金丝雀 | `test-perf`(29，1 万词 / 500 关：统计/分组/抽题（含优先池读取次数）+ 耗时) |
 
 ## 已知问题 / 技术债

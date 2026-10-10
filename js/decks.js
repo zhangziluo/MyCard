@@ -60,6 +60,7 @@ function deckTileHtml(deck) {
       <h3 class="deck-name">${esc(deck.name)}</h3>
       ${deck.paused ? '<span class="pill pill-paused">已暂停</span>' : ''}
       ${deck.demo ? '<span class="pill pill-demo">示范</span>' : ''}
+      ${deck.syncLocal ? '<span class="pill pill-local">本机专用</span>' : ''}
     </div>
     ${deck.description ? `<p class="deck-desc">${esc(deck.description)}</p>` : ''}
     <div class="tag-row">${tagBadges(deck.tags, '', false)}</div>
@@ -262,7 +263,8 @@ export function renderDeck(root, deckId) {
 
   const heroBadges = [
     deck.paused ? '<span class="pill pill-paused">已暂停</span>' : '',
-    deck.demo ? '<span class="pill pill-demo">示范</span>' : ''
+    deck.demo ? '<span class="pill pill-demo">示范</span>' : '',
+    deck.syncLocal ? '<span class="pill pill-local">本机专用（不参与同步）</span>' : ''
   ].join('');
 
   const passedCount = levels.filter((l) => states[l.index] === 'passed').length;
@@ -274,7 +276,7 @@ export function renderDeck(root, deckId) {
         <span class="match-banner-icon" aria-hidden="true">${icon('layers', 22)}</span>
         <span class="match-banner-body">
           <b>明牌配对 · 玩一局</b>
-          <span>把「${esc(deck.name)}」的单词与释义两两配对 · 每轮 ${match.ROUND_PAIRS} 对（可选 ${passedCount} 个已通关关卡）</span>
+          <span>把「${esc(deck.name)}」的单词与释义两两配对 · 每轮 ${match.ROUND_PAIRS} 对（整卡组 ${deck.cards.length} 张 / 可选 ${passedCount} 个已通关关卡）</span>
         </span>
         <span class="match-banner-go" aria-hidden="true">开始 ›</span>
       </button>`
@@ -412,6 +414,8 @@ const DECK_FORM_TMPL = (d) => `
         value="${d && d.cardsPerLevel ? d.cardsPerLevel : ''}">
     </label>
     <p class="hint">关卡模式：卡片按设定数量自动分组，顺序解锁，测试 ≥80% 正确率通关。</p>
+    <label class="sync-check"><input type="checkbox" name="syncLocal" ${d && d.syncLocal ? 'checked' : ''}><span>本机专用（不参与多端同步）</span></label>
+    <p class="hint">勾选后这个卡组<b>只留在这台设备</b>：不会上传，也不会被其他设备的内容覆盖或删除（适合私人笔记 / 临时整理的词库）。</p>
   </div>`;
 
 const CARD_FORM_TMPL = (c) => `
@@ -452,7 +456,8 @@ function deckFormModal(deck) {
             name: v.name,
             description: v.description,
             tags: parseTags(v.tags),
-            cardsPerLevel: v.cardsPerLevel === '' ? null : Number(v.cardsPerLevel)
+            cardsPerLevel: v.cardsPerLevel === '' ? null : Number(v.cardsPerLevel),
+            syncLocal: !!v.syncLocal // v0.9.0：本机专用（不参与同步）
           };
           if (isEdit) {
             store.updateDeck(deck.id, patch);
@@ -573,6 +578,7 @@ function deckMenu(deckId) {
       <div class="menu-list">
         <button class="menu-item" data-action="deck-edit" data-id="${esc(deck.id)}">${icon('edit', 18)} 编辑卡组</button>
         <button class="menu-item" data-action="deck-pause" data-id="${esc(deck.id)}">${icon(deck.paused ? 'play' : 'pause', 18)} ${deck.paused ? '恢复卡组' : '暂停卡组'}</button>
+        <button class="menu-item" data-action="deck-local" data-id="${esc(deck.id)}">${icon(deck.syncLocal ? 'refresh' : 'lock', 18)} ${deck.syncLocal ? '允许参与多端同步' : '设为本机专用（不同步）'}</button>
         <button class="menu-item" data-action="open-cards-from-menu" data-id="${esc(deck.id)}">${icon('cards', 18)} 管理卡片（${deck.cards.length} 张）</button>
         ${
           (store.getUserDeck() || {}).id === deck.id
@@ -623,6 +629,17 @@ on('deck-pause', (el) => {
   const d = store.togglePause(el.dataset.id);
   if (d) toast(d.paused ? '已暂停，不再参与复习提醒' : '已恢复学习');
   navigate(`#/deck/${el.dataset.id}`);
+});
+
+/* v0.9.0：本机专用（不参与多端同步）开关 */
+on('deck-local', (el) => {
+  closeModal();
+  const deck = store.getDeck(el.dataset.id);
+  if (!deck) return;
+  const next = !deck.syncLocal;
+  store.updateDeck(deck.id, { syncLocal: next });
+  toast(next ? '已设为本机专用：这个卡组不会再同步到网盘' : '已允许同步：下次同步会上传到网盘', next ? 'warn' : 'good');
+  navigate(`#/deck/${deck.id}`);
 });
 
 on('deck-delete', async (el) => {

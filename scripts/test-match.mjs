@@ -574,8 +574,10 @@ ok(ROOT._html.includes('role="progressbar" aria-label="配对进度" aria-valuem
 ok(ROOT._html.includes('aria-pressed="false"'), '未选中的牌 aria-pressed=false');
 ok(ROOT._html.includes('match-tile-word') && ROOT._html.includes('match-tile-def'), '词牌 / 义牌 class 区分（视觉可辨）');
 ok(ROOT._html.includes('aria-label="单词「') && ROOT._html.includes('aria-label="释义「'), '牌面有中文 aria-label（读屏可懂）');
-ok((ROOT._html.match(/data-action="match-level"/g) || []).length === 3, '关卡选择只列 3 个已通关关卡');
-ok(ROOT._html.includes('class="match-lv is-active" data-action="match-level" data-level="2"'), '当前关卡 chip 高亮');
+ok((ROOT._html.match(/data-action="match-source"/g) || []).length === 4, '词源选择 = 整卡组 + 3 个已通关关卡');
+ok(ROOT._html.includes('整卡组（80 张）'), '「整卡组」chip 写明本卡组卡片数');
+ok(ROOT._html.includes('class="match-lv is-active" data-action="match-source" data-kind="level" data-level="2"'), '当前关卡 chip 高亮');
+ok(!ROOT._html.includes('data-kind="deck" aria-pressed="true"'), '默认词源不是整卡组（默认仍是最高已通关关卡）');
 ok(ROOT._html.includes('id="match-result"') && ROOT._html.includes('hidden'), '结算面板初始隐藏');
 ok(session().level === 2 && session().tiles.length === 40, '会话已建立（第 3 关整关 40 张牌 = 4 轮）');
 ok(session().roundPairs === 5 && session().round === 0, '会话记住每轮 5 对 / 当前第 1 轮');
@@ -736,13 +738,75 @@ ok(session().level === 2 && session().tiles.length === 40, '重开保持同一�
 ok(session().tiles.map((t) => t.id).join() !== before.tiles.map((t) => t.id).join(), '重开会重新洗牌');
 ok(tiles.length === 10 && session().round === 0, '重开后 DOM 只铺第 1 轮的 10 张牌');
 ok(session().matched.length === 0 && matchMod.roundLeft(session()) === 5, '重开后回到第 1 轮 / 本轮还剩 5 对');
-act('match-level', { level: '0' });
-ok(session().level === 0 && ROOT._html.includes('明牌配对 · 第 1 关'), '换关 → 重新开局到指定关卡');
-ok(ROOT._html.includes('class="match-lv is-active" data-action="match-level" data-level="0"'), '关卡 chips 高亮跟随');
-act('match-level', { level: '3' });
+act('match-source', { kind: 'level', level: '0' });
+ok(session().level === 0 && ROOT._html.includes('明牌配对 · 第 1 关'), '换词源 → 重新开局到指定关卡');
+ok(ROOT._html.includes('class="match-lv is-active" data-action="match-source" data-kind="level" data-level="0"'), '关卡 chips 高亮跟随');
+act('match-source', { kind: 'level', level: '3' });
 ok(session().level === 0, '未通关的关卡不可切换');
-act('match-level', { level: 'xx' });
+act('match-source', { kind: 'level', level: 'xx' });
 ok(session().level === 0, '非法关卡号安全忽略');
+
+console.log('\n[整卡组词源：一轮一轮配到本卡组没有对为止（v0.7.1）]');
+const beforeWhole = session();
+act('match-source', { kind: 'deck' });
+const whole = session();
+ok(whole.source.kind === 'deck' && whole.level === null, '切到「整卡组」→ 会话词源 = deck');
+ok(whole.tiles.length === 2 * 80, '整卡组 80 张卡 → 160 张牌（不再是 20 张那一关）');
+ok(whole.roundPairs === 5 && matchMod.roundCount(whole) === 16, '每轮 5 对 → 共 16 轮');
+ok(matchMod.liveTiles(whole).length === 10, '棋盘仍然只铺当前轮的 10 张牌（DOM 不会爆）');
+ok(ROOT._html.includes('明牌配对 · 整卡组'), '页头标题 = 明牌配对 · 整卡组');
+ok(
+  ROOT._html.includes('class="match-lv is-active" data-action="match-source" data-kind="deck"'),
+  '「整卡组」chip 高亮'
+);
+ok(ROOT._html.includes('整卡组 80 张卡全都在本局里'), '页头如实说明：整卡组全部纳入');
+ok(whole.tiles.length > beforeWhole.tiles.length, '整卡组的牌数多于单关词源');
+ok(
+  session().tiles.map((t) => t.cardId).join() !== beforeWhole.tiles.map((t) => t.cardId).join(),
+  '切词源会重新洗牌（牌面全换）'
+);
+
+/* 整卡组的卡片集合 = 该卡组全部卡片（每张卡恰好一张词牌 + 一张义牌） */
+const deckIds = new Set(store.getDeck(d3.id).cards.map((c) => c.id));
+ok(whole.tiles.every((t) => deckIds.has(t.cardId)), '整卡组牌面全部来自本卡组');
+ok(new Set(whole.tiles.map((t) => t.cardId)).size === 80, '80 张卡都在（无遗漏 / 无重复）');
+
+/* 一路配到第 16 轮结束 → 结算（验证「不是 20 张就结束」） */
+act('match-pick', { tile: matchMod.liveTiles(session()).find((t) => t.kind === 'word').id });
+const firstWordTile = session().selectedId;
+act('match-pick', { tile: 'd-' + session().tiles.find((t) => t.id === firstWordTile).cardId });
+await tick(); // 消化「爆炸消除」的定时器，避免它落到切换词源之后
+ok(session().matched.length === 2, '整卡组模式下配对照常生效');
+ok(matchMod.roundLeft(session()) === 4, '本轮还剩对数 5 → 4');
+ok(matchMod.roundCount(session()) === 16, '配完 1 对后总轮数仍是 16（跨轮累计）');
+
+/* 打完一整轮 → 自动铺下一轮（整卡组模式下一轮一轮继续，而不是结束） */
+act('match-pick', { tile: matchMod.liveTiles(session()).find((t) => t.kind === 'word').id });
+ok(session().round === 0, '（本轮还剩 3 对，尚未铺下一轮）');
+act('match-source', { kind: 'deck' }); // 点同一个词源不重开
+ok(session().round === 0 && session().matched.length === 2, '点当前词源 → 不重开（避免误触白洗一局）');
+
+/* 整卡组上限兜底：卡片数 > MAX_DECK_PAIRS 时截断并提示 */
+ok(matchMod.MAX_DECK_PAIRS === 300, 'MAX_DECK_PAIRS = 300（整卡组兜底上限）');
+ok(matchMod.sourceLimit({ kind: 'deck' }) === 300 && matchMod.sourceLimit({ kind: 'level', level: 0 }) === 30, '取卡上限：整卡组 300 / 单关 30');
+ok(matchMod.sourceTotal(d3, { kind: 'deck' }) === 80 && matchMod.sourceTotal(d3, { kind: 'level', level: 0 }) === 20, 'sourceTotal：整卡组 80 / 第 1 关 20');
+ok(matchMod.sourceCards(d3, { kind: 'deck' }, 7).length === 7, 'sourceCards 支持显式上限');
+ok(matchMod.normalizeSource(2).kind === 'level' && matchMod.normalizeSource(2).level === 2, 'normalizeSource 兼容旧的「关卡号」写法');
+ok(matchMod.normalizeSource({ level: 1 }).level === 1, 'normalizeSource 兼容只有 level 字段的旧会话');
+ok(matchMod.normalizeSource('deck').kind === 'deck' && matchMod.normalizeSource(null).kind === 'deck', 'normalizeSource：deck / null → 整卡组');
+ok(matchMod.isValidSource(d3, { kind: 'deck' }) === true && matchMod.isValidSource(d3, { kind: 'level', level: 9 }) === false, 'isValidSource 与解锁规则一致');
+ok(matchMod.sourceLabel({ kind: 'deck' }) === '整卡组' && matchMod.sourceLabel({ kind: 'level', level: 2 }) === '第 3 关', 'sourceLabel 文案');
+ok(matchMod.matchTitle({ kind: 'deck' }) === '明牌配对 · 整卡组', 'matchTitle 文案');
+ok(matchMod.stateSource({ level: 3 }).kind === 'level' && matchMod.stateSource({ source: { kind: 'deck' } }).kind === 'deck', 'stateSource：旧会话按关卡、新会话按 source');
+
+/* 再玩一次 → 同一词源（整卡组）重新洗牌 */
+const wholeOrder = session().tiles.map((t) => t.id).join();
+act('match-replay');
+ok(session().source.kind === 'deck' && session().matched.length === 0, '再玩一次 → 仍是整卡组、进度清零');
+ok(session().tiles.length === 160 && session().tiles.map((t) => t.id).join() !== wholeOrder, '再玩一次 → 整卡组重新洗牌');
+
+act('match-source', { kind: 'level', level: '2' });
+ok(session().source.kind === 'level' && session().level === 2 && session().tiles.length === 40, '切回关卡词源正常');
 act('match-back');
 ok(location.hash === '#/deck/' + d3.id, '返回卡组 → 跳回 #/deck/{id}');
 ok(session() === null, '返回时清空会话（内存）');
@@ -848,8 +912,8 @@ ok(/seg\[0\] === 'match' && seg\[1\]/.test(appSrc), 'app.js 解析 #/match/{deck
 ok(/case 'match':[\s\S]{0,200}t = '明牌配对'/.test(appSrc), "顶栏标题「明牌配对」+ 返回卡组");
 ok(/route\.view === 'match'[\s\S]{0,140}renderMatch\(root, route\.id\)/.test(appSrc), 'render() 分发到 renderMatch');
 ok(/clearMatchSession\(\); \/\/ 同时清除配对棋局与计时器/.test(appSrc), 'hashchange 清空配对会话与计时器');
-ok(/v0\.7\.0/.test(appSrc) && /通关 ≥\s?1 关/.test(appSrc), 'APP_VERSION 升到 v0.7.0（解锁 ≥1 关）');
-ok(swSrc.includes("'./js/match.js'") && /VERSION = 'v1\.12\.0'/.test(swSrc), 'sw.js 预缓存 match.js 且 VERSION = v1.12.0');
+ok(/v0\.8\.0/.test(appSrc) && /通关 ≥\s?1 关/.test(appSrc), 'APP_VERSION 升到 v0.8.0（解锁 ≥1 关）');
+ok(swSrc.includes("'./js/match.js'") && /VERSION = 'v1\.14\.0'/.test(swSrc), 'sw.js 预缓存 match.js 且 VERSION = v1.14.0');
 ok(
   !/sessionStorage\.(setItem|getItem|removeItem)/.test(read('js/match.js')),
   'match.js 不再读写 sessionStorage（棋局只存内存：重进即重新洗牌）'
