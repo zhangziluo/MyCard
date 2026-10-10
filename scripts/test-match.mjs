@@ -805,8 +805,8 @@ ok(/seg\[0\] === 'match' && seg\[1\]/.test(appSrc), 'app.js 解析 #/match/{deck
 ok(/case 'match':[\s\S]{0,200}t = '明牌配对'/.test(appSrc), "顶栏标题「明牌配对」+ 返回卡组");
 ok(/route\.view === 'match'[\s\S]{0,140}renderMatch\(root, route\.id\)/.test(appSrc), 'render() 分发到 renderMatch');
 ok(/clearMatchSession\(\); \/\/ 同时清除配对棋局与计时器/.test(appSrc), 'hashchange 清空配对会话与计时器');
-ok(/v0\.5\.13/.test(appSrc) && /通关 ≥\s?1 关/.test(appSrc), 'APP_VERSION 升到 v0.5.13（解锁 ≥1 关）');
-ok(swSrc.includes("'./js/match.js'") && /VERSION = 'v1\.10\.3'/.test(swSrc), 'sw.js 预缓存 match.js 且 VERSION = v1.10.3');
+ok(/v0\.6\.0/.test(appSrc) && /通关 ≥\s?1 关/.test(appSrc), 'APP_VERSION 升到 v0.6.0（解锁 ≥1 关）');
+ok(swSrc.includes("'./js/match.js'") && /VERSION = 'v1\.11\.0'/.test(swSrc), 'sw.js 预缓存 match.js 且 VERSION = v1.11.0');
 ok(existsSync(resolve(ROOTDIR, 'js/match.js')) && existsSync(resolve(ROOTDIR, 'scripts/test-match.mjs')), 'js/match.js 与 scripts/test-match.mjs 均存在');
 ok(/data-action="open-match" data-id="\$\{esc\(deck\.id\)\}"/.test(decksSrc), 'decks.js 入口横幅 data-action=open-match');
 ok(/on\('open-match', \(el\) => navigate\(`#\/match\/\$\{el\.dataset\.id\}`\)\)/.test(decksSrc), 'decks.js 注册 open-match 动作');

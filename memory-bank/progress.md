@@ -1,6 +1,6 @@
 # Progress — 完成度与遗留
 
-> 更新时间：2026-10-06 ｜ APP `v0.5.13` / SW `v1.10.3` ｜ **3012 条校验全绿**
+> 更新时间：2026-10-10 ｜ APP `v0.6.0` / SW `v1.11.0` ｜ **3262 条校验全绿**
 
 ## 已交付（按版本）
 
@@ -183,15 +183,28 @@
 - 测试：`scripts/test-match.mjs` 252 → **254**（`.match-combo` = `right/bottom: 0` ＋ `.match-board-wrap` 有 `padding-bottom: clamp(...)` 留白条 / `combo-kick` 关键帧不含 `translate(-50%, -50%)` / `transform-origin: 100% 100%`）；`verify-assets` 408 → **410**（同一位置的静态断言）；`test-a11y` 93、`smoke-dom` 224 不变
 
 
-## 测试资产（27 个 test-*.mjs + `smoke-dom` + `verify-assets` = 29 个脚本 / 3012 条断言）
+**v0.6.0** 填字游戏（第二个游戏：`#/crossword/{deck}`，按当前词库自定义生成）
+- **解锁与入口**：`js/crossword.js` `UNLOCK_LEVELS = 1` / `unlockInfo(deck)`（复用 `lv.levelStates` 的 `passed` 判定，与明牌配对同门槛）——`js/decks.js` 在配对横幅**下方**再加 `.cw-banner`（`<button data-action="open-crossword">`，内部不嵌套可聚焦控件；未解锁不渲染），`on('open-crossword')` → `#/crossword/{deckId}`；`js/app.js` 新增 `parseHash` 的 `#/crossword/{deckId}`、顶栏 `case 'crossword'`（标题「填字游戏」、返回卡组）、`render()` 分发 `renderCrossword`、`hashchange`/`reset-all` 调 `clearCrosswordSession`
+- **生成器（按当前词库交叉排版，纯函数）**：`sanitizeAnswer(front)`（只留 A–Z 并转大写）→ `entryFromCard`（长度 2–12 才可入盘，线索取 `clueText` = 背面 → 第一条多释义 → 兜底文案）→ `candidateEntries`（**按答案去重**）→ `generateCrossword(cards, { size, rng })`：**最长词横着打底 → 逐个 `findPlacement` 找交叉落点 → 交叉不上就跳过**；`canPlace` 四条排版规则（① 交叉字母必须一致 ② 不叠加两条同向词 ③ 空格的**垂直邻居**必须为空 ④ 词首前 / 词尾后必须为空）；落点评分 = **交叉数 × 10000 − 外框面积**（交叉优先、其次紧凑），**同分保留先遍历到的** → 同 `rng` 结果完全可复现；`buildBoard` 归一化坐标 → **逐行扫描编号**（横竖同起始共用一个号）→ 格子挂 `acrossId`/`downId`
+- **词源 / 规模可切（「自定义生成」的入口）**：`sourceCards(deck, source)` 收敛「**整卡组**」与「**任一已通关关卡**」（默认取最高的已通关关卡，`defaultSource`）；`SIZES = [6, 8, 10, 12]`（`DEFAULT_SIZE = 8`）决定抽词数；换词源 / 换词数 / 「换一批」都只是**重新调 `generateCrossword`**（只有一条代码路径）；「重新开始」则 `newGame` 沿用同一盘棋盘清空重填
+- **逐格填写状态机（纯函数，不可变）**：`newGame` / `setLetter`（`normalizeLetter` 只留 A–Z；清空时同时移除 `wrong`/`revealed` 标记）/ `checkAll`（标出填错格并报剩余空格数）/ `hintCell`（在「还没填对」的格里随机补一格，计提示次数）/ `revealCell` / `revealWord`（按新填格数计提示次数）/ `wordProgress` / `progress`（单遍扫格子 + 复用同一索引扫线索）/ `finalize`（统一维护 `solved` 与 `endedAt`，改错一格即重新计时）/ `playStats` / `formatDuration` / `cellSize(cols, rows, 视口)`（格子边长限幅 18–40px）
+- **薄 UI（输入不整页重渲染）**：答题格是原生 `<input maxlength=1 inputmode="latin" autocapitalize="characters" spellcheck="false">`，`aria-label` 含「第 R 行第 C 列 / 线索号 / 已填字母」；`paintCells`/`paintClues`/`paintStatus` 只打补丁（格子 `value` · `is-wrong` · `is-revealed` · `is-active`，线索 `is-correct` · `is-partial` · `aria-pressed`，状态行 + 四个统计格 + 进度条）——**打字绝不写 `innerHTML`**，否则每敲一个字母都会丢焦点 / 光标 / 输入法候选框；整页 `innerHTML` 只留给「开局 / 换词源 / 换词数 / 换一批 / 重新开始」；`focusCell()` 在「输入字母后推进到下一个空格」「点线索落到第一个空格」「提示后落到新填的格」三处交还焦点
+- **键盘 / 焦点（文档级委托，只绑一次）**：`bindKeysOnce()` 注册 `keydown`（方向键按方向找最近有字母格并把 `dir` 切到横向 / 纵向、Backspace 在空格上回上一格并清掉它、Delete 清当前格、空格拦截）与 `focusin`（按当前方向自动选中所属线索）；线索列表点选 → `selectWord(id, { focus: true })`
+- **检查 / 提示 / 结算**：「检查」→ 填错的格 `is-wrong`（红色 + 一次性 `cw-shake`）＋ `toast` 提示剩余空格数；「提示一字母」→ 随机补一格（`revealed` 标为「已提示」，`is-revealed` 用强调色）；「显示本词」→ 当前线索一次填全（填对的线索变绿 + CSS `::after` 打 ✓）；全部字母正确 → `finishGame()` 填结算面板（**用时 / 提示次数 / 线索数** + 换一批 / 重新开始 / 返回卡组）并把焦点交给「换一批」，`announce()` 播报成绩
+- **会话**：`sessionStorage['mycard-crossword-session']` 存**含答案的棋盘**（词源 / 每局词数 / 排版结果 / 已填与已提示的格 / 提示次数与用时）；复活时逐项校验（格子与线索非空、字母 key 必须落在棋盘内、`wrong`/`revealed` 过滤、选中线索有效、跑一次 `finalize` 纠正 `solved`），损坏一律丢弃重开；`clearCrosswordSession()` 连计时器一起清
+- **样式**：`css/style.css` 新增 `.cw-banner`（青绿强调色区分配对横幅）/ `.cw-head` / `.cw-chip` / `.cw-board-wrap`（过宽**横向滚动**兜底）/ `.cw-board`（列数 `--cw-cols`、格子边长 `--cw-cell` **由 `cellSize()` 内联**，`:root` 给默认值以满足 `verify-assets` 的 `var()` 审计）/ `.cw-cell` · `.cw-num` · `.cw-input`（含 `.is-active`/`.is-revealed`/`.is-wrong`）/ `.cw-clue`（含 `.is-active`/`.is-partial`/`.is-correct`）/ `.cw-actions` / `.cw-done`；新增一次性 `@keyframes cw-shake`；`js/ui.js` 新增 `grid` 图标
+- **接线**：`js/app.js` `APP_VERSION = 'v0.6.0'`；`sw.js` `VERSION = 'v1.11.0'` ＋ PRECACHE 增 `./js/crossword.js`
+- 测试：新增 `scripts/test-crossword.mjs`（**173** 条：解锁判定与之词源合法性 / 词条清洗与去重 / `canPlace` 四条规则与 `findPlacement` 评分 / 棋盘生成（词全在盘上 · 字母一致 · 无非法相邻 · 编号 · 可复现 · 空词库边界）/ 状态机（写清 · 检查 · 提示 · 显示本词 · 进度 · 用时文案 · 格子尺寸）/ 薄 UI DOM 桩（整页渲染 · **打字不整页重渲染** · 焦点推进 · 线索高亮 · 检查标错 · 提示计数 · 显示本词 · 结算与 `announce` · 换一批 / 换词源 / 换词数 / 重新开始 · 会话复活与清场 · 未解锁引导页 · 键盘退格与方向键 · 返回卡组）/ 入口横幅）；`smoke-dom` 224 → **250**（`#/crossword` 棋盘页渲染 + 入口横幅解锁前后 + 各动作可用 + 路由清场）；`test-a11y` 93 → **109**（填字页键盘可达性与标注：原生 input 标注 / 三处 `role=group` / chips `aria-pressed` / 线索 `aria-label` / 进度条 aria / `announce` / 文档级委托 / 一次性抖动动画）；`verify-assets` 410 → **445**（v0.6.0 第 9 节：文件与内核导出符号 / 路由与入口接线 / CSS 变量与关键帧 / 新增测试与图标断言）
+
+## 测试资产（28 个 test-*.mjs + `smoke-dom` + `verify-assets` = 30 个脚本 / 3262 条断言）
 | 分类 | 脚本 |
 | --- | --- |
 | 核心纯函数 | `test-core`(43) `test-difficulty`(39) `test-arrange`(22) `test-pagination`(25) `test-resplit-levels`(26) `test-revlog`(58) |
 | 学习与题型 | `test-confusables`(82) `test-hardwords`(26) `test-level-retry`(78) `test-fill`(85) `test-listen`(21) `test-deck-test`(92) `test-eng-eng`(34) `test-multi-sense`(39) `test-review-complete`(11) `test-review-interaction`(18) |
 | 存储与主题 | `test-idb-store`(80) `test-theme`(150) |
-| 新功能 | `test-add-words`(110) `test-import-file`(336) `test-table-editor`(223) `test-export`(155) `test-xlsx`(125) `test-wordbook`(124) `test-match`(254，明牌配对：≥1 关解锁 / 分轮建牌与洗牌 / 爆炸消除 / 状态机 / 连击 / 薄 UI / 连击提示贴右下角) |
-| 无障碍 | `test-a11y`(93，键盘焦点环 / aria 覆盖 / 减少动效 / 弹窗焦点管理 / 配对页标注) |
-| DOM / 资源 | `smoke-dom`(224) `verify-assets`(410) |
+| 新功能 | `test-add-words`(110) `test-import-file`(336) `test-table-editor`(223) `test-export`(155) `test-xlsx`(125) `test-wordbook`(124) `test-match`(254，明牌配对：≥1 关解锁 / 分轮建牌与洗牌 / 爆炸消除 / 状态机 / 连击 / 薄 UI / 连击提示贴右下角) `test-crossword`(173，填字游戏：词条清洗与去重 / canPlace 四条规则 / 交叉排版生成与可复现 / 逐格状态机 / 打字只打补丁的薄 UI / 入口横幅) |
+| 无障碍 | `test-a11y`(109，键盘焦点环 / aria 覆盖 / 减少动效 / 弹窗焦点管理 / 配对页与填字页标注) |
+| DOM / 资源 | `smoke-dom`(250) `verify-assets`(445) |
 | 性能金丝雀 | `test-perf`(29，1 万词 / 500 关：统计/分组/抽题（含优先池读取次数）+ 耗时) |
 
 ## 已知问题 / 技术债

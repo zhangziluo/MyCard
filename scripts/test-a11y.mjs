@@ -303,8 +303,8 @@ console.log('\n[app.js / sw.js：播报接线与版本]');
 ok(/import \{[^}]*\bannounce\b[^}]*\} from '\.\/ui\.js'/.test(appSrc), 'app.js 从 ui.js 引入 announce');
 ok(/routeKey !== lastRouteKey/.test(appSrc), '仅路由变化时播报（同一路由重渲染不打扰读屏）');
 ok(/const pageTitle = renderAppbar\(route\)/.test(appSrc) && /announce\(pageTitle\)/.test(appSrc), 'render() 用顶栏标题播报当前页面');
-ok(/APP_VERSION = 'v0\.5\.13'/.test(appSrc), 'app.js 版本号 v0.5.13');
-ok(/const VERSION = 'v1\.10\.3'/.test(swSrc), 'sw.js VERSION v1.10.3');
+ok(/APP_VERSION = 'v0\.6\.0'/.test(appSrc), 'app.js 版本号 v0.6.0');
+ok(/const VERSION = 'v1\.11\.0'/.test(swSrc), 'sw.js VERSION v1.11.0');
 
 console.log('\n[明牌配对（#/match）的键盘可达性与标注]');
 {
@@ -351,6 +351,58 @@ console.log('\n[明牌配对（#/match）的键盘可达性与标注]');
     'combo✖️N 连击提示是纯装饰层（aria-hidden，读屏改由 announce 播报）'
   );
   ok(/role="button"/.test(matchSrc) === false, '牌面用原生 button，不重复造 role=button（无需 activateOnKey）');
+}
+
+console.log('\n[填字游戏（#/crossword）的键盘可达性与标注]');
+{
+  const cwSrc = read('js/crossword.js');
+  const cwBannerChunk = (decksSrc.match(/<button type="button" class="cw-banner glass"[\s\S]*?<\/button>/) || [''])[0];
+  const cwBannerInner = cwBannerChunk.replace(/^<button[^>]*>/, '');
+  ok(
+    cwBannerInner.includes('cw-banner-body') && !/<button|<a |tabindex=/i.test(cwBannerInner),
+    '填字入口横幅是原生 button，内部不嵌套可聚焦控件'
+  );
+  ok(/<input class="cw-input"/.test(cwSrc), '答题格是原生 <input>（Tab / 输入法 / 移动端键盘天然可用）');
+  ok(
+    /inputmode="latin"/.test(cwSrc) && /maxlength="1"/.test(cwSrc) && /autocapitalize="characters"/.test(cwSrc),
+    '答题格标注 inputmode / maxlength / autocapitalize（移动端拉起拉丁键盘）'
+  );
+  ok(
+    /aria-label="\$\{esc\(cellAriaLabel\(cell, value\)\)\}"/.test(cwSrc),
+    '答题格有中文 aria-label（行列 + 线索号 + 已填字母）'
+  );
+  ok(/role="group" aria-label="填字棋盘"/.test(cwSrc), '棋盘 role=group + aria-label');
+  ok(
+    /role="group" aria-label="选择词源"/.test(cwSrc) && /role="group" aria-label="选择每局词数"/.test(cwSrc),
+    '词源 / 词数 chips 均为 role=group + aria-label'
+  );
+  ok(
+    /data-action="cw-source"[\s\S]{0,140}aria-pressed=/.test(cwSrc) && /data-action="cw-size"[\s\S]{0,140}aria-pressed=/.test(cwSrc),
+    'chips 带 aria-pressed（当前项为 true）'
+  );
+  ok(
+    /data-action="cw-clue" data-word="\$\{w\.id\}"[\s\S]{0,140}aria-pressed=/.test(cwSrc),
+    '线索是原生 button + aria-pressed（当前线索为 true）'
+  );
+  ok(/aria-label="\$\{kind\} \$\{w\.num\}：\$\{esc\(w\.clue\)\}"/.test(cwSrc), '线索 aria-label 含「横向 / 纵向 + 编号 + 释义」');
+  ok(
+    /role="progressbar" aria-label="填字进度"[\s\S]{0,60}aria-valuemin="0" aria-valuemax="100" aria-valuenow="\$\{p\.percent\}"/.test(cwSrc),
+    '填字进度 role=progressbar + aria-valuemin/max/now'
+  );
+  ok(
+    /announce\(`填字完成/.test(cwSrc) && /announce\('已清空棋盘，重新开始'\)/.test(cwSrc),
+    '完成 / 重新开始用 announce 播报（读屏可感知）'
+  );
+  ok(/focusCell\(/.test(cwSrc) && /btn\.focus\(\)/.test(cwSrc), '提示 / 线索 / 完成后焦点自动落到可继续的位置');
+  ok(
+    /document\.addEventListener\('keydown', onKeyDown, true\)/.test(cwSrc) &&
+      /document\.addEventListener\('focusin', onFocusIn, true\)/.test(cwSrc),
+    '键盘 / 焦点走文档级委托（bindKeysOnce 只绑一次）'
+  );
+  ok(/ArrowLeft/.test(cwSrc) && /Backspace/.test(cwSrc), '方向键移动 / 退格回上一格有键盘等价操作');
+  const cwShake = css.slice(css.indexOf('@keyframes cw-shake'), css.indexOf('@keyframes cw-shake') + 200);
+  ok(/@keyframes cw-shake/.test(css) && !/infinite/.test(cwShake), '填错抖动是一次性动画（不会循环闪烁）');
+  ok(/role="button"/.test(cwSrc) === false, '答题格用原生 input，不重复造 role=button');
 }
 
 /* ==========================================================================

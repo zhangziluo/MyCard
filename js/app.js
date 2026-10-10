@@ -13,8 +13,9 @@ import { renderTest, clearTestSession } from './test.js';
 import { renderTableEditor } from './table-editor.js';
 import { renderWordbook } from './wordbook-view.js'; // v0.5.9 生词本批量整理（#/words）
 import { renderMatch, clearMatchSession } from './match.js'; // v0.5.12 明牌配对（#/match/{deck}）
+import { renderCrossword, clearCrosswordSession } from './crossword.js'; // v0.6.0 填字游戏（#/crossword/{deck}）
 
-const APP_VERSION = 'v0.5.13';
+const APP_VERSION = 'v0.6.0';
 
 /* ------------------------------ 路由解析 ------------------------------ */
 
@@ -49,6 +50,8 @@ function parseHash() {
   }
   // #/match/{deck} → 明牌配对游戏（通关 ≥1 关后解锁）
   if (seg[0] === 'match' && seg[1]) return { view: 'match', id: seg[1], level: null, mode };
+  // #/crossword/{deck} → 填字游戏（通关 ≥1 关后解锁，按当前词库生成棋盘）
+  if (seg[0] === 'crossword' && seg[1]) return { view: 'crossword', id: seg[1], level: null, mode };
   return { view: 'home', mode };
 }
 
@@ -117,6 +120,11 @@ function renderAppbar(route) {
       backHref = route.id ? `#/deck/${route.id}` : '#/home';
       t = '明牌配对';
       break;
+    case 'crossword':
+      showBack = true;
+      backHref = route.id ? `#/deck/${route.id}` : '#/home';
+      t = '填字游戏';
+      break;
     case 'settings':
       showBack = true;
       backHref = '#/home';
@@ -180,6 +188,8 @@ export function render() {
     renderWordbook(root);
   } else if (route.view === 'match') {
     renderMatch(root, route.id);
+  } else if (route.view === 'crossword') {
+    renderCrossword(root, route.id);
   } else {
     decks.renderHome(root);
   }
@@ -332,6 +342,7 @@ on('reset-all', async () => {
     clearReviewSession();
     clearTestSession();
     clearMatchSession();
+    clearCrosswordSession();
     toast('已重置，将重新初始化');
     setTimeout(() => {
       location.hash = '#/home';
@@ -433,6 +444,7 @@ function boot() {
     clearReviewSession();
     clearTestSession(); // 同时清除测试会话与自动跳题定时器
     clearMatchSession(); // 同时清除配对棋局与计时器
+    clearCrosswordSession(); // 同时清除填字棋盘与计时器
     render();
   });
 

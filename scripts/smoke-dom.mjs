@@ -151,8 +151,9 @@ const decks = await import('../js/decks.js');
 const review = await import('../js/review.js');
 const testMod = await import('../js/test.js');
 const match = await import('../js/match.js');
+const crossword = await import('../js/crossword.js');
 console.log('\n[模块加载]');
-ok(true, 'store / decks / review / test / match 均可正常 import（依赖图完整）');
+ok(true, 'store / decks / review / test / match / crossword 均可正常 import（依赖图完整）');
 
 // ---- 造数据：60 张卡组 ----
 const payload = {
@@ -690,6 +691,71 @@ console.log('\n[明牌配对 · 棋盘页（#/match）]');
   globalThis.location.hash = '#/deck/' + mp.id;
   (winListeners['hashchange'] || []).forEach((fn) => fn({ type: 'hashchange' }));
   ok(match.getMatchSession() === null, '路由切换 → 清空配对会话');
+}
+
+// ---- 填字游戏（#/crossword/{deck}，v0.6.0：通关 ≥1 关解锁 · 按当前词库生成）----
+console.log('\n[填字游戏 · 棋盘页（#/crossword）]');
+{
+  const cwWords = ['apple', 'table', 'radio', 'ocean', 'eagle', 'raise', 'train', 'north', 'story', 'years'];
+  const cp = store.seedBuiltinDeck(
+    {
+      name: '填字冒烟组',
+      levelSize: 20,
+      words: Array.from({ length: 60 }, (_, i) => ({
+        front: cwWords[i % cwWords.length] + 'abcdefgh'[Math.floor(i / cwWords.length) % 8],
+        back: '释义' + i
+      }))
+    },
+    { demo: false, source: 'smoke-crossword' }
+  );
+  ok(!!cp && new Set(store.getDeck(cp.id).cards.map((c) => c.level)).size === 3, '填字卡组就绪（60 张 / 3 关）');
+  ok(crossword.unlockInfo(store.getDeck(cp.id)).unlocked === false, '一关未通关 → 未解锁');
+  decks.renderDeck(root, cp.id);
+  ok(!root.innerHTML.includes('open-crossword'), '未解锁 → 卡组详情页没有填字入口');
+
+  store.markLevelLearned(cp.id, 0);
+  store.markLevelPassed(cp.id, 0);
+  decks.renderDeck(root, cp.id);
+  ok(root.innerHTML.includes('data-action="open-crossword"'), '通关 1 关 → 出现「填字游戏」入口横幅');
+  ok(root.innerHTML.includes('cw-banner glass'), '横幅挂 .cw-banner 样式');
+  ok(root.innerHTML.includes('每局 8 词起'), '横幅写明默认每局词数');
+
+  globalThis.location.hash = '#/crossword/' + cp.id;
+  (winListeners['hashchange'] || []).forEach((fn) => fn({ type: 'hashchange' }));
+  const cwHtml = appViewEl.innerHTML;
+  ok(cwHtml.includes('填字游戏 · 第 1 关'), '默认词源 = 已通关关卡');
+  ok(cwHtml.includes('role="group" aria-label="填字棋盘"'), '棋盘 role=group + aria-label');
+  ok(cwHtml.includes('role="group" aria-label="选择词源"'), '词源 chips 已渲染');
+  ok(cwHtml.includes('data-action="cw-check"') && cwHtml.includes('data-action="cw-hint"'), '检查 / 提示按钮已渲染');
+  ok(cwHtml.includes('role="progressbar" aria-label="填字进度"'), '进度条带 aria 标注');
+  ok(cwHtml.includes('id="cw-result"'), '结算面板容器已渲染');
+  const cs = crossword.getCrosswordSession();
+  ok(!!cs && cs.deckId === cp.id && cs.source.kind === 'level' && cs.source.level === 0, '会话已建立（词源 = 第 1 关）');
+  ok((cwHtml.match(/class="cw-input"/g) || []).length === cs.board.cells.length, '棋盘渲染全部字母格');
+  ok((cwHtml.match(/data-action="cw-clue"/g) || []).length === cs.board.words.length, '线索列表与线索一一对应');
+  ok(cs.board.used >= 1, '至少排入 1 个单词（交叉排版）');
+
+  await fire('cw-check');
+  ok(!!crossword.getCrosswordSession(), '点「检查」会话仍在（不炸）');
+  await fire('cw-hint');
+  ok(crossword.getCrosswordSession().hints === 1, '点「提示一字母」→ 提示次数 +1');
+  await fire('cw-clue', { word: '0' });
+  ok(crossword.getCrosswordSession().selected === 0, '点线索 → 选中该线索');
+  await fire('cw-reveal');
+  ok(crossword.wordProgress(crossword.getCrosswordSession(), 0).done === true, '点「显示本词」→ 该线索填对');
+  await fire('cw-size', { size: '6' });
+  ok(crossword.getCrosswordSession().size === 6, '换每局词数 → 6 词');
+  await fire('cw-source', { kind: 'deck' });
+  ok(crossword.getCrosswordSession().source.kind === 'deck', '换词源 → 整卡组');
+  await fire('cw-new');
+  ok(crossword.getCrosswordSession().solved === false && Object.keys(crossword.getCrosswordSession().letters).length === 0, '换一批 → 新的未完成对局');
+  await fire('cw-reset');
+  ok(Object.keys(crossword.getCrosswordSession().letters).length === 0, '重新开始 → 清空填写');
+
+  globalThis.location.hash = '#/deck/' + cp.id;
+  (winListeners['hashchange'] || []).forEach((fn) => fn({ type: 'hashchange' }));
+  ok(crossword.getCrosswordSession() === null, '路由切换 → 清空填字会话');
+  ok(appViewEl.innerHTML.includes('data-action="open-crossword"'), '回到卡组详情页（填字入口仍在）');
 }
 
 console.log(`\n冒烟结果: ${pass} 通过, ${fail} 失败`);

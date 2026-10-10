@@ -14,6 +14,7 @@ import { tableEditorLinkHtml } from './table-editor.js'; // 首页入口：在�
 import { importHistoryButtonHtml } from './import-history.js'; // 注册「导入历史 / 撤销」入口
 import './export.js'; // 注册卡组菜单的「导出 txt / apkg」动作
 import * as match from './match.js'; // 明牌配对：解锁判定 + 入口横幅（#/match/{deck}）
+import * as crossword from './crossword.js'; // 填字游戏：解锁判定 + 入口横幅（#/crossword/{deck}）
 import { esc, on, icon, navigate, openModal, closeModal, readForm, toast, confirmDialog, parseTags } from './ui.js';
 
 const ACTIVE_TAG_KEY = 'mycard-active-tag';
@@ -279,6 +280,20 @@ export function renderDeck(root, deckId) {
       </button>`
     : '';
 
+  // 填字游戏：同一解锁门槛（通关 ≥ 1 关；玩法见 js/crossword.js）
+  const cwUnlock = crossword.unlockInfo(deck);
+  const crosswordBanner = cwUnlock.unlocked
+    ? `
+      <button type="button" class="cw-banner glass" data-action="open-crossword" data-id="${esc(deck.id)}">
+        <span class="cw-banner-icon" aria-hidden="true">${icon('grid', 22)}</span>
+        <span class="cw-banner-body">
+          <b>填字游戏 · 拼一局</b>
+          <span>用「${esc(deck.name)}」的单词与释义生成填字棋盘 · 每局 ${crossword.DEFAULT_SIZE} 词起（可切整卡组 / 已通关关卡）</span>
+        </span>
+        <span class="cw-banner-go" aria-hidden="true">开始 ›</span>
+      </button>`
+    : '';
+
   root.innerHTML = `
     <div class="view">
       <div class="deck-hero glass">
@@ -300,6 +315,7 @@ export function renderDeck(root, deckId) {
         </div>` : ''}
       </div>
       ${matchBanner}
+      ${crosswordBanner}
       <div class="levels-wrap">${levelsHtml}</div>
       <button class="btn btn-ghost btn-block manage-btn" data-action="open-cards" data-id="${esc(deck.id)}">${icon('cards', 16)} 管理卡片（${stats.total} 张）</button>
     </div>`;
@@ -670,6 +686,7 @@ on('open-deck-test', (el) => navigate(`#/test/${el.dataset.id}`));
 
 /* 明牌配对（通关 ≥ UNLOCK_LEVELS 关后出现）：把本关单词与释义两两配对的明牌小游戏 */
 on('open-match', (el) => navigate(`#/match/${el.dataset.id}`));
+on('open-crossword', (el) => navigate(`#/crossword/${el.dataset.id}`));
 
 /* 关卡分页（关卡数 > 15 时，每页 15 关；URL 为 1 基页号） */
 on('deck-page', (el) => {

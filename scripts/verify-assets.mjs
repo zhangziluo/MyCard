@@ -612,7 +612,7 @@ console.log('\n[我的生词批量整理（js/wordbook.js + js/wordbook-view.js�
   must(existsSync(rel('js/wordbook-view.js')), 'js/wordbook-view.js 存在（整理页）');
   must(sw.includes("'./js/wordbook.js'"), 'sw.js PRECACHE 含 ./js/wordbook.js');
   must(sw.includes("'./js/wordbook-view.js'"), 'sw.js PRECACHE 含 ./js/wordbook-view.js');
-  must(/const VERSION = 'v1\.10\.3'/.test(sw), 'sw.js VERSION 已递增（v1.10.3）');
+  must(/const VERSION = 'v1\.11\.0'/.test(sw), 'sw.js VERSION 已递增（v1.11.0）');
 
   // 内核：去重合并 / 标签 / 筛选排序 / 选中集 / 补查目标
   must(/export function normKey/.test(wbSrc), 'wordbook.js：normKey（大小写 / 空格归一为同一个词）');
@@ -630,7 +630,7 @@ console.log('\n[我的生词批量整理（js/wordbook.js + js/wordbook-view.js�
   must(/merge: true/.test(storeSrc2) && /extraBacks/.test(storeSrc2), 'store.js：addWords 支持 { merge: true } 合并释义');
 
   // 路由与入口
-  must(/0\.5\.13/.test(appSrc), 'app.js 版本号更新为 v0.5.13');
+  must(/0\.6\.0/.test(appSrc), 'app.js 版本号更新为 v0.6.0');
   must(/from '\.\/wordbook-view\.js'/.test(appSrc) && /renderWordbook\(root\)/.test(appSrc), 'app.js 挂载 renderWordbook');
   must(/seg\[0\] === 'words'/.test(appSrc) && /#\/words/.test(appSrc), 'app.js 解析 #/words 路由（含 ?page=N 分页）');
   must(/on\('nav-words'/.test(decksSrc3), 'decks.js 提供 nav-words 入口动作');
@@ -709,6 +709,77 @@ console.log('\n[明牌配对（v0.5.13，通关 ≥1 关解锁 · 每轮 5 对 �
   must(/\.match-tile\.is-matched::after/.test(css), 'css：金色迸发挂在 ::after（一次性动画）');
   must(existsSync(rel('scripts/test-match.mjs')), '存在 scripts/test-match.mjs');
   must(readFileSync(rel('scripts/smoke-dom.mjs'), 'utf8').includes('#/match/'), 'smoke-dom 覆盖 #/match 界面渲染 + 会话清场');
+}
+
+// 9) v0.6.0 填字游戏（第二个游戏：按当前词库自定义生成棋盘）
+console.log('\n[填字游戏（v0.6.0，通关 ≥1 关解锁 · 按当前词库生成 · 每局 6~12 词）]');
+{
+  const cwPath = 'js/crossword.js';
+  must(existsSync(rel(cwPath)), 'js/crossword.js 存在');
+  must(sw.includes("'./js/crossword.js'"), 'sw.js PRECACHE 含 ./js/crossword.js');
+  const cwSrc = readFileSync(rel(cwPath), 'utf8');
+  must(/export const UNLOCK_LEVELS = 1/.test(cwSrc), 'crossword.js：解锁门槛 UNLOCK_LEVELS = 1（与明牌配对一致）');
+  must(
+    /export const SIZES = \[6, 8, 10, 12\]/.test(cwSrc) && /export const DEFAULT_SIZE = 8/.test(cwSrc),
+    'crossword.js：每局词数档位 6/8/10/12（默认 8）'
+  );
+  must(/export const MIN_LEN = 2/.test(cwSrc) && /export const MAX_LEN = 12/.test(cwSrc), 'crossword.js：可填单词长度 2–12');
+  must(
+    /export function sanitizeAnswer/.test(cwSrc) && /export function entryFromCard/.test(cwSrc),
+    'crossword.js：词条清洗（sanitizeAnswer / entryFromCard）'
+  );
+  must(/export function candidateEntries/.test(cwSrc), 'crossword.js：候选词条按答案去重（candidateEntries）');
+  must(
+    /export function canPlace/.test(cwSrc) && /export function findPlacement/.test(cwSrc) && /export function placeWord/.test(cwSrc),
+    'crossword.js：交叉排版内核（canPlace / findPlacement / placeWord）'
+  );
+  must(/export function generateCrossword/.test(cwSrc) && /export function buildBoard/.test(cwSrc), 'crossword.js：棋盘生成（generateCrossword / buildBoard）');
+  must(
+    /export function cellMap/.test(cwSrc) && /export function wordCells/.test(cwSrc) && /export function wordAt/.test(cwSrc),
+    'crossword.js：格子 / 线索索引（cellMap / wordCells / wordAt）'
+  );
+  must(
+    /export function newGame/.test(cwSrc) && /export function setLetter/.test(cwSrc) && /export function checkAll/.test(cwSrc),
+    'crossword.js：逐格状态机（newGame / setLetter / checkAll）'
+  );
+  must(
+    /export function hintCell/.test(cwSrc) && /export function revealWord/.test(cwSrc) && /export function revealCell/.test(cwSrc),
+    'crossword.js：提示一字母 / 显示本词（hintCell / revealWord / revealCell）'
+  );
+  must(
+    /export function progress/.test(cwSrc) && /export function isSolved/.test(cwSrc) && /export function playStats/.test(cwSrc),
+    'crossword.js：进度与统计（progress / isSolved / playStats）'
+  );
+  must(/export function cellSize/.test(cwSrc), 'crossword.js：棋盘格尺寸自适应（cellSize：按行列数 + 视口）');
+  must(
+    /export function renderCrossword/.test(cwSrc) && /export function clearCrosswordSession/.test(cwSrc),
+    'crossword.js：页面入口 renderCrossword / 清场 clearCrosswordSession'
+  );
+  must(/const SESSION_KEY = 'mycard-crossword-session'/.test(cwSrc), 'crossword.js：会话 key = mycard-crossword-session（sessionStorage）');
+  must(/export function statusText/.test(cwSrc) && /export function formatDuration/.test(cwSrc), 'crossword.js：状态行 / 用时文案');
+  must(/from '\.\/(store|levels|ui)\.js'/.test(cwSrc), 'crossword.js 只依赖 store / levels / ui（纯内核 + 薄 UI）');
+  must(!/from '(?!\.\/)/.test(cwSrc), 'crossword.js 只 import 本地模块（零第三方依赖）');
+
+  const appSrc3 = readFileSync(rel('js/app.js'), 'utf8');
+  must(/from '\.\/crossword\.js'/.test(appSrc3), 'app.js 引入 crossword.js');
+  must(/seg\[0\] === 'crossword'/.test(appSrc3) && /renderCrossword\(root, route\.id\)/.test(appSrc3), 'app.js 路由 #/crossword/{deckId} → renderCrossword');
+  must(/case 'crossword':/.test(appSrc3) && /t = '填字游戏'/.test(appSrc3), 'app.js 顶栏标题「填字游戏」+ 返回卡组');
+  must(/clearCrosswordSession\(\)/.test(appSrc3), 'app.js 路由切换 / 重置数据时清空填字会话');
+
+  const decksSrc5 = readFileSync(rel('js/decks.js'), 'utf8');
+  must(/data-action="open-crossword"/.test(decksSrc5) && /on\('open-crossword'/.test(decksSrc5), 'decks.js 卡组详情页入口横幅 + open-crossword 动作');
+  must(/from '\.\/crossword\.js'/.test(decksSrc5), 'decks.js 复用 crossword.js 解锁判定（规则只写一处）');
+  must(/crossword\.DEFAULT_SIZE/.test(decksSrc5), 'decks.js 横幅文案复用 DEFAULT_SIZE（每局词数只写一处）');
+
+  must(/\.cw-banner/.test(css) && /\.cw-board/.test(css) && /\.cw-cell/.test(css) && /\.cw-input/.test(css), 'css：填字横幅 / 棋盘 / 格子样式');
+  must(/\.cw-board \{[\s\S]{0,220}grid-template-columns: repeat\(var\(--cw-cols/.test(css), 'css：棋盘列数走 --cw-cols（由 cellSize 计算后内联）');
+  must(/\.cw-board-wrap \{[\s\S]{0,160}overflow-x: auto/.test(css), 'css：棋盘过宽时外层横向滚动（不挤压文字）');
+  must(/@keyframes cw-shake/.test(css) && !/animation:[^;]*infinite[^;]*cw-/.test(css), 'css：填错抖动关键帧（一次性 → 被 reduced-motion 收敛）');
+  const uiSrc2 = readFileSync(rel('js/ui.js'), 'utf8');
+  must(/^\s*grid: '/m.test(uiSrc2), 'ui.js：新增 grid 图标（填字入口与空态复用）');
+  must(existsSync(rel('scripts/test-crossword.mjs')), '存在 scripts/test-crossword.mjs');
+  must(readFileSync(rel('scripts/smoke-dom.mjs'), 'utf8').includes('#/crossword/'), 'smoke-dom 覆盖 #/crossword 界面渲染 + 会话清场');
+  must(readFileSync(rel('scripts/test-a11y.mjs'), 'utf8').includes('#/crossword'), 'test-a11y 覆盖填字页键盘可达性与标注');
 }
 
 console.log('\n[大卡组性能（单遍统计 / 复用 levels / 抽题快路径）]');

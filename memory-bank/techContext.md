@@ -26,7 +26,7 @@
 # 本地运行（必须 http(s)，file:// 下模块与 SW 受限）
 python3 -m http.server 8080
 
-# 全量校验（27 个 test-*.mjs + smoke-dom + verify-assets = 29 个脚本，3012 条断言）
+# 全量校验（28 个 test-*.mjs + smoke-dom + verify-assets = 30 个脚本，3262 条断言）
 for f in scripts/test-*.mjs scripts/smoke-dom.mjs scripts/verify-assets.mjs; do node "$f"; done
 node --check js/*.js sw.js scripts/*.mjs      # 语法检查
 node scripts/verify-assets.mjs                # 资源/一致性校验（含 CSS 变量审计）
@@ -38,6 +38,7 @@ node scripts/test-idb-store.mjs               # 存储层（v2→v3 升级 / 迁
 node scripts/test-table-editor.mjs            # 表格编辑页 #/editor（模版列一致性 / 表格内核 / 草稿 / 载入 / 粘贴多行 / 预览报告 / 渲染 / 事件 / 导入为卡组 / xlsx 指定工作表）
 node scripts/test-wordbook.mjs                # 生词本整理 #/words（同词归并 / 保留优先级 / 合并语义 / 标签整理 / 筛选排序 / 多选批量 / 页面渲染分页）
 node scripts/test-match.mjs                   # 明牌配对 #/match（解锁 ≥1 关 / 分轮建牌（每轮 5 对）与可复现洗牌 / 六态点击状态机 / 连击·失误·用时 / 薄 UI 局部打补丁与入口横幅 / 连击提示贴棋盘右下角）
+node scripts/test-crossword.mjs               # 填字游戏 #/crossword（解锁 ≥1 关 / 词条清洗（纯字母·长度·去重）/ canPlace 四条排版规则 · findPlacement 评分 / 棋盘生成与可复现 / 逐格状态机（检查·提示·显示本词）/ 薄 UI（打字只打补丁、焦点推进、结算、会话复活与清场）与入口横幅）
 
 # 数据准备（可选，需本地具备 gcide-0.51/）
 node scripts/split-gcide.mjs
@@ -49,7 +50,7 @@ node scripts/gen-examples.mjs --data data/words.json --sample 8
 
 ## 版本号约定
 - **两处必须同步递增**：`sw.js` 的 `VERSION`（缓存键）与 `js/app.js` 的 `APP_VERSION`（顶栏显示）
-- 当前：`APP v0.5.13` / `SW v1.10.3`
+- 当前：`APP v0.6.0` / `SW v1.11.0`
 
 ## 测试工程要点（写新测试时照抄）
 - 每个测试是独立 `.mjs`，自建浏览器桩（localStorage/document/window/location/requestAnimationFrame/HashChangeEvent）
@@ -59,6 +60,7 @@ node scripts/gen-examples.mjs --data data/words.json --sample 8
 - **交互页（棋盘类 UI）的 DOM 桩**：把「渲染」当事件源——给 `innerHTML` 加 setter，写入后就按当前会话重建「牌 / 统计格」的查询结果（`querySelectorAll('.match-tile')` / `[data-match]`），于是既能断言「点击**没有**写 `innerHTML`（只局部打补丁）」，也能在每次重渲染后拿到新节点（见 `scripts/test-match.mjs`）
 - 资源一致性用 `scripts/verify-assets.mjs`（读源码字符串 + 解析 data/*.json）
 - **xlsx 测试**：用 `export.js` 的 `zipStore`（STORED）+ Node `zlib.deflateRawSync` 手工拼**真实 ZIP**（`scripts/test-xlsx.mjs`），既覆盖 STORED 也覆盖 DEFLATE 解压路径；多工作表用例额外拼 `xl/workbook.xml` + `xl/_rels/workbook.xml.rels`，公式/合并用例直接拼 `<f>`（含 `<v>` 缓存）与 `<mergeCells>`
+- **填字页（表单类 UI）的 DOM 桩**：答题格必须是**持久** `input` 节点（`innerHTML` 写入时按当前会话重建一次，之后打字只改 `value` / `class`），这样才能断言「打字**没有**写 `innerHTML`（只局部打补丁）」；统计格（`#cw-words` / `#cw-time` …）真实页面由 HTML 直接渲染初值，桩里在 `innerHTML` 写入时**按会话状态回填**（否则整页重渲染后的断言会读到陈旧值）。`--cw-cols` / `--cw-cell` 由 JS 内联覆盖，但仍需在 CSS `:root` 给出默认定义（`verify-assets` 会审计 `var()` 是否都有定义）
 
 ## 已知坑（务必记住）
 1. **`vendor/sql.js/sql-wasm.js` 是 UMD 构建**：本项目 `package.json` 是 `"type":"module"`，Node 会把 `.js` 当 ESM，UMD 检测失效 → 返回 `{}`。**必须**保留 `vendor/sql.js/package.json`（`"type":"commonjs"`）才能 `createRequire` 加载。浏览器侧则用 `<script>` 注入 + `window.initSqlJs`。
