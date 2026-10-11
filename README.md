@@ -75,7 +75,7 @@
   - 整份文件解析后**一次事务批量写入**本地库，按单词去重并报告跳过数；新建牌组时 `source=null` 故可重复导入（各自新建卡组）
 - **数据存储（v0.4，v0.5.8 库升到 v3）**：卡片正文与学习进度存 **IndexedDB**（库 `mycard` v3，stores：`decks` / `cards` / `meta` / `lookup` / **`revlog`**），localStorage 只保留设置与卡组清单（key `mycard-meta`）；旧版 `mycard-v1` 整库会在首次启动时**自动迁移**到 IndexedDB 并删除旧键，v2 → v3 为**增量升级**（只补建 `revlog` store 与其 `byDeck` / `byCard` 索引，既有数据不动），从而支持万词级词库
 - **内置词库**：仅内置「英语高频词（示范）」约 60 词（`data/words.json` ＋ 易混分组 `data/confusables.json`），首次打开**自动导入**并按难度编排 3 关；应用不再内置其它词库，需要时可用首页「导入」按钮导入自己的 CSV / JSON 词表（见上一条）。旧版本曾内置的 10 本考试词库（考研 / 四级 / 六级 / 托福 / 雅思 / 专四 / 专八 / SAT / 初中 / 高中）已下线，浏览器里**遗留的历史卡组会在启动时自动清理**（按 `source` 精确匹配，仅删这些内置卡组，不影响你自建的卡组与「我的生词」）
-- **PWA**：`manifest.json` ＋ `sw.js`；**代码 / 数据走网络优先**（在线总是最新，离线回退缓存），图片走缓存优先；新版本 SW 接管后自动刷新一次，通常**一次刷新即可看到新功能**；顶栏显示当前版本号（当前 `v0.9.6`），设置页另提供「强制刷新到最新版（清理离线缓存）」应对极端缓存情况
+- **PWA**：`manifest.json` ＋ `sw.js`；**代码 / 数据走网络优先**（在线总是最新，离线回退缓存），图片走缓存优先；新版本 SW 接管后自动刷新一次，通常**一次刷新即可看到新功能**；顶栏显示当前版本号（当前 `v0.9.7`），设置页另提供「强制刷新到最新版（清理离线缓存）」应对极端缓存情况
 - **界面**：移动端优先、深色主题、毛玻璃（glassmorphism）卡片；**桌面端自适应** —— `#app` 按 640 / 960 / 1280 / 1600px 断点逐级放宽（600 → 760 → 1080 → 1280 → 1440px），卡组用 `auto-fill` 网格随宽度平铺 2–5 列，宽屏下关卡列表两列平铺
 - **无障碍（v0.5.10）**：全局键盘焦点环（`:focus-visible`）、「跳到主要内容」跳转链接、路由变化用 `#sr-announce` 实时区域播报页面名、可点击卡片（`role="button"`）支持 Enter / 空格、弹窗焦点陷阱与关闭后焦点还原、系统「减少动态效果」全局生效——详见下文「无障碍与键盘可达性」
 
@@ -85,6 +85,7 @@
 ├── index.html              # 单页应用入口（应用外壳）
 ├── manifest.json           # PWA manifest
 ├── sw.js                   # Service Worker（预缓存 App Shell + 示范词库）
+├── functions/dav/[[path]].js # Cloudflare Pages Function：/dav/* 同源反代到你的 WebDAV（设 DAV_TARGET 环境变量即用；网盘不给跨域时的零第三方方案）
 ├── package.json            # 仅元信息（零依赖、无构建脚本）
 ├── favicon.svg
 ├── icons/                  # 应用图标（192 / 512 / maskable / apple-touch）
@@ -112,7 +113,7 @@
 │   ├── match.js            # 明牌配对游戏 #/match（通关 ≥1 关解锁；词源可切整卡组/已通关关卡 / 每轮 5 对 / 固定两列 / 爆炸消除 + combo✖️N；纯内核 + 薄 UI，点击只局部打补丁；棋局只存内存 → 重进同一关即重新洗牌）
 │   ├── crossword.js        # 填字游戏 #/crossword（通关 ≥1 关解锁；按当前词库交叉排版生成棋盘 / 每局 6~12 词 / 检查·提示·显示本词；纯内核 + 薄 UI，输入只局部打补丁）
 │   ├── keyboard.js         # 移动端英文字母键盘（#kb-bar 单例底栏：QWERTY + 退格 / 空格键 / 收起·唤出；inputmode=none 抑制系统输入法）
-│   ├── webdav.js           # 极简 WebDAV 客户端（零依赖：PROPFIND / 递归 MKCOL / GET / PUT（可抢锁）/ DELETE + Basic 认证 + 中文错误映射 + 「诊断连接」逐步探测 diagnose / 可复制报告）
+│   ├── webdav.js           # 极简 WebDAV 客户端（零依赖：PROPFIND / 递归 MKCOL / GET / PUT（可抢锁）/ DELETE + Basic 认证 + 中文错误映射 + 「诊断连接」逐步探测 diagnose / 修复步骤 / 可复制报告）
 │   ├── sync.js             # 多端同步引擎（合并内核 mergeSnapshots 纯函数 + 增量读写 readRemote·writeRemote / 预览 planSync·previewSync / syncNow / 抢锁 / 自动同步 / 配置与墓碑）
 │   ├── add-words.js        # 首页添加单词/词表：语种检测 / 分词 / 在线查词 / 缓存 / 预览
 │   ├── import-file.js      # 本地文件导入：CSV/TSV/JSON/XLSX 解析（零依赖）+ 预览 + 字段映射 + 多文件批量 + 拖拽区
@@ -165,10 +166,11 @@
     ├── test-match.mjs      # 明牌配对（解锁 / 词源（整卡组·关卡）/ 分轮建牌洗牌 / 牌面文案 / 点击状态机 / 连击 / 薄 UI 与入口横幅 / 棋局只存内存重进即重洗，292 项断言）
     ├── test-crossword.mjs  # 填字游戏（解锁 / 词条清洗 / 交叉排版规则 / 棋盘生成 / 状态机 / 移动端格子尺寸与字母键盘 / 薄 UI 与入口横幅，213 项断言）
     ├── test-keyboard.mjs   # 移动端英文字母键盘（环境判定 / 键位 HTML / 四态状态机 / DOM 三态 / inputmode 同步 / 事件派发 / 只绑一次，52 项断言）
-    ├── test-sync.mjs       # 多端同步（WebDAV 客户端 / 合并内核 / 快照往返 / 增量布局（假服务端）/ 连通性诊断与修复步骤 / 墓碑与配置，249 项断言）
+    ├── test-sync.mjs       # 多端同步（WebDAV 客户端 / 合并内核 / 快照往返 / 增量布局（假服务端）/ 连通性诊断与修复步骤 / 墓碑与配置，251 项断言）
     ├── test-dav-proxy.mjs  # 本机「同源代理」脚本 dav-proxy.py（转发方法·路径·认证头·Depth·请求体 / 401 回传 / OPTIONS / 穿越被拒 / 502，21 项；无 python3 自动跳过）
+    ├── test-dav-fn.mjs     # Cloudflare Pages Function（functions/dav/[[path]].js：501 配置指引 / OPTIONS / 方法·路径·认证头·Depth·请求体 / 401 回传 / 逃不出目标主机，21 项）
     ├── dav-proxy.py        # 本机代理 + 静态站点服务器（零依赖，网盘不给跨域时的零账号方案：同源 → 无需 CORS）
-    └── verify-assets.mjs   # 资源完整性校验（650 项）
+    └── verify-assets.mjs   # 资源完整性校验（664 项）
 ```
 
 ## 本地运行
@@ -216,13 +218,14 @@ node scripts/test-a11y.mjs            # 无障碍（键盘焦点环 / aria 覆�
 node scripts/test-match.mjs           # 明牌配对（解锁门槛 / 词源（整卡组·已通关关卡）/ 分轮建牌与可复现洗牌 / 点击状态机 / 连击与用时 / 薄 UI 与入口横幅 / 重进同一关重新洗牌，292 项）
 node scripts/test-crossword.mjs       # 填字游戏（解锁门槛 / 词条清洗 / 交叉排版规则 / 棋盘生成与可复现 / 状态机 / 移动端格子尺寸 + 字母键盘 / 薄 UI 与入口横幅，213 项）
 node scripts/test-keyboard.mjs        # 移动端英文字母键盘（环境判定 / 键位 HTML / 四态状态机 / DOM 三态 / inputmode 同步 / 事件派发，52 项）
-node scripts/test-sync.mjs            # 多端同步（WebDAV 客户端（URL/认证/PROPFIND/MKCOL/GET/PUT/DELETE/错误映射/超时）/ 合并内核（内容与进度分治·日志并集·删除墓碑·幂等·统计）/ 快照与存储往返 / 增量布局（假 WebDAV 服务端）/ 连通性诊断与修复步骤 / 配置，249 项）
+node scripts/test-sync.mjs            # 多端同步（WebDAV 客户端（URL/认证/PROPFIND/MKCOL/GET/PUT/DELETE/错误映射/超时）/ 合并内核（内容与进度分治·日志并集·删除墓碑·幂等·统计）/ 快照与存储往返 / 增量布局（假 WebDAV 服务端）/ 连通性诊断与修复步骤 / 配置，251 项）
 node scripts/test-dav-proxy.mjs       # 本机「同源代理」脚本 scripts/dav-proxy.py（静态站点供出 / /dav 转发的方法·路径·认证头·Depth·请求体 / 401 与 WWW-Authenticate 回传 / OPTIONS 预检 / 目录穿越被拒 / 不可达 502，21 项；无 python3 时自动跳过）
-node scripts/verify-assets.mjs        # PWA 资源完整性 + 字段映射 / 明暗模式 / 导出（含 revlog）/ 导入增强（xlsx 多表·公式·合并）/ 表格编辑 / 生词本整理 / 明牌配对（含整卡组词源）/ 填字游戏 / 移动端字母键盘 / 多端同步 / 性能校验（650 项）
+node scripts/test-dav-fn.mjs          # Cloudflare Pages Function functions/dav/[[path]].js（未配置 DAV_TARGET → 501 + 指引 / OPTIONS → 204 / 转发方法·路径·认证头·Depth·请求体 / 业务响应头回传 / 只在目标主机内转发，21 项）
+node scripts/verify-assets.mjs        # PWA 资源完整性 + 字段映射 / 明暗模式 / 导出（含 revlog）/ 导入增强（xlsx 多表·公式·合并）/ 表格编辑 / 生词本整理 / 明牌配对（含整卡组词源）/ 填字游戏 / 移动端字母键盘 / 多端同步 / 性能校验（664 项）
 node --check js/*.js                  # 语法检查
 ```
 
-当前合计 **4058 条校验**（33 个脚本，各套件输出的 `✓`）**全部通过、0 失败**（含纯函数单测、无头 DOM 冒烟、IndexedDB 存储与 v2→v3 升级、大词表导入、Anki 卡包产物（含 `revlog`）、明牌配对与填字游戏两套游戏断言、移动端字母键盘、多端同步（WebDAV），万级性能金丝雀）。
+当前合计 **4095 条校验**（34 个脚本，各套件输出的 `✓`）**全部通过、0 失败**（含纯函数单测、无头 DOM 冒烟、IndexedDB 存储与 v2→v3 升级、大词表导入、Anki 卡包产物（含 `revlog`）、明牌配对与填字游戏两套游戏断言、移动端字母键盘、多端同步（WebDAV），万级性能金丝雀）。
 
 ## 部署：Cloudflare Pages
 
@@ -545,7 +548,20 @@ python3 scripts/dav-proxy.py --target https://cloud.example.com/remote.php/dav/f
 > 说明：脚本只把请求转发到 `--target` 指定的**一个**主机、拒绝带 `..` 的路径、`Authorization` 头原样转发；密码只在「浏览器 → 本机进程 → 网盘」之间流动，不经第三方。
 > 诊断里若你是本机打开，**弹窗里的「怎么修」会优先给出这条方案**（零账号、不用部署任何云服务）。
 
-### 方案 B：换一个给浏览器开跨域的 WebDAV / 自建反代（部署在别人域名 / 本机没 Python）
+### 方案 A″（Mycard 部署在**你自己的** Cloudflare Pages 上，零第三方服务）：Pages Function 同源反代
+仓库里已经带了 **`functions/dav/[[path]].js`**（Cloudflare Pages 会自动把它变成 `/dav/*` 这个接口）。它和页面**同源** → 浏览器不做跨域检查 → 网盘给不给 CORS 头都无所谓。
+
+1. 把仓库（含 `functions/dav/[[path]].js`）**部署到你的 Pages 项目**；
+2. Pages → 项目 → **Settings → Environment variables** 添加：
+   `DAV_TARGET = https://dav.jianguoyun.com/dav`（就是你原来填在「服务器地址」里的那个地址）；
+3. 重新部署后，Mycard 设置页的 **「服务器地址」填 `https://你的站点域名/dav`**，用户名 / 应用密码 / 同步目录照旧即可。
+
+> 未配置 `DAV_TARGET` 时该接口会返回 **501 并告诉你该怎么配**（不会静默失败）；函数只转发到 `DAV_TARGET` 这一个主机、拒绝带 `..` 的路径、`Authorization` 原样转发、不透传 `set-cookie` —— 密码只在「浏览器 → 你自己的 Pages 函数 → 网盘」之间。
+> 逻辑单测：`node scripts/test-dav-fn.mjs`（21 项，**不需要真部署**，直接调用 `onRequest` 并桩住 `fetch`）。
+
+### 方案 B：一条兜底的云反代（部署在别人域名 / 本机没 Python / 不想动仓库）
+如果你既不在本机运行、也不想给 Pages 加函数、或 Mycard 是别人部署的，就用这一条：**临时加一个 Cloudflare Worker 反代**。
+
 「服务器**可达**但缺少跨域许可」**不是你的网络问题**——网盘（坚果云 WebDAV 常见）没有回 `Access-Control-Allow-Origin` 等响应头，浏览器就会把请求判为失败。**诊断弹窗会直接显示「怎么修：三步」并给出「复制 Worker 反代代码」按钮**（目标服务器已按你填的地址自动填好），照做即可：
 
 1. 点弹窗里的 **「复制 Worker 反代代码」**；

@@ -912,8 +912,8 @@ ok(/seg\[0\] === 'match' && seg\[1\]/.test(appSrc), 'app.js 解析 #/match/{deck
 ok(/case 'match':[\s\S]{0,200}t = '明牌配对'/.test(appSrc), "顶栏标题「明牌配对」+ 返回卡组");
 ok(/route\.view === 'match'[\s\S]{0,140}renderMatch\(root, route\.id\)/.test(appSrc), 'render() 分发到 renderMatch');
 ok(/clearMatchSession\(\); \/\/ 同时清除配对棋局与计时器/.test(appSrc), 'hashchange 清空配对会话与计时器');
-ok(/APP_VERSION = 'v0\.9\.6'/.test(appSrc) && /通关 ≥\s?1 关/.test(appSrc), 'APP_VERSION 升到 v0.9.6（解锁 ≥1 关）');
-ok(swSrc.includes("'./js/match.js'") && /VERSION = 'v1\.20\.0'/.test(swSrc), 'sw.js 预缓存 match.js 且 VERSION = v1.20.0');
+ok(/APP_VERSION = 'v0\.9\.7'/.test(appSrc) && /通关 ≥\s?1 关/.test(appSrc), 'APP_VERSION 升到 v0.9.7（解锁 ≥1 关）');
+ok(swSrc.includes("'./js/match.js'") && /VERSION = 'v1\.21\.0'/.test(swSrc), 'sw.js 预缓存 match.js 且 VERSION = v1.21.0');
 ok(
   !/sessionStorage\.(setItem|getItem|removeItem)/.test(read('js/match.js')),
   'match.js 不再读写 sessionStorage（棋局只存内存：重进即重新洗牌）'

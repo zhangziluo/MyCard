@@ -794,11 +794,13 @@ console.log('\n[v0.9.6 页面非 HTTPS / 本机运行：警告 + 本机代理方
   ok(localSteps.some((s) => s.includes('python3 -m http.server')), '说明它就是静态站点服务器（可替代 python3 -m http.server）');
   ok(webdav.diagnoseReport(localCors, { url: 'https://dav.jianguoyun.com/dav', dir: 'mycard', user: 'me' }).includes('dav-proxy.py'), '报告里同样给出本机代理方案');
   ok(webdav.setupHints('https://dav.jianguoyun.com/dav').some((h) => h.includes('dav-proxy.py')), '自查清单也提到本机代理脚本');
+  ok(webdav.setupHints('https://x.pages.dev/dav').some((h) => h.includes('functions/dav')), '自查清单提到 Pages Function 方案');
 
   // 非本机 http（局域网）→ 不推本机脚本，走 Worker 方案
   globalThis.location = saved;
   const remoteSteps = webdav.fixSteps({ reason: 'cors', steps: [] }, { dir: 'mycard' });
   ok(remoteSteps[0].includes('Worker') && !remoteSteps[0].includes('dav-proxy.py'), '非本机页面：修复步骤走 Worker 方案（不推本机脚本）');
+  ok(remoteSteps.some((s) => s.includes('functions/dav/[[path]].js')), '非本机页面：同时提示「Pages Function」这条同源方案');
   ok(webdav.isLocalPage() === false, 'isLocalPage：非本机页面为假');
 }
 

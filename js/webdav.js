@@ -340,6 +340,7 @@ export function setupHints(base = '') {
     '诊断里「服务器可达性」通过、但「基础连通性」失败 → 网络其实是通的，是服务端缺少跨域响应头（CORS），**不是你网络的问题**',
     '诊断里「服务器可达性」也失败 → 请求压根没完成：先在浏览器地址栏直接打开该地址；换网络（手机热点）；关掉内容拦截 / 隐私扩展（iOS「内容拦截器」·iCloud 私密代理、Android AdGuard、uBlock 等）；避开公司代理',
     '本机运行 Mycard 时（http://localhost:…）：可用 scripts/dav-proxy.py 做「同源代理」——零账号、免跨域，同时它就是个静态站点服务器（可替代 python3 -m http.server）',
+    '部署在你自己的 Cloudflare Pages 上时：仓库自带 functions/dav/[[path]].js —— 在 Pages 设置 DAV_TARGET 环境变量，即可用 https://你的站点域名/dav 作为「服务器地址」（同源、免跨域、无需第三方服务）',
     '坚果云在网页端「安全选项」里可查看/重置应用密码；同一个应用密码可多设备共用'
   ];
   return jgy ? hints : hints.filter((h) => !/坚果云在网页端/.test(h));
@@ -572,6 +573,7 @@ export function fixSteps(rep, cfg = {}) {
         '② 用它给的地址打开 Mycard：http://localhost:8080/（该脚本同时就是静态站点服务器，可直接替代 python3 -m http.server）',
         `③ 设置页「服务器地址」填 http://localhost:8080/dav（与页面同源 → 浏览器不做跨域检查），用户名 / 应用密码照旧，目录仍填 ${cfg.dir || 'mycard'}`,
         '④ 不想在本机跑脚本时：点「复制 Worker 反代代码」部署到 Cloudflare Workers（免费），再把地址换成 Worker 的地址',
+        '（若 Mycard 部署在你自己的 Cloudflare Pages 上，还有更省事的一条：仓库自带 functions/dav/[[path]].js，只需在 Pages 里设 DAV_TARGET 环境变量，然后把「服务器地址」填 https://你的站点域名/dav —— 同为同源方案）',
         '（也可以换成本身支持跨域的 WebDAV，如自建 Nextcloud 的 remote.php/dav）'
       ];
     }
@@ -579,6 +581,7 @@ export function fixSteps(rep, cfg = {}) {
       '① 点亮「复制 Worker 反代代码」（或在诊断报告末尾取用），到 https://dash.cloudflare.com/ 新建一个 Worker，整段粘贴后部署（免费）',
       `② 回到 Mycard 设置页，把「服务器地址」改成 https://你的worker.workers.dev/dav（即在 Worker 地址后保留原来的 /dav 前缀；同步目录仍填 ${cfg.dir || 'mycard'}）`,
       '③ 用户名 / 应用密码照旧 →「测试连接」应显示成功 →「立即同步」',
+      '（若 Mycard 就部署在你自己的 Cloudflare Pages 上：可直接用仓库自带的 functions/dav/[[path]].js —— 在 Pages 设置 DAV_TARGET 环境变量，然后把「服务器地址」填 https://你的站点域名/dav，同样无需第三方服务）',
       '（也可以换成本身支持跨域的 WebDAV，如自建 Nextcloud 的 remote.php/dav）'
     ];
   }

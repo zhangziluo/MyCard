@@ -1,6 +1,6 @@
 # Progress — 完成度与遗留
 
-> 更新时间：2026-10-10 ｜ APP `v0.9.6` / SW `v1.20.0` ｜ **4058 条校验全绿**
+> 更新时间：2026-10-10 ｜ APP `v0.9.7` / SW `v1.21.0` ｜ **4095 条校验全绿**
 
 ## 已交付（按版本）
 
@@ -266,6 +266,15 @@
 - 测试：`test-sync` 169 → **198**（错误分类 / 原始信息保留 / 混合内容不发请求 / diagnose 六种场景 / 报告不含密码 / 清单针对性）；`smoke-dom` 313 → **326**（诊断按钮、跨域与「连接正常」两种结论、测试连接失败自动弹诊断、页面不出现密码）；`test-a11y` 146 → **154**；`verify-assets` 574 → **593**
 - **顺手修掉一个存储层真实竞态**：`store.flushPending()` 原来**一进函数就清空 pending 队列**再 `await` 写 IndexedDB → 中间存在「pending 里没有、IDB 里也还没写」的空窗，期间 `revlogsOfDeck()`（`sync.buildSnapshot()` 也走它）会**漏读刚产生的复习日志**（高负载下 `test-import-file` 偶发失败正是它）。现在改为「取快照 → 写完后只删掉快照里那些**未被再次修改**的条目」，空窗消失；`test-idb-store` 80 → **83**（`test-idb-store` 新增「flushPending 进行中也能读到刚写的日志」守卫）
 
+**v0.9.7** Cloudflare Pages Function 同源反代（`functions/dav/[[path]].js`）+ 与 Worker 的关系说明
+- **动机**：用户用的是**部署版（https）**，仍在 CORS 卡住；「本机代理」不适用、Worker 又要另建一个云服务 —— 补一条「用自己的 Pages 站点」的零第三方方案
+- **`functions/dav/[[path]].js`**（Pages 自动把 `/dav/*` 变成接口）：与页面**同源** → 不做跨域检查；未配置 `DAV_TARGET` → **501 + 配置指引**；OPTIONS→204；白名单转发头（Authorization/Depth/If-None-Match/…）+ 请求体；回传 ETag/Content-Type/WWW-Authenticate 且**不透传 set-cookie**；`buildTargetUrl()` 拒绝 `..`，**任何输入都只在固定 `DAV_TARGET` 主机内转发**（不会变成开放代理）
+- **用法**：部署仓库（含该文件）→ Pages 设 `DAV_TARGET = https://dav.jianguoyun.com/dav` → 设置页「服务器地址」填 `https://你的站点域名/dav`
+- **`scripts/test-dav-fn.mjs`**（新，21 条）：纯逻辑单测（直接 `onRequest` + 桩 fetch，**不需要真部署**）
+- **诊断**：非本机场景的 `fixSteps`/`setupHints` 同时提示这条（与 Worker 并列）
+- **接线**：`js/app.js` `APP_VERSION = 'v0.9.7'`；`sw.js` `VERSION = 'v1.21.0'`
+- 测试：`test-sync` 249 → **251**；新增脚本 21 条；`verify-assets` 650 → **664**（**34 个脚本 / 4095 条校验全绿**）
+
 **v0.9.6** 本机「同源代理」（`scripts/dav-proxy.py`，零账号）+ http 页面警告
 - **动机**：用户报告 `页面协议：http:`（本机打开）—— 网盘缺 CORS 时，**最省事的不是去云上建 Worker，而是让页面与网盘同源**
 - **`scripts/dav-proxy.py`**（只用标准库）：同时是**静态站点服务器 + WebDAV 代理**；`/dav/...` → `--target`（默认 `https://dav.jianguoyun.com/dav`）的 `/...`；OPTIONS→204；转发 Authorization/Depth/If-None-Match/Content-Type/请求体；4xx·5xx（含 401 `WWW-Authenticate`）如实回传；不可达 → 502 + 可读原因；拒绝 `..`；`flush=True` 打印用法
@@ -302,15 +311,15 @@
 - **接线**：`js/app.js` `APP_VERSION = 'v0.9.3'`；`sw.js` `VERSION = 'v1.17.0'`
 - 测试：`test-sync` 198 → **214**（探测三种结果 + 结论两分支 + 清单分支 + 不再误导去查 CORS）；`smoke-dom` 326 → **330**（Safari `Load failed` + no-cors 可达 → 结论必须指向「缺跨域许可」并给出出路）；`verify-assets` 593 → **605**
 
-## 测试资产（31 个 test-*.mjs + `smoke-dom` + `verify-assets` = 33 个脚本 / 4058 条断言）
+## 测试资产（32 个 test-*.mjs + `smoke-dom` + `verify-assets` = 34 个脚本 / 4095 条断言）
 | 分类 | 脚本 |
 | --- | --- |
 | 核心纯函数 | `test-core`(43) `test-difficulty`(39) `test-arrange`(22) `test-pagination`(25) `test-resplit-levels`(26) `test-revlog`(58) |
 | 学习与题型 | `test-confusables`(82) `test-hardwords`(26) `test-level-retry`(78) `test-fill`(115，含移动端字母键盘) `test-listen`(21) `test-deck-test`(92) `test-eng-eng`(34) `test-multi-sense`(39) `test-review-complete`(11) `test-review-interaction`(18) |
 | 存储与主题 | `test-idb-store`(83，含「flushing 期间读不到刚写日志」的竞态守卫) `test-theme`(150) |
-| 新功能 | `test-add-words`(110) `test-import-file`(336) `test-table-editor`(223) `test-export`(155) `test-xlsx`(125) `test-wordbook`(124) `test-match`(292，明牌配对：≥1 关解锁 / 词源（整卡组·已通关关卡）/ 分轮建牌与洗牌 / 爆炸消除 / 状态机 / 连击 / 薄 UI / 连击提示贴右下角 / 棋局只存内存重进即重洗) `test-crossword`(213，填字游戏：词条清洗与去重 / canPlace 四条规则 / 交叉排版生成与可复现 / 逐格状态机 / 移动端格子尺寸与字母键盘 / 打字只打补丁的薄 UI / 入口横幅) `test-keyboard`(52，移动端英文字母键盘) `test-sync`(249，多端同步：WebDAV 客户端 / 合并内核 / 快照往返 / 墓碑 / 配置 / 增量布局（假服务端：只传变化·只下载变化·预览只读·本机专用·v1 升级）/ 连通性诊断（错误分类·逐步探测·报告不含密码）) |
+| 新功能 | `test-add-words`(110) `test-import-file`(336) `test-table-editor`(223) `test-export`(155) `test-xlsx`(125) `test-wordbook`(124) `test-match`(292，明牌配对：≥1 关解锁 / 词源（整卡组·已通关关卡）/ 分轮建牌与洗牌 / 爆炸消除 / 状态机 / 连击 / 薄 UI / 连击提示贴右下角 / 棋局只存内存重进即重洗) `test-crossword`(213，填字游戏：词条清洗与去重 / canPlace 四条规则 / 交叉排版生成与可复现 / 逐格状态机 / 移动端格子尺寸与字母键盘 / 打字只打补丁的薄 UI / 入口横幅) `test-keyboard`(52，移动端英文字母键盘) `test-sync`(251，多端同步：WebDAV 客户端 / 合并内核 / 快照往返 / 墓碑 / 配置 / 增量布局（假服务端：只传变化·只下载变化·预览只读·本机专用·v1 升级）/ 连通性诊断（错误分类·逐步探测·报告不含密码）) |
 | 无障碍 | `test-a11y`(154，键盘焦点环 / aria 覆盖 / 减少动效 / 弹窗焦点管理 / 配对页·填字页·字母键盘·同步表单标注 / 同步诊断) |
-| DOM / 资源 | `smoke-dom`(339) `verify-assets`(650) `test-dav-proxy`(21，本机同源代理 scripts/dav-proxy.py 的端到端功能测试) |
+| DOM / 资源 | `smoke-dom`(339) `verify-assets`(664) `test-dav-proxy`(21，本机同源代理 scripts/dav-proxy.py 的功能测试) `test-dav-fn`(21，Pages Function 逻辑单测) |
 | 性能金丝雀 | `test-perf`(29，1 万词 / 500 关：统计/分组/抽题（含优先池读取次数）+ 耗时) |
 
 ## 已知问题 / 技术债

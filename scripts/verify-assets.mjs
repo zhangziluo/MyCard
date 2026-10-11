@@ -612,7 +612,7 @@ console.log('\n[我的生词批量整理（js/wordbook.js + js/wordbook-view.js�
   must(existsSync(rel('js/wordbook-view.js')), 'js/wordbook-view.js 存在（整理页）');
   must(sw.includes("'./js/wordbook.js'"), 'sw.js PRECACHE 含 ./js/wordbook.js');
   must(sw.includes("'./js/wordbook-view.js'"), 'sw.js PRECACHE 含 ./js/wordbook-view.js');
-  must(/const VERSION = 'v1\.20\.0'/.test(sw), 'sw.js VERSION 已递增（v1.20.0）');
+  must(/const VERSION = 'v1\.21\.0'/.test(sw), 'sw.js VERSION 已递增（v1.21.0）');
 
   // 内核：去重合并 / 标签 / 筛选排序 / 选中集 / 补查目标
   must(/export function normKey/.test(wbSrc), 'wordbook.js：normKey（大小写 / 空格归一为同一个词）');
@@ -630,7 +630,7 @@ console.log('\n[我的生词批量整理（js/wordbook.js + js/wordbook-view.js�
   must(/merge: true/.test(storeSrc2) && /extraBacks/.test(storeSrc2), 'store.js：addWords 支持 { merge: true } 合并释义');
 
   // 路由与入口
-  must(/APP_VERSION = 'v0\.9\.6'/.test(appSrc), 'app.js 版本号更新为 v0.9.6');
+  must(/APP_VERSION = 'v0\.9\.7'/.test(appSrc), 'app.js 版本号更新为 v0.9.7');
   must(/from '\.\/wordbook-view\.js'/.test(appSrc) && /renderWordbook\(root\)/.test(appSrc), 'app.js 挂载 renderWordbook');
   must(/seg\[0\] === 'words'/.test(appSrc) && /#\/words/.test(appSrc), 'app.js 解析 #/words 路由（含 ?page=N 分页）');
   must(/on\('nav-words'/.test(decksSrc3), 'decks.js 提供 nav-words 入口动作');
@@ -1117,8 +1117,8 @@ console.log('\n[跨域场景一键方案（v0.9.4：reason + 复制 Worker 反�
   must(/复制 Worker 反代代码/.test(readFileSync(rel('scripts/smoke-dom.mjs'), 'utf8')), 'smoke-dom：覆盖「跨域 → 三步修好」弹窗');
 }
 
-// 17) v0.9.6：可复制的报告自带「怎么修」+ Worker 代码必须真能跑 + 剪贴板兜底
-console.log('\n[报告自带修复步骤（v0.9.6：怎么修 + 可执行代码 + 复制兜底）]');
+// 17) v0.9.7：可复制的报告自带「怎么修」+ Worker 代码必须真能跑 + 剪贴板兜底
+console.log('\n[报告自带修复步骤（v0.9.7：怎么修 + 可执行代码 + 复制兜底）]');
 {
   const wdSrc4 = readFileSync(rel('js/webdav.js'), 'utf8');
   const appSrc7 = readFileSync(rel('js/app.js'), 'utf8');
@@ -1140,8 +1140,8 @@ console.log('\n[报告自带修复步骤（v0.9.6：怎么修 + 可执行代码 
   must(readFileSync(rel('scripts/smoke-dom.mjs'), 'utf8').includes('copy-box'), 'smoke-dom：覆盖剪贴板不可用 → 手动复制弹窗');
 }
 
-// 18) v0.9.6：本机「同源代理」脚本（零账号绕过网盘跨域限制）
-console.log('\n[本机代理脚本（v0.9.6：dav-proxy.py）]');
+// 18) v0.9.7：本机「同源代理」脚本（零账号绕过网盘跨域限制）
+console.log('\n[本机代理脚本（v0.9.7：dav-proxy.py）]');
 {
   must(existsSync(rel('scripts/dav-proxy.py')), '存在 scripts/dav-proxy.py（零依赖本机代理 + 静态站点）');
   const py = readFileSync(rel('scripts/dav-proxy.py'), 'utf8');
@@ -1165,6 +1165,31 @@ console.log('\n[本机代理脚本（v0.9.6：dav-proxy.py）]');
   must(/id: 'secure'|'页面安全性'/.test(wdSrc5) && /Service Worker（离线 \/ 自动更新）与剪贴板 API 不可用/.test(wdSrc5), 'webdav.js：http 页面时给出「页面安全性」警告步骤');
   must(/dav-proxy\.py/.test(wdSrc5) && /python3 -m http\.server/.test(wdSrc5), 'webdav.js：本机页面时把 dav-proxy.py 作为首要修复步骤');
   must(/dav-proxy\.py/.test(readFileSync(rel('README.md'), 'utf8')), 'README 记录了本机代理方案');
+}
+
+// 19) v0.9.7：Cloudflare Pages Function（同源反代，部署在 Pages 上时零第三方服务）
+console.log('\n[Pages Function 同源反代（v0.9.7：functions/dav/[[path]].js）]');
+{
+  must(existsSync(rel('functions/dav/[[path]].js')), '存在 functions/dav/[[path]].js（Pages 自动识别的路由）');
+  const fnSrc = readFileSync(rel('functions/dav/[[path]].js'), 'utf8');
+  must(/export async function onRequest/.test(fnSrc), '导出 onRequest（Pages Functions 约定）');
+  must(/env\.DAV_TARGET/.test(fnSrc) && /status: 501/.test(fnSrc), '未配置 DAV_TARGET → 501 并说明怎么配（不静默失败）');
+  must(/export function buildTargetUrl/.test(fnSrc) && /split\('\/'\)\.includes\('\.\.'\)/.test(fnSrc), 'buildTargetUrl + 拒绝 .. 的路径');
+  must(/request\.method === 'OPTIONS'/.test(fnSrc) && /status: 204/.test(fnSrc), 'OPTIONS → 204（预检不打扰网盘）');
+  must(
+    /'authorization'/.test(fnSrc) && /'depth'/.test(fnSrc) && /'if-none-match'/.test(fnSrc) && /FORWARD_HEADERS/.test(fnSrc),
+    '只转发白名单请求头（Authorization / Depth / If-None-Match …）'
+  );
+  must(/out\.delete\('set-cookie'\)/.test(fnSrc), '不透传 set-cookie');
+  must(/Access-Control-Allow-Origin/.test(fnSrc), '补 CORS 头（换源打开页面时也能用）');
+  must(/body: \['GET', 'HEAD'\]\.includes\(method\) \? undefined : request\.body/.test(fnSrc), 'PUT 等带请求体时透传 body');
+  must(existsSync(rel('scripts/test-dav-fn.mjs')), '存在 scripts/test-dav-fn.mjs（纯逻辑单测，不需要真部署）');
+  const fnTest = readFileSync(rel('scripts/test-dav-fn.mjs'), 'utf8');
+  must(/mod\.onRequest\(/.test(fnTest) && /mkRequest/.test(fnTest), '测试直接调用 onRequest + 桩 fetch');
+  must(/逃不出目标主机/.test(fnTest), '测试断言「只在固定目标主机内转发」（不会变成开放代理）');
+  const wdSrc6 = readFileSync(rel('js/webdav.js'), 'utf8');
+  must(/functions\/dav\/\[\[path\]\]\.js/.test(wdSrc6), 'webdav.js：修复步骤/自查清单里告知 Pages Function 方案');
+  must(/functions\/dav/.test(readFileSync(rel('README.md'), 'utf8')), 'README 记录了 Pages Function 方案');
 }
 
 console.log('\n[大卡组性能（单遍统计 / 复用 levels / 抽题快路径）]');
