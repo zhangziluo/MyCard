@@ -128,6 +128,70 @@ ok(new Set(at).size === 3, '同词连续 3 次 → 题型互不相同');
 const at2 = engine.assignTypesByCard(['a', 'a', 'a', 'a'], ['word2def', 'word2def', 'fill', 'fill'], () => 0);
 ok(at2[0] !== at2[1] && at2[1] !== at2[2] && at2[2] !== at2[3], '题型用尽后仍避免相邻重复');
 
+console.log('\n[v0.9.1：题型分配尊重「卡片级可用性」canType]');
+{
+  // 卡片级可用性：中文释义不足 2 条 → 不允许出「多义多选」（除非开了英英选择）
+  const richCard = { id: 'rich', front: 'bank', back: 'n. 银行', extraBacks: ['n. 河岸'] };
+  const poorCard = { id: 'poor', front: 'light', back: 'n. 光' };
+  const byId = new Map([['poor', poorCard], ['rich', richCard]]);
+  const canType = (card, t) => testMod.canBuildType(card, t, { allowEnSenses: false });
+
+  const noFilter = engine.assignTypesByCard(['poor', 'rich'], ['multi_sense', 'word2def'], () => 0, {});
+  ok(noFilter[0] === 'multi_sense', '不传 canType：老逻辑照旧（会把多义题派给不适合的卡）', noFilter);
+  const filtered = engine.assignTypesByCard(['poor', 'rich'], ['multi_sense', 'word2def'], () => 0, { byId, canType });
+  ok(filtered[0] === 'word2def' && filtered[1] === 'multi_sense', '传 canType：多义题绕开中文释义不足的卡，派给可用的卡', filtered);
+  const bothPoor = engine.assignTypesByCard(['poor', 'poor2'], ['multi_sense', 'word2def'], () => 0, {
+    byId: new Map([['poor', poorCard], ['poor2', { ...poorCard, id: 'poor2' }]]),
+    canType
+  });
+  ok(bothPoor.length === 2 && bothPoor.every((t) => t !== 'multi_sense'), '全部卡都不可用时退回基础题型（不硬塞，也不会卡住出题）', bothPoor);
+  const late = engine.assignTypesByCard(['poor', 'rich'], ['multi_sense', 'multi_sense'], () => 0, { byId, canType });
+  ok(late[0] !== 'multi_sense' && late[1] === 'multi_sense', '池里只剩多义题时：把槽位留给「后面合适的卡」，而不是塞给用不了的卡', late);
+
+  // 端到端：整卡组抽题计划 + 只有部分卡有多义 → 出题结果里不该有任何英文多义题
+  const mix = {
+    id: 'mix-deck',
+    cards: [
+      { id: 'c1', front: 'bank', back: 'n. 银行', extraBacks: ['n. 河岸'] },
+      { id: 'c2', front: 'run', back: 'v. 跑', extraBacks: ['v. 经营'] },
+      { id: 'c3', front: 'light', back: 'n. 光' },
+      { id: 'c4', front: 'make', back: 'v. 制作' },
+      { id: 'c5', front: 'single', back: 'adj. 单一的' }
+    ]
+  };
+  const enabled = { eng_eng: false, multi_sense: true };
+  const weights = cfg.normalizeWeights(null, enabled);
+  const multiOk = (id) => ['c1', 'c2'].includes(id); // 只有 c1/c2 有 ≥2 条中文释义
+  let plannedMulti = 0;
+  let actualMulti = 0;
+  let badQ = null;
+  for (const seed of [1, 2, 3, 4, 5, 6]) {
+    const lcg = (s) => () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296);
+    const plan = engine.samplePlan(mix, {
+      count: 20,
+      weights,
+      enabled,
+      random: lcg(seed),
+      canType: (card, t) => testMod.canBuildType(card, t, { allowEnSenses: false })
+    });
+    plannedMulti += plan.filter((p) => p.type === 'multi_sense').length;
+    const qs = testMod.buildQuestionsFromPlan(mix, plan, null, lcg(seed + 100), { allowEnSenses: false });
+    for (const q of qs) {
+      if (q.senseKind === 'en') badQ = q;
+      if (q.type === 'multi_sense') {
+        actualMulti += 1;
+        if (!multiOk(q.cardId)) badQ = q;
+      }
+    }
+  }
+  ok(badQ === null, '6 组随机种子：出出来的多义题全落在「有 ≥2 条中文释义」的卡上，且没有任何英文多义题', badQ);
+  ok(actualMulti >= 4, `中文多义题确实出得出来（${actualMulti} 道 / 120 题）`);
+  ok(
+    plannedMulti === actualMulti,
+    `计划与出题完全一致（计划 ${plannedMulti} / 实际 ${actualMulti}）：不适合的卡不占多义槽位，槽位留给后面合适的卡`
+  );
+}
+
 console.log('\n[抽题：词数 ≥ N（50 题 / 200 词）→ 无重复]');
 const deck200 = makeDeck(200);
 const plan50 = engine.samplePlan(deck200, { count: 50, weights: cfg.DEFAULT_WEIGHTS });

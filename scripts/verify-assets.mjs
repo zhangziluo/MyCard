@@ -612,7 +612,7 @@ console.log('\n[我的生词批量整理（js/wordbook.js + js/wordbook-view.js�
   must(existsSync(rel('js/wordbook-view.js')), 'js/wordbook-view.js 存在（整理页）');
   must(sw.includes("'./js/wordbook.js'"), 'sw.js PRECACHE 含 ./js/wordbook.js');
   must(sw.includes("'./js/wordbook-view.js'"), 'sw.js PRECACHE 含 ./js/wordbook-view.js');
-  must(/const VERSION = 'v1\.14\.0'/.test(sw), 'sw.js VERSION 已递增（v1.14.0）');
+  must(/const VERSION = 'v1\.16\.0'/.test(sw), 'sw.js VERSION 已递增（v1.16.0）');
 
   // 内核：去重合并 / 标签 / 筛选排序 / 选中集 / 补查目标
   must(/export function normKey/.test(wbSrc), 'wordbook.js：normKey（大小写 / 空格归一为同一个词）');
@@ -630,7 +630,7 @@ console.log('\n[我的生词批量整理（js/wordbook.js + js/wordbook-view.js�
   must(/merge: true/.test(storeSrc2) && /extraBacks/.test(storeSrc2), 'store.js：addWords 支持 { merge: true } 合并释义');
 
   // 路由与入口
-  must(/0\.8\.0/.test(appSrc), 'app.js 版本号更新为 v0.8.0');
+  must(/APP_VERSION = 'v0\.9\.2'/.test(appSrc), 'app.js 版本号更新为 v0.9.2');
   must(/from '\.\/wordbook-view\.js'/.test(appSrc) && /renderWordbook\(root\)/.test(appSrc), 'app.js 挂载 renderWordbook');
   must(/seg\[0\] === 'words'/.test(appSrc) && /#\/words/.test(appSrc), 'app.js 解析 #/words 路由（含 ?page=N 分页）');
   must(/on\('nav-words'/.test(decksSrc3), 'decks.js 提供 nav-words 入口动作');
@@ -982,6 +982,75 @@ console.log('\n[同步增强（v0.9.0：增量 + 预览差异 + 本机专用）]
     readFileSync(rel('scripts/smoke-dom.mjs'), 'utf8').includes('data-action="sync-preview"'),
     'smoke-dom 覆盖「预览差异」弹窗'
   );
+}
+
+// 13) v0.9.1 修复：没开「英英选择」时不出英文题（多义多选不再回退 GCIDE）
+console.log('\n[题型联动修复（v0.9.1：只开多义多选 → 不出英文题）]');
+{
+  const testSrc = readFileSync(rel('js/test.js'), 'utf8');
+  const engineSrc = readFileSync(rel('js/test-engine.js'), 'utf8');
+  const cfgSrc = readFileSync(rel('js/test-config.js'), 'utf8');
+  must(/export function multiSenseSet\(card, max = 4, \{ allowEnglish = true \} = \{\}\)/.test(testSrc), 'test.js：multiSenseSet 支持 allowEnglish（不再无条件回退 GCIDE）');
+  must(/if \(!allowEnglish\) return null;/.test(testSrc), 'test.js：不允许英文题时直接返回 null（中文释义不足就不出多义题）');
+  must(/export function canBuildType\(card, type, \{ allowEnSenses = true \} = \{\}\)/.test(testSrc), 'test.js：canBuildType（抽题与出题共用的唯一判定口径）');
+  must(
+    /if \(type === 'eng_eng'\) return !!allowEnSenses/.test(testSrc) && /multiSenseSet\(card, 4, \{ allowEnglish: !!allowEnSenses \}\)/.test(testSrc),
+    'test.js：canBuildType 同时约束 eng_eng 与 multi_sense'
+  );
+  must(/allowEnSenses = true \} = \{\}\)/.test(testSrc) && /buildQuestionsFromPlan\(deck, plan, hardIds = null, random = Math\.random, \{ allowEnSenses = true \}/.test(testSrc), 'test.js：buildQuestions / buildQuestionsFromPlan 接受 allowEnSenses');
+  must(/if \(!allowEnSenses\) return null; \/\/ 没开「英英选择」时不该出现英文题/.test(testSrc), 'test.js：buildOneQuestion 对英英题有防御性回退');
+  must(/const set = multiSenseSet\(card, 4, \{ allowEnglish: !!allowEnSenses \}\)/.test(testSrc), 'test.js：出题时按 allowEnSenses 决定要不要英文兜底');
+  must(/const allowEnSenses = !!\(conf\.enabled && conf\.enabled\.eng_eng\)/.test(testSrc), 'test.js：startDeckTest 以「是否开启英英选择」作为 allowEnSenses');
+  must(
+    /canType: \(card, type\) => canBuildType\(card, type, \{ allowEnSenses \}\)/.test(testSrc) &&
+      /buildQuestionsFromPlan\(deck, plan, hw\.hardSet\(deckId\), Math\.random, \{ allowEnSenses \}\)/.test(testSrc),
+    'test.js：整卡组测试同时把 allowEnSenses 传给抽题计划与出题（两条链路一致）'
+  );
+  must(/canType = null \} = \{\}\)/.test(engineSrc) && /const byId = typeof canType === 'function'/.test(engineSrc), 'test-engine.js：samplePlan 支持 canType（卡片级可用性）');
+  must(
+    /export function assignTypesByCard\(seq, typeList, random = Math\.random, \{ byId = null, canType = null \} = \{\}\)/.test(engineSrc),
+    'test-engine.js：assignTypesByCard 支持 byId / canType'
+  );
+  must(
+    /const ok = cands\.filter\(\(t\) => canType\(card, t\)\)/.test(engineSrc) && /QUESTION_TYPES\.filter\(\(t\) => !used\.has\(t\) && canType\(card, t\)\)/.test(engineSrc),
+    'test-engine.js：可用题优先；都不可用时借基础题型顶上，把槽位留给后面合适的卡'
+  );
+  must(/中文释义不足 2 条/.test(cfgSrc) && /GCIDE 英文释义兜底/.test(cfgSrc), 'test-config.js：题面说明写明英文兜底只在开启「英英选择」后生效');
+  const testMsSrc = readFileSync(rel('scripts/test-multi-sense.mjs'), 'utf8');
+  const testDeckSrc = readFileSync(rel('scripts/test-deck-test.mjs'), 'utf8');
+  must(/allowEnglish: false/.test(testMsSrc) && /canBuildType/.test(testMsSrc), 'test-multi-sense 覆盖 allowEnglish / canBuildType');
+  must(/canType/.test(testDeckSrc) && /没有任何英文多义题/.test(testDeckSrc), 'test-deck-test 覆盖抽题可用性 + 端到端「没有英文多义题」');
+  must(readFileSync(rel('scripts/smoke-dom.mjs'), 'utf8').includes('不出英文题'), 'smoke-dom 覆盖「只开多义多选 → 不出英文题」的整卡组链路');
+}
+
+// 14) v0.9.2「连不上也说得清」：错误分类 + 逐步诊断 + 可复制报告（不再只报 request failed）
+console.log('\n[同步连通性诊断（v0.9.2：错误说清原因 + 逐步定位）]');
+{
+  const wdSrc = readFileSync(rel('js/webdav.js'), 'utf8');
+  const appSrc5 = readFileSync(rel('js/app.js'), 'utf8');
+  must(/this\.kind = kind/.test(wdSrc) && /'timeout' \| 'offline' \| 'mixed-content' \| 'network'/.test(wdSrc), 'webdav.js：WebdavError 带 kind（超时 / 离线 / 混合内容 / 网络）');
+  must(/export function causeText/.test(wdSrc), 'webdav.js：causeText 保留浏览器原始异常（name + message）');
+  must(!/'request failed'/.test(wdSrc), 'webdav.js：不再把一切压成没有信息的 "request failed"');
+  must(/kind: deviceOffline\(\) \? 'offline' : 'network'/.test(wdSrc), 'webdav.js：网络异常区分「离线」与「连不上」');
+  must(/pageIsHttps\(\) && \/\^http:/.test(wdSrc) && /kind: 'mixed-content'/.test(wdSrc), 'webdav.js：HTTPS 页面 + http 地址 → 本地就拦下（不发请求）');
+  must(/export async function diagnose/.test(wdSrc) && /export function setupHints/.test(wdSrc) && /export function diagnoseReport/.test(wdSrc), 'webdav.js：diagnose / setupHints / diagnoseReport（逐步诊断 + 自查清单 + 可复制报告）');
+  must(
+    /基础连通性（GET，不带认证）/.test(wdSrc) && /跨域预检（PROPFIND，不带认证）/.test(wdSrc) && /带认证的 PROPFIND/.test(wdSrc),
+    'webdav.js：诊断按「连通性 → 跨域预检 → 认证」三步推进（能区分网络 / CORS / 账号）'
+  );
+  must(/服务器拒绝了浏览器的跨域预检/.test(wdSrc) && /应用密码/.test(wdSrc), 'webdav.js：结论给到「CORS 被拦」与「应用密码」这类可执行动作');
+  must(/出于安全未包含在报告中/.test(wdSrc) && !/cfg\.pass \|\| ''/.test(wdSrc), 'webdav.js：诊断报告绝不含密码');
+  must(/注册邮箱/.test(wdSrc) && /dav\.jianguoyun\.com/.test(wdSrc), 'webdav.js：自查清单含坚果云专用提示（注册邮箱 + 应用密码 + 正确端点）');
+  must(/export function explainError/.test(wdSrc) && /浏览器原始信息/.test(wdSrc), 'webdav.js：explainError 把「地址 + 原始信息 + 怎么办」一起给出');
+  must(/data-action="sync-diag"/.test(appSrc5) && /async function runDiagnose/.test(appSrc5) && /function syncDiagModal/.test(appSrc5), 'app.js：「诊断连接」按钮 + runDiagnose + 诊断弹窗');
+  must(/await runDiagnose\(cfg\)/.test(appSrc5) && /if \(!Number\(e && e\.status\)\) await runDiagnose\(cfg\)/.test(appSrc5), 'app.js：测试连接 / 立即同步 / 预览失败时自动附上诊断');
+  must(/webdav\.diagnoseReport\(rep, cfg\)/.test(appSrc5) && /function copyText/.test(appSrc5), 'app.js：诊断弹窗可复制报告（剪贴板不可用时降级提示手选）');
+  must(/class="diag-list"/.test(appSrc5) && /diag-step is-/.test(appSrc5) && /diag-hints/.test(appSrc5), 'app.js：诊断弹窗结构（步骤列表 + 自查清单）');
+  must(/\.diag-list/.test(css) && /\.diag-step\.is-fail/.test(css) && /\.diag-hints/.test(css), 'css：诊断样式（含失败态与清单）');
+  const testSyncSrc2 = readFileSync(rel('scripts/test-sync.mjs'), 'utf8');
+  must(/kind === 'network'/.test(testSyncSrc2) && /diagnose\('https:\/\/dav\.example\.com\/dav'/.test(testSyncSrc2), 'test-sync：覆盖错误分类 + 逐步诊断多场景');
+  must(/报告绝不含密码/.test(testSyncSrc2), 'test-sync：断言诊断报告不含密码');
+  must(readFileSync(rel('scripts/smoke-dom.mjs'), 'utf8').includes('data-action="sync-diag"'), 'smoke-dom：覆盖「诊断连接」弹窗（跨域 / 连接正常两种结论）');
 }
 
 console.log('\n[大卡组性能（单遍统计 / 复用 levels / 抽题快路径）]');

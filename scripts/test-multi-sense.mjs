@@ -170,6 +170,49 @@ console.log('\n[渲染：多选标识 + 勾选态 + 提交按钮]');
   ok(root.innerHTML.includes('disabled'), '未勾选时提交按钮禁用');
 }
 
+console.log('\n[v0.9.1 修复：没开「英英选择」时不出英文题（多义多选不再回退 GCIDE）]');
+{
+  // 释义来源：允许 / 禁止英文兜底
+  ok(testMod.multiSenseSet(cardOf('light'), 4, { allowEnglish: false }) === null, 'light 仅 1 条中文释义 + allowEnglish:false → null（不再回退英文）');
+  ok(testMod.multiSenseSet(cardOf('light'), 4, { allowEnglish: true }).kind === 'en', '显式 allowEnglish:true → 仍可回退 GCIDE 英文（向后兼容）');
+  const zhOnly = testMod.multiSenseSet(cardOf('bank'), 4, { allowEnglish: false });
+  ok(zhOnly && zhOnly.kind === 'zh' && zhOnly.list.length === 3, '有 ≥2 条中文释义的卡不受影响（照常出中文多义题）');
+
+  // 抽题与出题共用的可用性判定
+  ok(testMod.canBuildType(cardOf('bank'), 'multi_sense', { allowEnSenses: false }) === true, 'canBuildType：中文多义卡 → 可出多义题');
+  ok(testMod.canBuildType(cardOf('light'), 'multi_sense', { allowEnSenses: false }) === false, 'canBuildType：中文释义不足且不允许英文 → 不可出多义题');
+  ok(testMod.canBuildType(cardOf('light'), 'multi_sense', { allowEnSenses: true }) === true, 'canBuildType：允许英文题时才可用于多义兜底');
+  ok(testMod.canBuildType(cardOf('single'), 'eng_eng', { allowEnSenses: true }) === true, 'canBuildType：有 GCIDE 释义 → 可出英英题');
+  ok(testMod.canBuildType(cardOf('single'), 'eng_eng', { allowEnSenses: false }) === false, 'canBuildType：allowEnSenses:false → 不出英英题');
+  ok(testMod.canBuildType(cardOf('single'), 'word2def', { allowEnSenses: false }) === true, 'canBuildType：基础题型恒可用');
+
+  // 出题：计划里派了多义题，但该卡中文释义不足 → 回退基础题型（不再变成英文题）
+  const plan = [
+    { cardId: cardOf('light').id, type: 'multi_sense' },
+    { cardId: cardOf('bank').id, type: 'multi_sense' }
+  ];
+  const qsOff = testMod.buildQuestionsFromPlan(d, plan, null, () => 0, { allowEnSenses: false });
+  ok(qsOff[0].type !== 'multi_sense' && qsOff[0].type === 'word2def', '没开英英选择：中文释义不足的卡回退基础题型（不再出英文多义题）', qsOff[0].type);
+  ok(qsOff[1].type === 'multi_sense' && qsOff[1].senseKind === 'zh', '中文释义足够的卡：照常出中文多义多选');
+  ok(qsOff[1].options.every((o) => /[\u4e00-\u9fa5]/.test(o.text)), '选项全部是中文（无英文释义混入）', qsOff[1].options.map((o) => o.text));
+
+  const qsOn = testMod.buildQuestionsFromPlan(d, plan, null, () => 0, { allowEnSenses: true });
+  ok(qsOn[0].type === 'multi_sense' && qsOn[0].senseKind === 'en', '开了英英选择：允许用 GCIDE 英文释义兜底（kind=en）');
+
+  // 关卡测试链路：显式 allowEnSenses:false 时也不应出英文题（防御性）
+  const lvQs = testMod.buildQuestions(d, 0, { types: ['multi_sense'], random: () => 0, allowEnSenses: false });
+  ok(lvQs.every((q) => q.type !== 'multi_sense' || q.senseKind === 'zh'), 'buildQuestions 传 allowEnSenses:false：多义题只可能是中文');
+}
+
+console.log('\n[配置文案：把「不回退英文」写清楚（用户可自查）]');
+{
+  const multi = cfg.OPTIONAL_TYPES.find((o) => o.id === 'multi_sense');
+  const eng = cfg.OPTIONAL_TYPES.find((o) => o.id === 'eng_eng');
+  ok(/中文释义不足 2 条/.test(multi.desc), '多义多选说明写明「中文释义不足 2 条的词不出此题型」');
+  ok(/英英选择/.test(multi.desc), '多义多选说明写明「开启英英选择后才会用英文兜底」');
+  ok(/兜底/.test(eng.desc), '英英选择说明写明它会为多义多选提供英文兜底');
+}
+
 console.log(`\n多义多选结果: ${pass} 通过, ${fail} 失败`);
 process.exit(fail ? 1 : 0);
 

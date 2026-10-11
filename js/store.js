@@ -237,19 +237,32 @@ function scheduleFlush() {
   }, 250);
 }
 
-/** 立即把待写数据落到 IndexedDB（返回写入条数，供测试/退出前调用） */
+/**
+ * 立即把待写数据落到 IndexedDB（返回写入条数，供测试/退出前调用）。
+ *
+ * **不要把 pending 先清空再等写入**：那会出现「pending 里已没有、IDB 里还没写」的空窗，
+ * 期间任何读路径（如 `revlogsOfDeck` → `sync.buildSnapshot`）都会漏读刚写入的数据。
+ * 因此这里改为「先取快照 → 写完（成功或失败）后，只删掉快照里那些**未被更新**的条目」：
+ *  · 期间被再次修改的条目（对象已换新）保留在 pending，等下一轮写；
+ *  · 期间新加入的条目不受影响。
+ */
 export async function flushPending() {
   const decks = [...pendingDecks.values()];
   const cards = [...pendingCards.values()];
   const logs = [...pendingRevlogs.values()];
   const delDecks = [...deletedDeckIds];
   const delCards = [...deletedCardIds];
-  pendingDecks = new Map();
-  pendingCards = new Map();
-  pendingRevlogs = new Map();
-  deletedDeckIds = new Set();
-  deletedCardIds = new Set();
-  if (!idbReady) return 0;
+  const done = () => {
+    for (const d of decks) if (pendingDecks.get(d.id) === d) pendingDecks.delete(d.id);
+    for (const c of cards) if (pendingCards.get(c.id) === c) pendingCards.delete(c.id);
+    for (const l of logs) if (pendingRevlogs.get(l.id) === l) pendingRevlogs.delete(l.id);
+    for (const id of delDecks) deletedDeckIds.delete(id);
+    for (const id of delCards) deletedCardIds.delete(id);
+  };
+  if (!idbReady) {
+    done();
+    return 0;
+  }
   let written = 0;
   try {
     if (delDecks.length) await idb.delAll(idb.STORE_DECKS, delDecks);
@@ -261,6 +274,8 @@ export async function flushPending() {
     persistMeta();
   } catch (e) {
     console.warn('[store] IndexedDB 写入失败', e);
+  } finally {
+    done();
   }
   return written;
 }

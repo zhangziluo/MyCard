@@ -17,7 +17,7 @@ import { renderWordbook } from './wordbook-view.js'; // v0.5.9 生词本批量�
 import { renderMatch, clearMatchSession } from './match.js'; // v0.5.12 明牌配对（#/match/{deck}）
 import { renderCrossword, clearCrosswordSession } from './crossword.js'; // v0.6.0 填字游戏（#/crossword/{deck}）
 
-const APP_VERSION = 'v0.9.0';
+const APP_VERSION = 'v0.9.2';
 
 /* ------------------------------ 路由解析 ------------------------------ */
 
@@ -254,10 +254,11 @@ function syncSectionHtml() {
         <button class="btn btn-primary" data-action="sync-now">立即同步</button>
         <button class="btn btn-ghost" data-action="sync-preview">预览差异</button>
         <button class="btn btn-ghost" data-action="sync-test">测试连接</button>
+        <button class="btn btn-ghost" data-action="sync-diag">诊断连接</button>
         <button class="btn btn-ghost" data-action="sync-save">保存设置</button>
         <button class="btn btn-ghost" data-action="sync-clear">清除密码</button>
       </div>
-      <p class="hint">网盘上的文件：<code>mycard-sync.json</code>（索引：每个卡组的摘要与指纹）＋ <code>mycard-decks/卡组id.json</code>（各卡组内容）＋ <code>mycard-sync.prev.json</code>（索引备份，可手工回滚）＋ <code>mycard-sync.lock.json</code>（同步锁，同步结束后自动删除）。浏览器直连 WebDAV 需要网盘允许跨域；「测试连接」若报跨域失败，请改用支持 CORS 的地址（坚果云 <code>https://dav.jianguoyun.com/dav/</code>、Nextcloud <code>https://你的域名/remote.php/dav/files/用户名/</code>）。</p>
+      <p class="hint">网盘上的文件：<code>mycard-sync.json</code>（索引：每个卡组的摘要与指纹）＋ <code>mycard-decks/卡组id.json</code>（各卡组内容）＋ <code>mycard-sync.prev.json</code>（索引备份，可手工回滚）＋ <code>mycard-sync.lock.json</code>（同步锁，同步结束后自动删除）。<b>浏览器直连 WebDAV 需要网盘允许跨域</b>：连不上时点 <b>「诊断连接」</b>，它会逐步判断是「网络不通」「跨域被拦」还是「账号密码不对」，并给出可直接执行的建议（报告可复制，且不含密码）。坚果云示例：地址 <code>https://dav.jianguoyun.com/dav/</code>、用户名填<b>注册邮箱</b>、密码填「账户信息 → 安全选项 → 添加应用」生成的<b>应用密码</b>（登录密码无效）；Nextcloud 地址形如 <code>https://你的域名/remote.php/dav/files/用户名/</code>。</p>
     </section>`;
 }
 
@@ -399,6 +400,85 @@ function syncPreviewModal(pv) {
   });
 }
 
+/** 诊断结果弹窗：逐步结果 + 结论 + 自查清单 + 「复制诊断信息」（连不上时给用户可行动的东西） */
+function syncDiagModal(rep, cfg) {
+  const steps = (rep && rep.steps) || [];
+  const okCount = steps.filter((s) => s.status === 'ok').length;
+  const rows = steps
+    .map(
+      (s) => `
+      <li class="diag-step is-${s.status}">
+        <span class="diag-mark" aria-hidden="true">${s.status === 'ok' ? '✓' : s.status === 'warn' ? '!' : '✗'}</span>
+        <span class="diag-body"><b>${esc(s.label)}</b><span>${esc(s.detail)}</span></span>
+      </li>`
+    )
+    .join('');
+  const hints = webdav
+    .setupHints(cfg.url)
+    .map((h) => `<li>${esc(h)}</li>`)
+    .join('');
+  const body = `
+    <p class="sync-status ${rep && rep.ok ? 'is-good' : 'is-bad'}">
+      <b>${esc((rep && rep.verdict) || '诊断未得出结论')}</b>
+      <span>地址 ${esc(cfg.url || '(未填)')}${cfg.dir ? ` · 目录 ${esc(cfg.dir)}` : ''} · ${okCount}/${steps.length} 步通过</span>
+    </p>
+    <ul class="diag-list">${rows || '<li class="diag-step">没有可显示的步骤（地址未填？）</li>'}</ul>
+    <details class="weight-box" open>
+      <summary>常见原因自查清单</summary>
+      <ul class="diag-hints">${hints}</ul>
+    </details>
+    <p class="hint">诊断只做<b>只读</b>请求（GET / PROPFIND），不会修改网盘上的任何文件，也不会改动本机数据；报告里<b>不包含密码</b>，可放心复制。</p>`;
+  openModal({
+    title: '同步诊断（连不上的原因）',
+    wide: true,
+    body,
+    actions: [
+      {
+        label: '复制诊断信息',
+        cls: 'btn-ghost',
+        onClick: () => {
+          copyText(webdav.diagnoseReport(rep, cfg));
+          return false; // 复制后保持弹窗打开，方便继续看清单
+        }
+      },
+      { label: '关闭', cls: 'btn-primary' }
+    ]
+  });
+}
+
+/** 复制文本（不支持剪贴板 API 时降级为提示手选） */
+function copyText(text) {
+  try {
+    if (typeof navigator !== 'undefined' && navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(
+        () => toast('诊断信息已复制，可直接粘贴给他人排查', 'good'),
+        () => toast('复制失败：请手动选中弹窗里的文字复制', 'warn')
+      );
+      return;
+    }
+  } catch (e) {}
+  toast('当前环境不支持自动复制：请手动选中弹窗里的文字复制', 'warn');
+}
+
+/** 跑一次逐步诊断并弹窗（测试连接失败时自动跑，也可手动点「诊断连接」） */
+async function runDiagnose(cfg) {
+  if (!sync.isConfigured(cfg)) {
+    toast('请先填好服务器地址、用户名与密码', 'bad');
+    return;
+  }
+  toast('正在诊断…');
+  try {
+    const rep = await webdav.diagnose(cfg.url, {
+      auth: { user: cfg.user, pass: cfg.pass },
+      dir: cfg.dir
+    });
+    syncDiagModal(rep, cfg);
+  } catch (e) {
+    // diagnose 本身设计为不抛错；真出意外也只提示，不打断用户
+    toast(`诊断失败：${webdav.explainError(e)}`, 'bad');
+  }
+}
+
 /** 执行一次同步（「立即同步」与预览弹窗的「开始同步」共用） */
 async function runSync() {
   const cfg = saveSyncForm();
@@ -413,6 +493,8 @@ async function runSync() {
     toast(`同步完成：${sync.statsText(res.stats)}${extra}`, 'good');
   } catch (e) {
     toast(`同步失败：${webdav.explainError(e)}`, 'bad');
+    // 网络类失败（没有 HTTP 状态）时顺手把逐步诊断打开——用户不用自己找原因
+    if (!Number(e && e.status)) await runDiagnose(cfg);
   }
   render();
 }
@@ -543,8 +625,16 @@ on('sync-test', async () => {
     await webdav.probe(cfg.url, { auth: { user: cfg.user, pass: cfg.pass }, dir: cfg.dir });
     toast('连接成功：目录可读写，可以开始同步了', 'good');
   } catch (e) {
-    toast(webdav.explainError(e), 'bad');
+    // v0.9.2：失败不能只说「request failed」——把原因说清，并自动跑一遍逐步诊断
+    toast(`连接失败：${webdav.explainError(e)}`, 'bad');
+    await runDiagnose(cfg);
   }
+  render();
+});
+
+/* v0.9.2：随时可点的「诊断连接」（逐步探测：连通性 → 跨域预检 → 账号密码） */
+on('sync-diag', async () => {
+  await runDiagnose(saveSyncForm());
   render();
 });
 
@@ -564,6 +654,7 @@ on('sync-preview', async () => {
     syncPreviewModal(pv);
   } catch (e) {
     toast(`预览失败：${webdav.explainError(e)}`, 'bad');
+    if (!Number(e && e.status)) await runDiagnose(cfg);
   }
 });
 

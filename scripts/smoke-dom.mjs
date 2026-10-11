@@ -450,6 +450,54 @@ console.log('\n[题型比例面板 · 可选题型]');
   ok(cfg.loadConfig().enabled.eng_eng === false, '停用状态已保存');
 }
 
+// ---- v0.9.1 修复：只开「多义多选」（不开英英选择）时，整卡组测试不出英文题 ----
+console.log('\n[整卡组测试 · 只开多义多选 → 不出英文题（v0.9.1）]');
+{
+  const cfg = await import('../js/test-config.js');
+  const engdefs = await import('../js/engdefs.js');
+  const engine = await import('../js/test-engine.js');
+  const engMap = {};
+  for (let i = 0; i < 60; i++) engMap['word' + i] = ['A definition of word' + i + '.', 'Another definition of word' + i + '.'];
+  engdefs.setEngDefs(engMap); // 注入 GCIDE 英文释义：修复前「多义多选」会退化成英文题
+
+  const prevProg = engine.loadProgress(demo.id, 'deck'); // 用完还原，避免影响其它用例
+  const planTypes = (q) => JSON.stringify((q || []).map((x) => x.type + (x.senseKind ? '/' + x.senseKind : '')));
+
+  const on = cfg.setTypeEnabled(cfg.DEFAULT_WEIGHTS, cfg.DEFAULT_ENABLED, 'multi_sense', true);
+  cfg.saveConfig({ weights: on.weights, enabled: on.enabled });
+  const panel = fakeEl();
+  testMod.renderDeckTestConfig(panel, demo.id);
+  ok(panel.innerHTML.includes('中文释义不足 2 条'), '面板说明写明「中文释义不足 2 条的词不出此题型」');
+  ok(panel.innerHTML.includes('GCIDE 英文释义兜底'), '面板说明写明英文兜底只在开启「英英选择」后生效');
+
+  const control = testMod.multiSenseSet(store.getDeck(demo.id).cards[0], 4, { allowEnglish: true });
+  ok(control && control.kind === 'en', '（对照）这些卡在「允许英文」时本会退化成英文多义题');
+
+  testMod.startDeckTest(demo.id, 20);
+  const prog = engine.loadProgress(demo.id, 'deck');
+  const qs = (prog && prog.questions) || [];
+  ok(qs.length === 20, '整卡组测试已开始（20 题，题型：' + planTypes(qs) + '）');
+  ok(qs.every((q) => q.type !== 'eng_eng'), '未开「英英选择」→ 一道英英题都没有');
+  ok(qs.every((q) => q.type !== 'multi_sense'), '卡组里没有「≥2 条中文释义」的卡 → 不出多义题（而不是出英文多义题）');
+  ok(qs.every((q) => !q.senseKind || q.senseKind === 'zh'), '没有任何英文多义题（senseKind 不会是 en）');
+
+  // 开了「英英选择」后，英文兜底才回来（行为可预期、可自查）
+  const on2 = cfg.setTypeEnabled(cfg.loadConfig().weights, cfg.loadConfig().enabled, 'eng_eng', true);
+  cfg.saveConfig({ weights: on2.weights, enabled: on2.enabled });
+  testMod.startDeckTest(demo.id, 20);
+  const prog2 = engine.loadProgress(demo.id, 'deck');
+  const qs2 = (prog2 && prog2.questions) || [];
+  ok(
+    qs2.some((q) => q.senseKind === 'en' || q.type === 'eng_eng'),
+    '开启「英英选择」后，英文题（含多义的英文兜底）才重新出现：' + planTypes(qs2)
+  );
+
+  engdefs.clearEngDefs();
+  cfg.saveConfig({ weights: cfg.DEFAULT_WEIGHTS, enabled: cfg.DEFAULT_ENABLED }); // 复位，别影响后续用例
+  engine.clearProgress(demo.id, 'deck');
+  if (prevProg) engine.saveProgress(demo.id, prevProg, 'deck');
+}
+
 // ---- 应用入口（app.js）：启动流程与首页渲染 ----
 console.log('\n[应用入口 app.js]');
 ok(typeof store.storageInfo === 'function', 'store.storageInfo 可用（设置页数据）');
@@ -647,6 +695,77 @@ console.log('\n[同步预览（只读对比）＋ 本机专用卡组]');
   storeMod.deleteDeck(localOnly.id);
   globalThis.location.hash = '#/settings'; // 后续用例仍看设置页
   (winListeners['hashchange'] || []).forEach((fn) => fn({ type: 'hashchange' }));
+}
+
+// ---- v0.9.2：连不上时点「诊断连接」→ 逐步结果 + 结论 + 可复制报告（不再只报 request failed）----
+console.log('\n[同步诊断（v0.9.2：连不上也说得清）]');
+{
+  const uiMod2 = await import('../js/ui.js');
+  globalThis.location.hash = '#/settings';
+  (winListeners['hashchange'] || []).forEach((fn) => fn({ type: 'hashchange' }));
+  ok(appViewEl.innerHTML.includes('data-action="sync-diag"'), '设置页渲染「诊断连接」按钮');
+  ok(appViewEl.innerHTML.includes('诊断连接') && appViewEl.innerHTML.includes('应用密码'), '说明文字给出「坚果云用户名=注册邮箱、密码=应用密码」的提示');
+
+  const f = (id, v) => {
+    if (!docFields[id]) docFields[id] = { value: '', checked: false, type: '', setAttribute() {}, focus() {} };
+    docFields[id].value = v;
+    return docFields[id];
+  };
+  f('sync-url', 'https://dav.jianguoyun.com/dav/');
+  f('sync-user', 'me@example.com');
+  f('sync-pass', 'SUPER-SECRET-PW');
+  f('sync-dir', 'mycard');
+
+  // ① 连通 OK 但预检 / 认证都抛错（典型「跨域被拦」）
+  const saved = globalThis.fetch;
+  const seen = [];
+  globalThis.fetch = async (url, opts = {}) => {
+    const method = String(opts.method || 'GET').toUpperCase();
+    seen.push(method);
+    if (method === 'GET') return { status: 401, text: async () => '' };
+    throw Object.assign(new TypeError('Failed to fetch'), { name: 'TypeError' });
+  };
+  await fire('sync-diag');
+  await tick(90);
+  let m = fakeBody.children.filter((c) => c && c.className === 'modal-overlay').pop();
+  let html = m ? String(m.innerHTML) : '';
+  ok(html.includes('同步诊断'), '点「诊断连接」弹出诊断弹窗');
+  ok(html.includes('解析服务器地址') && html.includes('基础连通性') && html.includes('跨域预检') && html.includes('带认证的 PROPFIND'), '弹窗按步列出：地址 → 连通性 → 跨域预检 → 认证');
+  ok(/跨域预检|CORS/.test(html), '结论明确指向「跨域被拦」（而不是一句 request failed）');
+  ok(html.includes('复制诊断信息'), '提供「复制诊断信息」按钮（可粘贴给他人排查）');
+  ok(html.includes('Failed to fetch'), '把浏览器原始信息也带上（便于判断是被谁拦的）');
+  ok(html.includes('应用密码') && html.includes('dav.jianguoyun.com'), '附坚果云自查清单（应用密码 / 正确端点）');
+  ok(!html.includes('SUPER-SECRET-PW'), '弹窗里不出现密码明文');
+  ok(seen.includes('GET') && seen.filter((x) => x === 'PROPFIND').length >= 2, '诊断确实发起了 GET + PROPFIND（探测顺序正确）');
+  uiMod2.closeModal();
+
+  // ② 全都通 → 结论「连接正常」
+  globalThis.fetch = async (url, opts = {}) => {
+    const method = String(opts.method || 'GET').toUpperCase();
+    if (method === 'GET') return { status: 401, text: async () => '' };
+    return { status: 207, text: async () => '' };
+  };
+  await fire('sync-diag');
+  await tick(90);
+  m = fakeBody.children.filter((c) => c && c.className === 'modal-overlay').pop();
+  html = m ? String(m.innerHTML) : '';
+  ok(html.includes('连接正常'), '三步都通时结论是「连接正常」');
+  ok(html.includes('is-good'), '通过时状态区用成功配色（is-good）');
+  uiMod2.closeModal();
+
+  // ③ 「测试连接」失败时自动跑诊断（用户不用自己找原因）
+  globalThis.fetch = async (url, opts = {}) => {
+    const method = String(opts.method || 'GET').toUpperCase();
+    if (method === 'GET') return { status: 401, text: async () => '' };
+    throw new TypeError('Failed to fetch');
+  };
+  const before = fakeBody.children.length;
+  await fire('sync-test');
+  await tick(90);
+  const m2 = fakeBody.children.filter((c) => c && c.className === 'modal-overlay').pop();
+  ok(fakeBody.children.length > before && m2 && String(m2.innerHTML).includes('同步诊断'), '「测试连接」失败后自动弹出诊断（不再只弹一句「request failed」）');
+  uiMod2.closeModal();
+  globalThis.fetch = saved;
 }
 
 // ---- 设置页：外观（明暗模式）+ 顶栏快捷切换 ----

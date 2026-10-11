@@ -1,5 +1,5 @@
 // ============================================================================
-// webdav.js — 极简 WebDAV 客户端（v0.8.0，零依赖，只用 fetch）
+// webdav.js — 极简 WebDAV 客户端（v0.8.0 起，零依赖，只用 fetch；v0.9.2 加「可诊断」）
 //
 // 只实现同步需要的 5 个动作：PROPFIND（探测）、MKCOL（递归建目录）、GET、PUT、DELETE，
 // 外加 Basic 认证与统一的错误映射 —— 不引入任何第三方库。
@@ -10,39 +10,97 @@
 //   · `baseUrl` 做规范化（补协议、去尾斜杠），路径段逐个 encodeURIComponent → 中文 / 空格目录可用；
 //   · 支持超时（AbortController，缺省 20s）与「无 fetch 环境」的明确报错；
 //   · **CORS 提醒**：浏览器直连 WebDAV 需要服务端允许跨域（Nextcloud 的 `remote.php/dav`、
-//     坚果云的 `dav.jianguoyun.com/dav` 等都支持）；被拦时 fetch 直接抛错，
-//     `explainError()` 会给出「多为跨域限制」的可读提示。
+//     坚果云的 `dav.jianguoyun.com/dav` 等都支持）；被拦时 fetch 只抛一句 "Failed to fetch"，
+//     浏览器**不会**告诉我们是 DNS / 证书 / CORS / 插件拦的。
+//
+// v0.9.2「连不上也说得清」：
+//   · `request()` 出错时保留**原始异常**（name + message）并分类（kind：timeout / offline /
+//     mixed-content / network），不再把一切压成没有信息的 "request failed"；
+//   · `explainError()` 会给出「哪一步 + 底层原始信息 + 该怎么办」，而不是一句英文；
+//   · `diagnose()`：**逐步**探测（环境 → 简单请求 → CORS 预检 → 带认证 PROPFIND），
+//     每步都不抛错，最后给出可执行结论（是网络问题、跨域被拦、还是账号/密码不对）；
+//   · `diagnoseReport()` / `setupHints()`：把报告复制给他人求助 / 页面上的自查清单。
 // ============================================================================
 
 /** 缺省超时（ms） */
 export const DEFAULT_TIMEOUT = 20000;
 
 export class WebdavError extends Error {
-  constructor(message, { status = 0, url = '', cause = null } = {}) {
+  constructor(message, { status = 0, url = '', cause = null, kind = '' } = {}) {
     super(message);
     this.name = 'WebdavError';
     this.status = status;
     this.url = url;
     this.cause = cause;
+    /** 'timeout' | 'offline' | 'mixed-content' | 'network' | ''（空 = 有 HTTP 状态，按状态解释） */
+    this.kind = kind;
   }
 }
 
-/** 认证 / 权限 / 网络问题的可读提示 */
+/** 底层异常的可读细节：浏览器只给一句 "Failed to fetch"，能拿到的都带上 */
+export function causeText(err) {
+  const e = err && err.cause ? err.cause : err;
+  if (!e) return '';
+  const name = String(e.name || '');
+  const msg = String(e.message || (typeof e === 'string' ? e : '') || '').trim();
+  if (name && msg) return `${name}: ${msg}`;
+  return msg || name;
+}
+
+/** 当前页面是不是 HTTPS（混合内容判断用；非浏览器环境 → false） */
+function pageIsHttps() {
+  try {
+    return typeof location !== 'undefined' && location && location.protocol === 'https:';
+  } catch (e) {
+    return false;
+  }
+}
+
+/** 设备是否明确处于离线（拿不到 navigator → 一律当在线） */
+function deviceOffline() {
+  try {
+    return typeof navigator !== 'undefined' && navigator && navigator.onLine === false;
+  } catch (e) {
+    return false;
+  }
+}
+
+/**
+ * 认证 / 权限 / 网络问题的可读提示。
+ * 网络类错误（kind）会带上 URL、底层原始信息与排查方向 —— 不再是一句 "request failed"。
+ */
 export function explainError(err) {
   const status = Number(err && err.status) || 0;
-  if (status === 401) return '认证失败：用户名 / 密码（或应用专用密码）不正确';
-  if (status === 403) return '没有权限：请检查该目录的读写权限';
-  if (status === 404) return '路径不存在：请检查服务器地址与目录名';
-  if (status === 405) return '服务器不允许该操作：确认地址指向支持 WebDAV 的目录';
-  if (status === 409) return '父目录不存在或目录冲突：请检查目录路径';
-  if (status === 412) return '资源已被其他设备修改：请稍后重试';
-  if (status === 423) return '资源被锁定：可能另一台设备正在同步，请稍后再试';
-  if (status === 507) return '服务器空间不足：清理网盘后重试';
-  if (status >= 500) return `服务器错误（${status}）：请稍后重试`;
-  if (status) return `请求失败（HTTP ${status}）`;
+  const where = err && err.url ? `｜地址 ${err.url}` : '';
+  const why = causeText(err);
+  const tail = why ? `｜浏览器原始信息：${why}` : '';
+  if (status === 401) return `认证失败：用户名 / 密码（或应用专用密码）不对${where}。坚果云要用「账号邮箱 + 应用密码」` + tail;
+  if (status === 403) return `没有权限：账号能通过，但该目录不可读写${where}（坚果云请确认该文件夹未被设为只读）` + tail;
+  if (status === 404) return `路径不存在${where}：检查服务器地址末尾是否少写了 /dav/ 或目录名拼错` + tail;
+  if (status === 405) return `服务器不允许该操作${where}：确认地址指向支持 WebDAV 的目录` + tail;
+  if (status === 409) return `父目录不存在或目录冲突${where}：检查目录路径` + tail;
+  if (status === 412) return `资源已被其他设备修改${where}：稍后重试` + tail;
+  if (status === 423) return `资源被锁定${where}：可能另一台设备正在同步，稍后再试` + tail;
+  if (status === 507) return `服务器空间不足${where}：清理网盘后重试` + tail;
+  if (status >= 500) return `服务器错误（${status}）${where}${tail}：稍后重试`;
+  if (status) return `请求失败（HTTP ${status}）${where}${tail}`;
+  if (err && err.kind === 'timeout') {
+    return `连接超时${where}${tail}。可能是网络慢、网盘无响应，或请求被中间设备挂起 —— 换个网络 / 稍后重试，仍不行可点「诊断连接」` ;
+  }
+  if (err && err.kind === 'offline') return `当前设备处于离线状态${where}${tail}。连上网络后重试`;
+  if (err && err.kind === 'mixed-content') {
+    return `地址协议不匹配${where}：页面是 HTTPS，浏览器会直接拦截 http:// 的 WebDAV 地址 —— 请把服务器地址改成 https://`;
+  }
+  if (err && err.kind === 'network') {
+    return (
+      `连不上服务器${where}${tail}。浏览器出于安全限制不会说明具体原因，常见三类：` +
+      `① 网络 / DNS / 证书不通；② 网盘未允许浏览器跨域（CORS 预检被拒）；③ 被广告拦截·隐私插件或公司代理拦下。` +
+      `点「诊断连接」可逐步定位是哪一类`
+    );
+  }
   const raw = String((err && err.message) || err || '');
-  if (/Failed to fetch|NetworkError|Load failed|fetch failed/i.test(raw)) {
-    return '网络失败 / 跨域被拦：请确认地址可访问，并允许浏览器跨域（多数网盘需在 WebDAV 地址上支持 CORS）';
+  if (/Failed to fetch|NetworkError|Load failed|fetch failed|request failed/i.test(raw)) {
+    return `连不上服务器${where}${tail}：多为网络不可达或跨域被拦，点「诊断连接」可逐步定位`;
   }
   return raw || '未知错误';
 }
@@ -105,10 +163,17 @@ function fetchImpl() {
   return typeof fetch === 'function' ? fetch : null;
 }
 
-/** 统一请求：注入认证 / 超时，网络异常 → WebdavError */
+/** 统一请求：注入认证 / 超时；网络异常 → WebdavError（保留原始异常 + 分类，便于解释与诊断） */
 async function request(method, url, { headers = {}, body = null, timeout = DEFAULT_TIMEOUT, auth = null } = {}) {
   const doFetch = fetchImpl();
-  if (!doFetch) throw new WebdavError('当前环境不支持 fetch，无法访问 WebDAV', { url });
+  if (!doFetch) throw new WebdavError('当前环境不支持 fetch，无法访问 WebDAV', { url, kind: 'network' });
+  // 混合内容：HTTPS 页面请求 http:// 地址会被浏览器直接拦掉（fetch 都不会发出去）
+  if (pageIsHttps() && /^http:\/\//i.test(String(url))) {
+    throw new WebdavError('页面是 HTTPS，不能访问 http:// 的 WebDAV 地址（浏览器会直接拦截）', {
+      url,
+      kind: 'mixed-content'
+    });
+  }
   const h = { ...headers };
   if (auth && auth.user) {
     const token = authHeader(auth.user, auth.pass);
@@ -125,8 +190,13 @@ async function request(method, url, { headers = {}, body = null, timeout = DEFAU
     return await doFetch(url, { method, headers: h, body, signal });
   } catch (e) {
     const aborted = e && (e.name === 'AbortError' || /abort/i.test(String(e.message || '')));
-    throw new WebdavError(aborted ? `请求超时（${Math.round(timeout / 1000)} 秒）` : 'request failed', {
+    const why = causeText(e);
+    if (aborted) {
+      throw new WebdavError(`请求超时（${Math.round(timeout / 1000)} 秒）：${method} ${url}`, { url, kind: 'timeout', cause: e });
+    }
+    throw new WebdavError(`连不上服务器（${method} ${url}）${why ? ` — ${why}` : ''}`, {
       url,
+      kind: deviceOffline() ? 'offline' : 'network',
       cause: e
     });
   } finally {
@@ -200,5 +270,157 @@ export async function remove(base, file, { auth = null, timeout = DEFAULT_TIMEOU
   const res = await request('DELETE', url, { auth, timeout });
   if ([200, 204, 404].includes(res.status)) return { ok: true, status: res.status, url };
   throw fail(res, url, '期望 204（或 404 已不存在）');
+}
+
+/* --------------------------- 连不上时的逐步诊断 --------------------------- */
+
+/**
+ * 自查清单（页面上展示 / 报告里附带）。
+ * 浏览器不会告诉我们「为什么连不上」，所以把**最可能的几类原因**直接摆给用户。
+ */
+export function setupHints(base = '') {
+  const jgy = /jianguoyun/i.test(String(base));
+  const hints = [
+    '地址要填 WebDAV 端点、不是网盘首页：坚果云 = https://dav.jianguoyun.com/dav/（末尾斜杠可有可无）',
+    jgy
+      ? '坚果云：用户名 = 你的注册邮箱；密码 = 「账户信息 → 安全选项 → 添加应用」生成的【应用密码】（登录密码连不上）'
+      : '多数网盘要求「应用专用密码」而不是登录密码（坚果云 / Nextcloud / 群晖都有各自的应用密码）',
+    '页面是 https 时，WebDAV 地址也必须 https（http 会被浏览器当混合内容直接拦掉）',
+    '网盘必须允许浏览器跨域（CORS）：被拒时浏览器只报「连不上」。诊断里若「简单请求」通过而「预检」失败，就是这一类',
+    '关掉广告拦截 / 隐私插件（uBlock、AdGuard、Brave Shields）与公司代理后再试',
+    '换个网络（如手机热点）再试，排除局域网 / DNS / 运营商问题',
+    '坚果云在网页端「安全选项」里可查看/重置应用密码；同一个应用密码可多设备共用'
+  ];
+  return jgy ? hints : hints.filter((h) => !/坚果云在网页端/.test(h));
+}
+
+/**
+ * 逐步诊断（**任何一步失败都不会抛错**，把「哪一步、得到什么、说明什么」如实列出）。
+ * 顺序有讲究：
+ *   ① 地址 / 环境（混合内容、离线）→ 本地就能判断的，先判掉；
+ *   ② GET（**不带认证、不带自定义头** → 不触发 CORS 预检）：能拿到状态码 = 网络通 + 服务端允许简单跨域；
+ *   ③ PROPFIND 不带认证（会触发预检）：若 ② 通过而 ③ 失败 → **预检被拒**（结论明确）；
+ *   ④ 带认证的 PROPFIND = 「测试连接」本体：区分 401（账号/密码）与 403（权限）；
+ * 最后给一句可执行结论。
+ * @returns {{ ok:boolean, verdict:string, steps:Array<{id:string,label:string,status:'ok'|'fail'|'warn',detail:string}> }}
+ */
+export async function diagnose(base, { auth = null, dir = '', timeout = DEFAULT_TIMEOUT } = {}) {
+  const steps = [];
+  const add = (id, label, status, detail) => {
+    steps.push({ id, label, status, detail });
+    return steps[steps.length - 1];
+  };
+  /** 步骤里用的简短描述（完整解释留给 toast / 结论，弹窗才不会一屏都是同一段话） */
+  const brief = (e) => {
+    const kind = e && e.kind;
+    const head =
+      kind === 'timeout'
+        ? '请求超时'
+        : kind === 'offline'
+          ? '设备离线'
+          : kind === 'mixed-content'
+            ? '混合内容被拦（HTTPS 页面 + http:// 地址）'
+            : '连不上（浏览器未透露原因：网络 / CORS / 插件或代理）';
+    const why = causeText(e);
+    const where = e && e.url ? ` ${e.url}` : '';
+    return `${head}${where}${why ? ` — ${why}` : ''}`;
+  };
+  let root = '';
+  try {
+    root = buildUrl(base, dir);
+  } catch (e) {
+    add('url', '解析服务器地址', 'fail', explainError(e));
+    return { ok: false, verdict: '服务器地址填错了，先改对地址再试', steps };
+  }
+  add('url', '解析服务器地址', 'ok', root);
+
+  const https = pageIsHttps();
+  if (https && /^http:\/\//i.test(root)) {
+    add('env', '环境检查', 'fail', '当前页面是 HTTPS，不能访问 http:// 的 WebDAV 地址（浏览器会直接拦截）');
+    return { ok: false, verdict: '混合内容被拦：请把服务器地址改成 https://', steps };
+  }
+  if (deviceOffline()) {
+    add('env', '环境检查', 'fail', '设备当前处于离线状态');
+    return { ok: false, verdict: '设备离线：先连上网络再试', steps };
+  }
+  add('env', '环境检查', 'ok', `页面协议 ${https ? 'HTTPS' : 'HTTP'}，目标地址协议 ${/^https:/i.test(root) ? 'HTTPS' : 'HTTP'}`);
+
+  // ② 简单请求（无认证、无自定义头 → 不触发预检）
+  let simpleOk = false;
+  let simpleStatus = 0;
+  try {
+    const res = await request('GET', root, { timeout });
+    simpleOk = true;
+    simpleStatus = res.status;
+    const note = res.status === 401 || res.status === 403 ? '（要求认证，属于正常）' : '';
+    add('simple', '基础连通性（GET，不带认证）', 'ok', `服务器有响应：HTTP ${res.status}${note}`);
+  } catch (e) {
+    add('simple', '基础连通性（GET，不带认证）', 'fail', brief(e));
+  }
+
+  // ③ 预检（PROPFIND 不在 CORS 简单方法里 → 一定先发 OPTIONS 预检）
+  let preflightOk = false;
+  let preflightStatus = 0;
+  try {
+    const res = await request('PROPFIND', root, { headers: { Depth: '0' }, timeout });
+    preflightOk = true;
+    preflightStatus = res.status;
+    add('preflight', '跨域预检（PROPFIND，不带认证）', 'ok', `预检通过：HTTP ${res.status}`);
+  } catch (e) {
+    add('preflight', '跨域预检（PROPFIND，不带认证）', 'fail', brief(e));
+  }
+
+  // ④ 带认证的 PROPFIND（「测试连接」本体）
+  let authOk = false;
+  let authStatus = 0;
+  try {
+    const res = await request('PROPFIND', root, { headers: { Depth: '0' }, auth, timeout });
+    authStatus = res.status;
+    authOk = res.status === 207 || res.status === 200;
+    add(
+      'auth',
+      '带认证的 PROPFIND（测试连接本体）',
+      authOk ? 'ok' : 'fail',
+      authOk ? `HTTP ${res.status}：目录可读，可以开始同步` : `HTTP ${res.status}：${explainError({ status: res.status, url: root })}`
+    );
+  } catch (e) {
+    authStatus = Number(e && e.status) || 0;
+    add('auth', '带认证的 PROPFIND（测试连接本体）', 'fail', brief(e));
+  }
+
+  let verdict;
+  if (authOk) verdict = '连接正常：填账号 → 点「立即同步」即可';
+  else if (!simpleOk) verdict = '连服务器都没连上（网络 / DNS / 证书 / 插件或代理拦截）——先在浏览器里直接打开这个地址试试';
+  else if (!preflightOk) verdict = '服务器拒绝了浏览器的跨域预检（CORS）——这台设备无法直连该 WebDAV 地址；换支持 CORS 的地址或改用同源部署';
+  else if (authStatus === 401) verdict = '跨域正常，是账号或密码不对：坚果云要用「账号邮箱 + 应用密码」（登录密码无效）';
+  else if (authStatus === 403) verdict = '跨域与账号都正常，但该目录没有读写权限';
+  else if (authStatus === 404) verdict = '跨域与账号都正常，是路径不存在：检查服务器地址末尾（如坚果云要 /dav/）与「同步目录」';
+  else verdict = `跨域与账号基本正常，但服务器返回 HTTP ${authStatus || '未知'}：${steps[steps.length - 1].detail}`;
+  void simpleStatus;
+  void preflightStatus;
+  return { ok: authOk, verdict, steps };
+}
+
+/** 把诊断结果拼成一段可复制的纯文本报告（**绝不含密码**） */
+export function diagnoseReport(rep, cfg = {}) {
+  const lines = [];
+  lines.push('Mycard 同步诊断报告');
+  lines.push(`时间：${new Date().toISOString()}`);
+  lines.push(`地址：${cfg.url || ''}`);
+  lines.push(`目录：${cfg.dir || ''}`);
+  lines.push(`用户名：${cfg.user || '(未填)'}${cfg.pass ? '（已填密码，出于安全未包含在报告中）' : '（未填密码）'}`);
+  lines.push(`页面协议：${typeof location !== 'undefined' && location ? location.protocol : '(未知)'}`);
+  lines.push(`浏览器：${typeof navigator !== 'undefined' && navigator ? String(navigator.userAgent || '') : '(未知)'}`);
+  lines.push('');
+  lines.push(`结论：${(rep && rep.verdict) || '(无)'}`);
+  lines.push('步骤：');
+  for (const s of (rep && rep.steps) || []) {
+    const mark = s.status === 'ok' ? '✓' : s.status === 'warn' ? '!' : '✗';
+    lines.push(`  [${mark}] ${s.label}：${s.detail}`);
+  }
+  lines.push('');
+  lines.push('自查清单：');
+  setupHints(cfg.url).forEach((h, i) => lines.push(`  ${i + 1}. ${h}`));
+  return lines.join('\n');
 }
 

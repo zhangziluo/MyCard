@@ -303,8 +303,8 @@ console.log('\n[app.js / sw.js：播报接线与版本]');
 ok(/import \{[^}]*\bannounce\b[^}]*\} from '\.\/ui\.js'/.test(appSrc), 'app.js 从 ui.js 引入 announce');
 ok(/routeKey !== lastRouteKey/.test(appSrc), '仅路由变化时播报（同一路由重渲染不打扰读屏）');
 ok(/const pageTitle = renderAppbar\(route\)/.test(appSrc) && /announce\(pageTitle\)/.test(appSrc), 'render() 用顶栏标题播报当前页面');
-ok(/APP_VERSION = 'v0\.9\.0'/.test(appSrc), 'app.js 版本号 v0.9.0');
-ok(/const VERSION = 'v1\.14\.0'/.test(swSrc), 'sw.js VERSION v1.14.0');
+ok(/APP_VERSION = 'v0\.9\.2'/.test(appSrc), 'app.js 版本号 v0.9.2');
+ok(/const VERSION = 'v1\.16\.0'/.test(swSrc), 'sw.js VERSION v1.16.0');
 
 console.log('\n[明牌配对（#/match）的键盘可达性与标注]');
 {
@@ -487,6 +487,18 @@ console.log('\n[设置页「多端同步（WebDAV）」的表单与标注]');
     '卡组页用文字 pill 标记「本机专用」（不靠颜色区分）'
   );
   ok(/\.pill-local \{/.test(css), 'CSS：.pill-local 有样式（浅深色都可读）');
+  // v0.9.2：连不上时的「诊断连接」（错误说清原因 + 逐步探测 + 可复制报告）
+  ok(appSrc2.includes('data-action="sync-diag"') && appSrc2.includes('async function runDiagnose'), '「诊断连接」是原生按钮 + Action 委托（键盘可用）');
+  ok(
+    /openModal\(\{\s*title: '同步诊断（连不上的原因）'/.test(appSrc2) && /wide: true/.test(appSrc2),
+    '诊断结果用 openModal 宽弹窗展示（复用焦点陷阱 / Esc / 焦点还原）'
+  );
+  ok(appSrc2.includes('class="diag-list"') && appSrc2.includes('diag-step is-'), '诊断步骤用列表呈现（每步带 ✓/✗ 文字标记，不只靠颜色）');
+  ok(appSrc2.includes('aria-hidden="true">${s.status === \'ok\' ? \'✓\''), '步骤前的符号对读屏隐藏（文字说明已足够）');
+  ok(appSrc2.includes('label: \'复制诊断信息\''), '提供「复制诊断信息」按钮（原生 button）');
+  ok(/报告里<b>不包含密码<\/b>/.test(appSrc2), '明确告知报告不含密码（降低用户分享心理负担）');
+  ok(appSrc2.includes('await runDiagnose(cfg)') && appSrc2.includes('runDiagnose(saveSyncForm())'), '测试连接失败 / 手动点诊断都会跑诊断');
+  ok(/\.diag-list/.test(css) && /\.diag-step/.test(css) && /\.diag-hints/.test(css), 'CSS：诊断列表 / 步骤 / 自查清单样式');
 }
 
 /* ==========================================================================

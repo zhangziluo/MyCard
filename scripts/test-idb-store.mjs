@@ -208,6 +208,25 @@ console.log('\n[复习日志（revlog）：写穿 / 重载读回 / 级联清理]
   ok(rows.every((r) => r.cardId === c1.id || r.cardId === c2.id), '每条日志带 cardId');
 }
 
+console.log('\n[落盘竞态（v0.9.2 修复）：flushPending 进行中不得有「pending 已清 / IDB 未写」的空窗]');
+{
+  // 旧实现一进 flushPending 就把 pending 清空，await 期间读路径会读到 0 条 →
+  // 同步快照（buildSnapshot → revlogsOfDeck）有概率漏掉刚产生的复习日志。
+  const deck = store.createDeck({ name: '竞态卡组' });
+  const c = store.addCard(deck.id, { front: 'race', back: '竞态' });
+  store.recordReview(deck.id, { id: c.id, state: 'new' }, 'good', { id: c.id, state: 'review', interval: 6 }, { now: 1700000010000, timeMs: 100 });
+  const flying = store.flushPending(); // 故意不 await：模拟「一边落盘一边读」
+  const during = await store.revlogsOfDeck(deck.id);
+  ok(during.length === 1, 'flushPending 进行中也能读到刚写的日志（无空窗）', during.length);
+  await flying;
+  const after = await store.revlogsOfDeck(deck.id);
+  ok(after.length === 1, '落盘完成后仍然是 1 条');
+  ok(dumpStore(dbs, 'mycard', 'revlog').some((r) => r.deckId === deck.id), '该日志确实写进了 IDB（写穿成功）');
+  // 清理，避免影响后续断言
+  store.deleteDeck(deck.id);
+  await store.flushPending();
+}
+
 console.log('\n[重载水合：复习日志从 IndexedDB 读回]');
 {
   const store3 = await import('../js/store.js?reload=2');

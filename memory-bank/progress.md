@@ -1,6 +1,6 @@
 # Progress — 完成度与遗留
 
-> 更新时间：2026-10-10 ｜ APP `v0.9.0` / SW `v1.14.0` ｜ **3796 条校验全绿**
+> 更新时间：2026-10-10 ｜ APP `v0.9.2` / SW `v1.16.0` ｜ **3916 条校验全绿**
 
 ## 已交付（按版本）
 
@@ -244,15 +244,37 @@
 - 测试：`test-sync` 103 → **169**（新增**假 WebDAV 服务端桩** `makeServer`：首次全量上传 / 空索引不产生 prev / **数据没变 → 零卡组传输** / **只改一个卡组 → 只 PUT 它** / 另一端新增卡组 → **只 GET 它** / 墓碑删除 + 远端残留文件被 DELETE / 本机专用不上传·不被删·不外传墓碑·不影响指纹 / **预览只发 GET 且冲突来源正确** / **v1 单文件快照自动升级**）；`smoke-dom` 289 → **305**（设置页「预览差异」按钮与提示、卡组页「本机专用」标记、卡组菜单开关、编辑弹窗勾选框选中态、预览弹窗内容与「只发 GET、不改数据」）；`test-a11y` 137 → **146**（预览按钮 / openModal 复用 / 表格 `scope=col` / modal-wide / 只读说明 / 本机专用 checkbox 与文字标记）；`verify-assets` 522 → **558**（第 12 节：常量、指纹、manifest、增量读写、预览、本机专用、UI 接线与 CSS）
 - **限制（已在 README 说明）**：增量粒度是**整卡组**（改一张卡重传该卡组文件）；索引每次同步都会刷新；不做三方合并（但预览能提前看到冲突取哪一端）
 
-## 测试资产（30 个 test-*.mjs + `smoke-dom` + `verify-assets` = 32 个脚本 / 3796 条断言）
+**v0.9.1** 修复「整卡组测试只勾『多义多选』（没勾『英英选择』）却出英文题面 + 英文选项」
+- **根因**：`test.js` 的 `multiSenseSet()` 在卡片**中文释义 < 2 条**时**无条件回退 GCIDE 英文释义** → 多义题变成「英文单词 + 英文释义选项」，与用户「没开英英选择」的预期矛盾
+- **出题层**：`multiSenseSet(card, max = 4, { allowEnglish = true })` —— `allowEnglish:false`（默认没开英英选择）时中文不足 2 条直接返回 `null`（不出这道题）；`buildQuestionSafe` 随之回退到基础题型（不会变成英文题）；`buildOneQuestion` 的 `eng_eng` 分支在 `allowEnSenses === false` 时也直接返回 `null`（防御）
+- **口径统一**：新增 `canBuildType(card, type, { allowEnSenses })`（基础题型恒可用；`eng_eng` 需英文释义**且**允许英文题；`multi_sense` 需 ≥2 条同语言释义），`pickQuestionType` 与抽题计划共用它，避免「计划能派 / 出题又回退」
+- **抽题计划（`js/test-engine.js`）**：`samplePlan({ canType })` + `assignTypesByCard(seq, typeList, random, { byId, canType })` —— 候选里**有可用**的只在可用的里挑；**都不可用**时（例：只剩多义槽位但这张卡没有 ≥2 条中文释义）改用一个**基础题型**顶上（挑当前派得最少的，分布均衡），把那个槽位**留给后面合适的卡**（旧做法是硬塞 → 出题回退 → 题型分布失衡）
+- **接线**：`startDeckTest` 以 `allowEnSenses = !!conf.enabled.eng_eng` 同时传给 `samplePlan(canType)` 与 `buildQuestionsFromPlan({ allowEnSenses })`（两条链路一致，所以「预览题型比例 = 实际题型」）；`buildQuestions`（关卡测试）也接受该参数
+- **可自查的文案**：`test-config.js` 的 `OPTIONAL_TYPES` 说明改为「多义多选：勾选该词的全部中文释义；中文释义不足 2 条的词不出此题型，开启「英英选择」后才会用 GCIDE 英文释义兜底」「英英选择：…开启后「多义多选」在中文释义不足时会用 GCIDE 英文释义兜底」
+- **接线**：`js/app.js` `APP_VERSION = 'v0.9.1'`；`sw.js` `VERSION = 'v1.15.0'`
+- 测试：`test-multi-sense` 39 → **56**（allowEnglish 三态 / canBuildType 六条 / 回退成基础题型 / 选项全中文 / 配置文案）；`test-deck-test` 92 → **99**（`assignTypesByCard` 可用性过滤、借补基础题型、池里只剩多义题时留给后面的卡、6 组随机种子端到端「没有任何英文多义题」、计划与出题完全一致）；`smoke-dom` 305 → **313**（注入 GCIDE 释义后跑真实 `startDeckTest`：只开多义多选 → 20 题里一道英文题都没有；再开英英选择 → `eng_eng` / `multi_sense(en)` 才回来）；`verify-assets` 558 → **574**（第 13 节：判定口径 / 抽题接线 / 文案 / 测试覆盖）
+- 语义约定：**「英英选择」是唯一的「允许出英文题」开关**；`allowEnSenses` 由它派生，抽题与出题两条链路必须传同一个值（`systemPatterns.md` 第 25 条）
+
+**v0.9.2** 同步「连不上也说得清」：错误分类 + 逐步诊断 + 可复制报告（不再只报 `request failed`）
+- **根因**：`webdav.request()` 在 fetch 抛错时统一抛 `new WebdavError('request failed', { status: 0, cause })` —— 文案把「谁、哪个地址、为什么」全丢了；`explainError()` 又不认这句话、也不读 `cause`，于是界面只剩一句英文（用户填了坚果云应用密码也看不出问题在哪）
+- **错误分类**：`WebdavError` 新增 `kind`（`timeout` / `offline` / `mixed-content` / `network`）+ `causeText()` 输出浏览器原始异常（`TypeError: Failed to fetch`）；`request()` 文案 = `连不上服务器（GET https://…）— TypeError: Failed to fetch`
+- **解释更可操作**：`explainError()` 给出「原因 + 地址 + 浏览器原始信息 + 怎么办」；HTTP 状态文案补上坚果云等场景的具体建议（401 → 账号/应用密码；403 → 目录只读；404 → 缺 `/dav/`）；**HTTPS 页面 + `http://` 地址**直接判为混合内容（连请求都不发）
+- **`diagnose()` 逐步探测（永不抛错）**：解析地址 → 环境（混合内容 / 离线）→ **基础连通性**（`GET` 不带认证/自定义头 = 不触发预检的简单请求）→ **跨域预检**（`PROPFIND` 不带认证）→ **带认证的 `PROPFIND`**（测试连接本体）；据此给出可执行结论：连不上服务器 / 跨域预检被拒（CORS）/ 账号密码错 / 无权限 / 路径不对
+- **`setupHints()`**：自查清单（坚果云专项：端点 `https://dav.jianguoyun.com/dav/`、用户名 = 注册邮箱、密码 = 应用密码；通用：https 混用、CORS、广告拦截与代理、换网络）；**`diagnoseReport()`**：可复制的纯文本报告（结论 + 逐步结果 + 环境信息），**绝不含密码**
+- **UI**：设置页新增 **「诊断连接」** 按钮 + `syncDiagModal`（`openModal({ wide: true })`：结论 + `diag-list` 步骤 + 自查清单 + 「复制诊断信息」）；**「测试连接」/「立即同步」/「预览差异」失败（无 HTTP 状态）时自动跑诊断**；设置页说明与跨域提示同步改写
+- **接线**：`js/app.js` `APP_VERSION = 'v0.9.2'`；`sw.js` `VERSION = 'v1.16.0'`；`css/style.css` 新增 `.diag-list` / `.diag-step(.is-ok/.is-fail)` / `.diag-mark` / `.diag-body` / `.diag-hints`
+- 测试：`test-sync` 169 → **198**（错误分类 / 原始信息保留 / 混合内容不发请求 / diagnose 六种场景 / 报告不含密码 / 清单针对性）；`smoke-dom` 313 → **326**（诊断按钮、跨域与「连接正常」两种结论、测试连接失败自动弹诊断、页面不出现密码）；`test-a11y` 146 → **154**；`verify-assets` 574 → **593**
+- **顺手修掉一个存储层真实竞态**：`store.flushPending()` 原来**一进函数就清空 pending 队列**再 `await` 写 IndexedDB → 中间存在「pending 里没有、IDB 里也还没写」的空窗，期间 `revlogsOfDeck()`（`sync.buildSnapshot()` 也走它）会**漏读刚产生的复习日志**（高负载下 `test-import-file` 偶发失败正是它）。现在改为「取快照 → 写完后只删掉快照里那些**未被再次修改**的条目」，空窗消失；`test-idb-store` 80 → **83**（`test-idb-store` 新增「flushPending 进行中也能读到刚写的日志」守卫）
+
+## 测试资产（30 个 test-*.mjs + `smoke-dom` + `verify-assets` = 32 个脚本 / 3916 条断言）
 | 分类 | 脚本 |
 | --- | --- |
 | 核心纯函数 | `test-core`(43) `test-difficulty`(39) `test-arrange`(22) `test-pagination`(25) `test-resplit-levels`(26) `test-revlog`(58) |
 | 学习与题型 | `test-confusables`(82) `test-hardwords`(26) `test-level-retry`(78) `test-fill`(115，含移动端字母键盘) `test-listen`(21) `test-deck-test`(92) `test-eng-eng`(34) `test-multi-sense`(39) `test-review-complete`(11) `test-review-interaction`(18) |
-| 存储与主题 | `test-idb-store`(80) `test-theme`(150) |
-| 新功能 | `test-add-words`(110) `test-import-file`(336) `test-table-editor`(223) `test-export`(155) `test-xlsx`(125) `test-wordbook`(124) `test-match`(292，明牌配对：≥1 关解锁 / 词源（整卡组·已通关关卡）/ 分轮建牌与洗牌 / 爆炸消除 / 状态机 / 连击 / 薄 UI / 连击提示贴右下角 / 棋局只存内存重进即重洗) `test-crossword`(213，填字游戏：词条清洗与去重 / canPlace 四条规则 / 交叉排版生成与可复现 / 逐格状态机 / 移动端格子尺寸与字母键盘 / 打字只打补丁的薄 UI / 入口横幅) `test-keyboard`(52，移动端英文字母键盘) `test-sync`(169，多端同步：WebDAV 客户端 / 合并内核 / 快照往返 / 墓碑 / 配置 / 增量布局（假服务端：只传变化·只下载变化·预览只读·本机专用·v1 升级）) |
-| 无障碍 | `test-a11y`(146，键盘焦点环 / aria 覆盖 / 减少动效 / 弹窗焦点管理 / 配对页·填字页·字母键盘·同步表单标注) |
-| DOM / 资源 | `smoke-dom`(305) `verify-assets`(558) |
+| 存储与主题 | `test-idb-store`(83，含「flushing 期间读不到刚写日志」的竞态守卫) `test-theme`(150) |
+| 新功能 | `test-add-words`(110) `test-import-file`(336) `test-table-editor`(223) `test-export`(155) `test-xlsx`(125) `test-wordbook`(124) `test-match`(292，明牌配对：≥1 关解锁 / 词源（整卡组·已通关关卡）/ 分轮建牌与洗牌 / 爆炸消除 / 状态机 / 连击 / 薄 UI / 连击提示贴右下角 / 棋局只存内存重进即重洗) `test-crossword`(213，填字游戏：词条清洗与去重 / canPlace 四条规则 / 交叉排版生成与可复现 / 逐格状态机 / 移动端格子尺寸与字母键盘 / 打字只打补丁的薄 UI / 入口横幅) `test-keyboard`(52，移动端英文字母键盘) `test-sync`(198，多端同步：WebDAV 客户端 / 合并内核 / 快照往返 / 墓碑 / 配置 / 增量布局（假服务端：只传变化·只下载变化·预览只读·本机专用·v1 升级）/ 连通性诊断（错误分类·逐步探测·报告不含密码）) |
+| 无障碍 | `test-a11y`(154，键盘焦点环 / aria 覆盖 / 减少动效 / 弹窗焦点管理 / 配对页·填字页·字母键盘·同步表单标注 / 同步诊断) |
+| DOM / 资源 | `smoke-dom`(326) `verify-assets`(593) |
 | 性能金丝雀 | `test-perf`(29，1 万词 / 500 关：统计/分组/抽题（含优先池读取次数）+ 耗时) |
 
 ## 已知问题 / 技术债

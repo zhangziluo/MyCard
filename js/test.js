@@ -307,16 +307,33 @@ export function engSenses(card, max = 4) {
 
 /**
  * 多义多选的释义集合（词典口径）：
- *  1) 优先**卡组内中文释义**（≥2 条）；
- *  2) 否则回退 **GCIDE 英文释义**（≥2 条）；
- *  3) 均不足 2 条 → null（该题不生成 multi_sense）
+ *  1) 优先**卡组内中文释义**（`back` + 多释义，≥2 条）→ `{ kind:'zh' }`；
+ *  2) 中文不足 2 条时，**只有开启「英英选择」才**回退 **GCIDE 英文释义**（≥2 条）→ `{ kind:'en' }`；
+ *     `allowEnglish=false`（默认「英英选择」没开）时**不回退**，直接返回 null —— 否则
+ *     「多义多选」会变成「英文单词 + 英文释义」的题面，与用户「没开英英选择」的预期矛盾；
+ *  3) 均不足 2 条 → null（该题不生成 multi_sense，调用方回退到其它题型）
+ * @param {object} card
+ * @param {number} [max] 最多取几条释义作为正确项
+ * @param {{ allowEnglish?: boolean }} [opts] `allowEnglish` 是否允许用 GCIDE 英文释义兜底
  */
-export function multiSenseSet(card, max = 4) {
+export function multiSenseSet(card, max = 4, { allowEnglish = true } = {}) {
   const zh = cardChineseSenses(card);
   if (zh.length >= 2) return { kind: 'zh', list: zh.slice(0, max), all: zh };
+  if (!allowEnglish) return null;
   const en = engSenses(card, max);
   if (en.length >= 2) return { kind: 'en', list: en.slice(0, max), all: en };
   return null;
+}
+
+/**
+ * 某张卡能不能出某个题型（抽题与出题共用的**唯一**判定口径，避免「计划能派 / 出题又回退」）。
+ * 基础题型恒可用；`eng_eng` 需英文释义且**允许英文题**；`multi_sense` 需 ≥2 条同语言释义。
+ */
+export function canBuildType(card, type, { allowEnSenses = true } = {}) {
+  if (!card) return false;
+  if (type === 'eng_eng') return !!allowEnSenses && engSenses(card, 1).length > 0;
+  if (type === 'multi_sense') return !!multiSenseSet(card, 4, { allowEnglish: !!allowEnSenses });
+  return true;
 }
 
 /** 英文释义池（GCIDE）：每张卡的释义入池，文本去重 */
@@ -575,11 +592,10 @@ function buildOptions(correctText, distractorTexts) {
  * 可注入 { types, random } 便于单测固定题型 / 随机源。
  */
 /** 为某张卡决定题型（按卡片的可用性过滤：句子题需可挖空，英英/多义题需有释义） */
-function pickQuestionType(card, types, random, canSentence) {
+function pickQuestionType(card, types, random, canSentence, { allowEnSenses = true } = {}) {
   const eligible = (types || []).filter((t) => {
     if (t === 'sentence2word') return canSentence;
-    if (t === 'eng_eng') return engSenses(card, 1).length > 0;
-    if (t === 'multi_sense') return !!multiSenseSet(card);
+    if (t === 'eng_eng' || t === 'multi_sense') return canBuildType(card, t, { allowEnSenses });
     return true;
   });
   const poolTypes = eligible.length ? eligible : ['word2def'];
@@ -587,12 +603,13 @@ function pickQuestionType(card, types, random, canSentence) {
 }
 
 /** 依据卡片与题型构建单道题目；不可用（如缺少英文释义）时返回 null 由调用方回退 */
-function buildOneQuestion(card, type, { defPool, wordPool, hard, random, engPool = [], zhPool = [] }) {
+function buildOneQuestion(card, type, { defPool, wordPool, hard, random, engPool = [], zhPool = [], allowEnSenses = true }) {
   const canSentence = !!(card.example && blankWord(card.example, card.front).includes('____'));
   const kind = type === 'sentence2word' && !canSentence ? 'word2def' : type;
 
   // 英英选择：题干=英文单词（子模式 A）或英文释义（子模式 B），选项同为英文释义/单词
   if (kind === 'eng_eng') {
+    if (!allowEnSenses) return null; // 没开「英英选择」时不该出现英文题（防御：计划外的英文题一律回退）
     const senses = engSenses(card, 4);
     if (!senses.length) return null;
     const sub = random() < 0.5 ? 'word2def' : 'def2word'; // A：看词选义 / B：看义猜词
@@ -631,9 +648,10 @@ function buildOneQuestion(card, type, { defPool, wordPool, hard, random, engPool
     };
   }
 
-  // 多义多选：正确项 = 该词全部释义（中文优先，缺失回退 GCIDE 英文），另加 1 条其它词的干扰释义
+  // 多义多选：正确项 = 该词全部释义（中文优先；**仅当开了「英英选择」**才允许回退 GCIDE 英文），
+  // 另加 1 条其它词的干扰释义
   if (kind === 'multi_sense') {
-    const set = multiSenseSet(card);
+    const set = multiSenseSet(card, 4, { allowEnglish: !!allowEnSenses });
     if (!set) return null;
     const pool = set.kind === 'zh' ? zhPool : engPool;
     const distractors = pickPoolDistractors(card, pool, 1, set.list).map((d) => d.text);
@@ -706,7 +724,13 @@ function buildQuestionSafe(card, type, ctx) {
   return buildOneQuestion(card, type, ctx) || buildOneQuestion(card, 'word2def', ctx);
 }
 
-export function buildQuestions(deck, levelIndex, { types = null, random = Math.random, hardIds = null } = {}) {
+/**
+ * 关卡测试的题目构建。
+ * @param {{ types?: string[]|null, random?: Function, hardIds?: Set|null, allowEnSenses?: boolean }} [opts]
+ *        `allowEnSenses` = 是否允许英文题（英英选择 / 多义多选的英文兜底）；关卡测试只出基础 5 种题型，
+ *        传 `false` 可保证任何情况下都不出英文题（默认 true，保持既有行为）。
+ */
+export function buildQuestions(deck, levelIndex, { types = null, random = Math.random, hardIds = null, allowEnSenses = true } = {}) {
   const list = types && types.length ? types : enabledTypes();
   const levelCards = lv.cardsInLevel(deck, levelIndex);
   const hard = hardIds instanceof Set ? hardIds : new Set(hardIds || []);
@@ -725,13 +749,17 @@ export function buildQuestions(deck, levelIndex, { types = null, random = Math.r
 
   return quizCards.map((card) => {
     const canSentence = !!(card.example && blankWord(card.example, card.front).includes('____'));
-    const type = pickQuestionType(card, list, random, canSentence);
-    return buildQuestionSafe(card, type, { defPool, wordPool, hard, random, engPool, zhPool });
+    const type = pickQuestionType(card, list, random, canSentence, { allowEnSenses });
+    return buildQuestionSafe(card, type, { defPool, wordPool, hard, random, engPool, zhPool, allowEnSenses });
   });
 }
 
-/** 整卡组可配置测试：按「抽题计划」构建题目（计划由 test-engine.samplePlan 生成） */
-export function buildQuestionsFromPlan(deck, plan, hardIds = null, random = Math.random) {
+/**
+ * 整卡组可配置测试：按「抽题计划」构建题目（计划由 test-engine.samplePlan 生成）。
+ * @param {{ allowEnSenses?: boolean }} [opts] 是否允许英文题；**没开「英英选择」时必须传 false**，
+ *        否则中文释义不足 2 条的卡会退回 GCIDE 英文释义，让「多义多选」变成英文题。
+ */
+export function buildQuestionsFromPlan(deck, plan, hardIds = null, random = Math.random, { allowEnSenses = true } = {}) {
   const hard = hardIds instanceof Set ? hardIds : new Set(hardIds || []);
   const defPool = buildOptionPool(deck);
   const wordPool = buildWordPool(deck);
@@ -742,7 +770,7 @@ export function buildQuestionsFromPlan(deck, plan, hardIds = null, random = Math
   for (const item of plan || []) {
     const card = byId.get(item && item.cardId);
     if (!card) continue;
-    out.push(buildQuestionSafe(card, item.type, { defPool, wordPool, hard, random, engPool, zhPool }));
+    out.push(buildQuestionSafe(card, item.type, { defPool, wordPool, hard, random, engPool, zhPool, allowEnSenses }));
   }
   return out;
 }
@@ -1319,13 +1347,18 @@ export function startDeckTest(deckId, count, { onlyWrong = false } = {}) {
   } else {
     n = cfg.clampCount(count == null ? conf.count : count);
   }
+  // v0.9.1：是否允许英文题 = 是否开启「英英选择」。
+  // 没开时，中文释义不足 2 条的卡**不再回退 GCIDE 英文释义**（否则「多义多选」会变成英文题），
+  // 而是让抽题计划就别把「多义多选 / 英英选择」派给这些卡。
+  const allowEnSenses = !!(conf.enabled && conf.enabled.eng_eng);
   const plan = engine.samplePlan(pool, {
     count: n,
     weights: conf.weights,
     enabled: conf.enabled, // 可选题型（英英选择 / 多义多选）启用后才参与抽题
-    priorityIds: onlyWrong ? new Set() : engine.getPriorityIds(deckId)
+    priorityIds: onlyWrong ? new Set() : engine.getPriorityIds(deckId),
+    canType: (card, type) => canBuildType(card, type, { allowEnSenses })
   });
-  const questions = buildQuestionsFromPlan(deck, plan, hw.hardSet(deckId));
+  const questions = buildQuestionsFromPlan(deck, plan, hw.hardSet(deckId), Math.random, { allowEnSenses });
   if (!questions.length) {
     toast('没有可测试的卡片', 'warn');
     return;

@@ -77,6 +77,20 @@ index.html ──► js/app.js（入口：路由 / 顶栏 / 设置页 / boot）
     - **网络层薄且可替换**：`js/webdav.js` 只有 5 个动作 + Basic 认证 + `WebdavError(status)`，把 HTTP 状态翻译成中文提示交给 `explainError()`；**fetch 可被单测整体替换**（早期是「按方法 + 顺序消费路由」的桩，v0.9.0 起 `test-sync` 直接用**内存假 WebDAV 服务端** `makeServer`：按路径存文本 + 记录 ops），因此 WebDAV 逻辑无需真服务器即可全覆盖，也能断言「该发几个 PUT / 有没有多余的 GET」。
     - **工程细节**：写前备份（`mycard-sync.prev.json` + 每个卡组文件 `.prev.json`）+ 锁文件（`If-None-Match: *` 抢锁、10 分钟 TTL 可抢占）+ **老格式自动升级**（读到 v1 单文件快照照常合并，随即改写为新布局并原样备份老文件）；密码默认**不落盘**（只在会话内存，`remember` 才写 localStorage）；自动同步用**数据指纹**（卡组数 : 卡片数 : 最新修改 : 最新复习，**不含本机专用卡组**）判断「有没有变」，避免无脑轮询上传。
 
+25. **题型与数据的「可用性」要显式建模，并且抽题 / 出题两条链路同口径**（v0.9.1，`js/test.js` + `js/test-engine.js`）：
+    - **可用性只有一处定义**：`canBuildType(card, type, { allowEnSenses })` —— 基础题型恒可用；`eng_eng` 需英文释义**且允许英文题**；`multi_sense` 需 ≥2 条**同语言**释义（中文优先，英文兜底需允许）。`pickQuestionType`（关卡测试）与抽题计划（`samplePlan({ canType })` → `assignTypesByCard({ byId, canType })`）都用它。
+    - **「允许出英文题」= 是否开启「英英选择」**：`startDeckTest` 用 `allowEnSenses = !!conf.enabled.eng_eng`，并**同时**传给 `samplePlan(canType)` 与 `buildQuestionsFromPlan({ allowEnSenses })`。只改一条就会出现「计划派了多义题、出题又回退」的不一致（v0.9.1 的 bug 就是「没开英英选择，多义题却退回 GCIDE 英文释义」）。
+    - **计划要尊重可用性，但别打乱题型比例**：候选里**有可用**的只在可用的里挑；**都不可用**时改用「借一个基础题型顶上（挑当前派得最少的）」，把那个槽位**留给后面合适的卡**——而不是硬塞给用不了的卡再被出题回退（那样会让 word2def 之类的题型异常膨胀）。`test-deck-test` 有「计划与出题完全一致」的守卫断言。
+    - **回退链固定**：`buildQuestionSafe` = `buildOneQuestion(按计划的题型)` → 不成则 `word2def`（基础题型永远出得来），所以任何数据不足都不会出现空题，也不会偷偷变成英文题。
+
+26. **「连不上」必须分级成可判定的结论，而不是转述浏览器那句话**（v0.9.2，`js/webdav.js` + `js/app.js`）：
+    - **错误对象要带够信息**：`WebdavError` 带 `status` / `url` / `kind`（`timeout` / `offline` / `mixed-content` / `network`）/ `cause`；`causeText()` 把浏览器那句 `TypeError: Failed to fetch` 原样带出来。**永远不要把失败压成一句没有信息量的英文**（`'request failed'` 是反面教材）。
+    - **可本地判定的先判**：`https` 页面 + `http://` 地址 = 混合内容（不请求、直接结论）；离线（`navigator.onLine === false`）直接结论。
+    - **用「请求形态」把原因切开**：先发**简单请求**（`GET`，无 `Authorization`、无自定义头 → 不触发 CORS 预检）→ 拿到状态码就证明「网络通 + 允许简单跨域」；再发 `PROPFIND`（必然触发预检）→ 两者对比即可把 **CORS 预检被拒** 与 **网络不通** 分开（这是浏览器环境下唯一可靠的判别法）。
+    - **诊断接口 `diagnose()` 永不抛错**：每步记录 `{ id, label, status, detail }`，最后给 `verdict` 一句话结论；上层只负责渲染（`syncDiagModal`）+ 复制（`diagnoseReport()`，**不含密码**）。
+    - **失败路径要顺手给用户出路**：「测试连接 / 立即同步 / 预览差异」遇到**无 HTTP 状态**的失败时自动打开诊断；按钮常驻（用户也可主动点）。
+    - **扩展方向**：新的网络类失败一律走同一套（分类 → `explainError` 说清 → `diagnose` 定位），不要另起一套文案。
+
 ## 数据模型（store.js）
 - **Card**：`id, front, back, example, exampleZh, phonetic, tags[], groups[], extraBacks[], createdAt, level, state('new'|'learning'|'review'), repetitions, interval, easeFactor, due, lastReview, src, addedAt`
 - **导入时的复习进度**：`store.pickScheduling()` 统一校验（state 白名单 / easeFactor 1.3–3.0 / 数值钳制，非法 → 新卡）；`seedBuiltinDeck` 与 `addManyCards` 均调用 → JSON 完整导出可无损回导

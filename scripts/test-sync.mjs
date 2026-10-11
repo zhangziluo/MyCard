@@ -442,6 +442,154 @@ ok(
 store.clearTombstones();
 ok(Object.keys(store.syncTombstones().decks).length === 0, 'clearTombstones 清空');
 
+/** v0.9.2：连不上时「说得清」——错误分类 / 逐步诊断 / 可复制报告 */
+console.log('\n[v0.9.2 连不上也说得清：错误分类 + 逐步诊断 + 报告]');
+{
+  // ① 网络类异常：保住原始信息 + 分类为 network（不再是一句 request failed）
+  const netErr = Object.assign(new TypeError('Failed to fetch'), { name: 'TypeError' });
+  resetFetch([{ method: 'PROPFIND', throws: netErr }]);
+  let e1 = null;
+  try {
+    await webdav.probe('https://dav.example.com/dav', { auth: { user: 'me', pass: 'pw' } });
+  } catch (err) {
+    e1 = err;
+  }
+  ok(e1 && e1.kind === 'network', 'fetch 抛错 → kind = network（不再是无信息的 request failed）');
+  ok(webdav.causeText(e1) === 'TypeError: Failed to fetch', '保留底层原始异常文本：' + webdav.causeText(e1));
+  const msg1 = webdav.explainError(e1);
+  ok(!/^request failed$/.test(msg1) && msg1.includes('连不上服务器'), '解释文案不再是「request failed」：' + msg1.slice(0, 40) + '…');
+  ok(msg1.includes('TypeError: Failed to fetch'), '解释里带上浏览器原始信息（可据此判断是不是被拦）');
+  ok(msg1.includes('dav.example.com') && msg1.includes('跨域'), '解释里带 URL 与「跨域」可能原因');
+  ok(msg1.includes('诊断连接'), '解释里告诉用户可以「诊断连接」定位');
+
+  // ② 超时：单独分类
+  resetFetch([{ method: 'PROPFIND', throws: Object.assign(new Error('aborted'), { name: 'AbortError' }) }]);
+  let e2 = null;
+  try {
+    await webdav.probe('https://dav.example.com/dav', { timeout: 5000 });
+  } catch (err) {
+    e2 = err;
+  }
+  ok(e2 && e2.kind === 'timeout' && webdav.explainError(e2).includes('连接超时'), 'AbortError → kind=timeout + 「连接超时」解释');
+
+  // ③ 混合内容：https 页面访问 http 地址 —— 本地就拦下，fetch 根本不发
+  const savedLoc = globalThis.location;
+  globalThis.location = { protocol: 'https:', href: 'https://app.example/' };
+  resetFetch([{ method: 'GET', status: 200, body: 'x' }]);
+  let e3 = null;
+  try {
+    await webdav.getText('http://nas.local:5005/dav', 'a.json');
+  } catch (err) {
+    e3 = err;
+  }
+  ok(e3 && e3.kind === 'mixed-content', 'HTTPS 页面 + http:// 地址 → kind = mixed-content');
+  ok(webdav.explainError(e3).includes('改成 https'), '解释文案给出可执行建议：改用 https 地址');
+  ok(calls.length === 0, '混合内容被拦时不发任何请求（浏览器本来就会拦）');
+  globalThis.location = savedLoc;
+}
+
+console.log('\n[v0.9.2 逐步诊断 diagnose()：每一步都给结论]');
+{
+  const netErr = Object.assign(new TypeError('Failed to fetch'), { name: 'TypeError' });
+
+  // ④-1 全通
+  resetFetch([
+    { method: 'GET', status: 401, body: '' },
+    { method: 'PROPFIND', status: 207, body: '' },
+    { method: 'PROPFIND', status: 207, body: '' }
+  ]);
+  const dOk = await webdav.diagnose('https://dav.example.com/dav', { auth: { user: 'me', pass: 'pw' }, dir: 'mycard' });
+  ok(dOk.ok === true && /连接正常/.test(dOk.verdict), '诊断：三步都通 → 结论「连接正常」：' + dOk.verdict);
+  ok(
+    dOk.steps.map((s) => s.id).join(',') === 'url,env,simple,preflight,auth',
+    '诊断按固定顺序探测：地址 → 环境 → 连通性 → 跨域预检 → 认证',
+    dOk.steps.map((s) => s.id)
+  );
+  ok(dOk.steps.every((s) => s.status === 'ok'), '每步都标为通过');
+
+  // ④-2 连通 OK、预检与带认证的 PROPFIND 都抛错 → 明确指向 CORS
+  resetFetch([
+    { method: 'GET', status: 401, body: '' },
+    { method: 'PROPFIND', throws: netErr },
+    { method: 'PROPFIND', throws: netErr }
+  ]);
+  const dCors = await webdav.diagnose('https://dav.example.com/dav', { auth: { user: 'me', pass: 'pw' } });
+  ok(dCors.ok === false && /跨域预检/.test(dCors.verdict), '诊断：连通但预检失败 → 结论指向「跨域被拦」：' + dCors.verdict);
+  ok(
+    dCors.steps.find((s) => s.id === 'simple').status === 'ok' && dCors.steps.find((s) => s.id === 'preflight').status === 'fail',
+    '分步结论：连通性 ✓ / 预检 ✗（用户能看懂卡在哪一步）'
+  );
+
+  // ④-3 连 GET 都不通
+  resetFetch([{ method: 'GET', throws: netErr }, { method: 'PROPFIND', throws: netErr }, { method: 'PROPFIND', throws: netErr }]);
+  const dDown = await webdav.diagnose('https://dav.example.com/dav', { auth: { user: 'me', pass: 'pw' } });
+  ok(dDown.ok === false && /都没连上/.test(dDown.verdict), '诊断：连 GET 都不通 → 结论「连服务器都没连上」');
+
+  // ④-4 跨域 OK 但 401（坚果云典型：用了登录密码 / 用户名填成昵称）
+  resetFetch([
+    { method: 'GET', status: 401, body: '' },
+    { method: 'PROPFIND', status: 207, body: '' },
+    { method: 'PROPFIND', status: 401, body: '' }
+  ]);
+  const dAuth = await webdav.diagnose('https://dav.jianguoyun.com/dav', { auth: { user: 'me', pass: 'bad' } });
+  ok(dAuth.ok === false && /应用密码/.test(dAuth.verdict), '诊断：跨域没问题但 401 → 指向「账号 / 应用密码」：' + dAuth.verdict);
+
+  // ④-5 403 / 404
+  resetFetch([
+    { method: 'GET', status: 401, body: '' },
+    { method: 'PROPFIND', status: 207, body: '' },
+    { method: 'PROPFIND', status: 403, body: '' }
+  ]);
+  const dForbidden = await webdav.diagnose('https://dav.example.com/dav', { auth: { user: 'me', pass: 'pw' } });
+  ok(dForbidden.ok === false && /权限/.test(dForbidden.verdict), '诊断：403 → 结论「目录没有读写权限」');
+  resetFetch([
+    { method: 'GET', status: 401, body: '' },
+    { method: 'PROPFIND', status: 207, body: '' },
+    { method: 'PROPFIND', status: 404, body: '' }
+  ]);
+  const d404 = await webdav.diagnose('https://dav.example.com/dav/nope', { auth: { user: 'me', pass: 'pw' } });
+  ok(d404.ok === false && /路径不存在/.test(d404.verdict), '诊断：404 → 结论「路径不存在」');
+
+  // ④-6 无 fetch / 地址非法：诊断永不抛错，也要给结论
+  const savedFetch2 = globalThis.fetch;
+  globalThis.fetch = undefined;
+  const dNoFetch = await webdav.diagnose('https://dav.example.com/dav');
+  ok(dNoFetch.ok === false && dNoFetch.steps.some((s) => s.status === 'fail'), '无 fetch 环境下诊断不抛错，仍给出结论');
+  globalThis.fetch = savedFetch2;
+  const dBad = await webdav.diagnose('::::', {});
+  ok(dBad.ok === false && dBad.steps.some((s) => s.status === 'fail'), '地址非法时诊断也不抛错（给出失败步骤）');
+}
+
+console.log('\n[v0.9.2 诊断报告与自查清单（可复制 / 不含密码）]');
+{
+  const rep = {
+    ok: false,
+    verdict: '服务器拒绝了浏览器的跨域预检（CORS）',
+    steps: [
+      { id: 'url', label: '解析服务器地址', status: 'ok', detail: 'https://dav.jianguoyun.com/dav/mycard' },
+      { id: 'simple', label: '基础连通性（GET，不带认证）', status: 'ok', detail: '服务器有响应：HTTP 401' },
+      { id: 'preflight', label: '跨域预检（PROPFIND，不带认证）', status: 'fail', detail: '连不上服务器｜浏览器原始信息：TypeError: Failed to fetch' }
+    ]
+  };
+  const text = webdav.diagnoseReport(rep, {
+    url: 'https://dav.jianguoyun.com/dav',
+    dir: 'mycard',
+    user: 'me@example.com',
+    pass: 'SUPER-SECRET-APP-PASSWORD'
+  });
+  ok(/Mycard 同步诊断报告/.test(text) && /结论：/.test(text) && /\[✗\]/.test(text), '报告含标题 / 结论 / 逐步结果');
+  ok(text.includes('me@example.com') && text.includes('mycard') && text.includes('https://dav.jianguoyun.com/dav'), '报告含地址 / 用户名 / 目录（便于他人排查）');
+  ok(!text.includes('SUPER-SECRET-APP-PASSWORD') && !/SUPER/.test(text), '报告绝不含密码');
+  ok(/自查清单/.test(text) && /应用密码/.test(text), '报告附带自查清单');
+
+  const jgyHints = webdav.setupHints('https://dav.jianguoyun.com/dav/');
+  ok(jgyHints.some((h) => /应用密码/.test(h)) && jgyHints.some((h) => /注册邮箱/.test(h)), '坚果云：清单提示「用户名 = 注册邮箱、密码 = 应用密码」');
+  ok(jgyHints.some((h) => /dav\.jianguoyun\.com\/dav/.test(h)), '坚果云：清单给出正确端点 https://dav.jianguoyun.com/dav/');
+  ok(jgyHints.some((h) => /跨域|CORS/.test(h)) && jgyHints.some((h) => /插件|代理/.test(h)), '清单覆盖「跨域」与「插件 / 代理」两类常见原因');
+  const nasHints = webdav.setupHints('https://nas.local:5006/dav');
+  ok(!nasHints.some((h) => /坚果云在网页端/.test(h)) && nasHints.some((h) => /应用专用密码/.test(h)), '非坚果云地址：不塞坚果云专属提示，但保留「用应用密码」的通用建议');
+}
+
 console.log('\n[配置 / 状态]');
 syncMod.clearCredentials();
 syncMod.saveConfig({ url: 'https://dav.example.com/dav/', user: 'me', pass: 'secret', dir: 'mybackup', remember: false });

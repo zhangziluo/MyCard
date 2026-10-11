@@ -57,18 +57,45 @@ export function allocateTypes(n, weights, typesList = QUESTION_TYPES, random = M
   return shuffle(list, random);
 }
 
-/** 把题型分配给卡序列：同一张卡再次出现时优先使用未用过的题型 */
-export function assignTypesByCard(seq, typeList, random = Math.random) {
+/**
+ * 把题型分配给卡序列：同一张卡再次出现时优先使用未用过的题型。
+ * @param {{ byId?: Map|null, canType?: Function|null }} [opts]
+ *   `canType(card, type) → boolean` 可选：卡片级可用性（如「多义多选」需要 ≥2 条同语言释义、
+ *   「英英选择」需要英文释义）。
+ *   - 候选里**有可用**的 → 只在可用的里挑（计划与出题口径一致）；
+ *   - 候选里**都没用**（例：只剩「多义多选」，但这张卡中文释义 < 2 条）→ 先用一个
+ *     **基础题型**顶上（挑当前派得最少的那种，保证分布均衡），把那个槽位**留给后面合适的卡**，
+ *     而不是硬塞给这张卡后被出题回退 —— 这样用户配的权重能尽可能落到实处。
+ */
+export function assignTypesByCard(seq, typeList, random = Math.random, { byId = null, canType = null } = {}) {
   const remaining = [...typeList];
   const usedByCard = new Map();
+  const filterByCard = typeof canType === 'function' && byId instanceof Map;
+  const tally = new Map(); // 已派出的各题型题数（借补基础题型时用它挑「最少」的）
   const out = [];
   for (const cardId of seq) {
     const used = usedByCard.get(cardId) || new Set();
     let cands = remaining.filter((t) => !used.has(t));
     if (!cands.length) cands = remaining;
-    const pick = cands[Math.floor(random() * cands.length)];
-    remaining.splice(remaining.indexOf(pick), 1);
+    let pick = null;
+    if (filterByCard) {
+      const card = byId.get(cardId);
+      const ok = cands.filter((t) => canType(card, t));
+      if (ok.length) {
+        pick = ok[Math.floor(random() * ok.length)];
+      } else {
+        const basics = QUESTION_TYPES.filter((t) => !used.has(t) && canType(card, t));
+        const pool = (basics.length ? basics : QUESTION_TYPES).slice();
+        pool.sort((x, y) => (tally.get(x) || 0) - (tally.get(y) || 0));
+        pick = pool[Math.floor(random() * pool.length)] || 'word2def';
+      }
+    } else {
+      pick = cands[Math.floor(random() * cands.length)];
+    }
+    const at = remaining.indexOf(pick);
+    if (at >= 0) remaining.splice(at, 1);
     out.push(pick);
+    tally.set(pick, (tally.get(pick) || 0) + 1);
     used.add(pick);
     usedByCard.set(cardId, used);
   }
@@ -201,15 +228,22 @@ export function buildCardSequence(cards, n, priorityIds = new Set(), random = Ma
   return seq;
 }
 
-/** 生成抽题计划：[{ cardId, type }] */
-export function samplePlan(deck, { count = 50, weights = null, priorityIds = new Set(), random = Math.random, enabled = null } = {}) {
+/**
+ * 生成抽题计划：[{ cardId, type }]
+ * @param {{ count?:number, weights?:object, priorityIds?:Set, random?:Function, enabled?:object,
+ *           canType?:Function|null }} [opts]
+ *   `canType(card, type) → boolean`（可选）：把「卡片级可用性」纳入题型分配 —— 例如没开
+ *   「英英选择」时「多义多选」只派给有 ≥2 条中文释义的卡（见 js/test.js 的 canBuildType）。
+ */
+export function samplePlan(deck, { count = 50, weights = null, priorityIds = new Set(), random = Math.random, enabled = null, canType = null } = {}) {
   const cards = (deck && deck.cards ? deck.cards : []).filter((c) => c.front);
   const n = Math.max(1, Math.floor(Number(count) || 0));
   if (!cards.length) return [];
   const seq = buildCardSequence(cards, n, priorityIds, random);
   const typesList = enabled ? enabledTypeIds(enabled) : QUESTION_TYPES;
   const typeList = allocateTypes(seq.length, weights, typesList, random);
-  const types = assignTypesByCard(seq, typeList, random);
+  const byId = typeof canType === 'function' ? new Map(cards.map((c) => [c.id, c])) : null;
+  const types = assignTypesByCard(seq, typeList, random, { byId, canType });
   return seq.map((cardId, i) => ({ cardId, type: types[i] }));
 }
 

@@ -1298,6 +1298,29 @@ body.kb-open #view { padding-bottom: calc(var(--safe-b) + 76px + var(--kb-h, 190
 .sync-conflict-list { list-style: none; margin: 0; padding: 0; color: var(--tx3); }
 .sync-conflict-list li { margin: 0 0 3px; }
 .modal-wide { max-width: 720px; }
+/* v0.9.2：逐步诊断（哪一步通过 / 失败 + 自查清单） */
+.diag-list { list-style: none; display: flex; flex-direction: column; gap: 8px; margin: 12px 0; padding: 0; }
+.diag-step {
+  display: flex;
+  gap: 9px;
+  align-items: flex-start;
+  padding: 9px 11px;
+  border-radius: var(--r-sm);
+  background: var(--ovl-1);
+  border: 1px solid var(--brd-soft);
+  font-size: 12.5px;
+  color: var(--tx2);
+}
+.diag-step.is-ok { border-color: var(--brd-mid); }
+.diag-step.is-fail { border-color: var(--soft-danger-tx); }
+.diag-mark { flex: 0 0 auto; font-weight: 700; }
+.diag-step.is-ok .diag-mark { color: var(--teal-tx); }
+.diag-step.is-fail .diag-mark { color: var(--soft-danger-tx); }
+.diag-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.diag-body b { font-size: 12.5px; color: var(--tx2); }
+.diag-body span { color: var(--tx3); line-height: 1.5; overflow-wrap: anywhere; }
+.diag-hints { margin: 4px 0 0; padding-left: 18px; font-size: 12.5px; color: var(--tx3); line-height: 1.65; }
+.diag-hints li { margin-bottom: 3px; }
 @media (max-width: 520px) {
   .sync-counts { grid-template-columns: 1fr; }
 }
