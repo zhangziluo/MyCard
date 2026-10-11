@@ -41,7 +41,7 @@ let calls = [];
 globalThis.fetch = async (url, opts = {}) => {
   const method = String(opts.method || 'GET').toUpperCase();
   const u = String(url);
-  calls.push({ method, url: u, headers: opts.headers || {}, body: opts.body });
+  calls.push({ method, url: u, headers: opts.headers || {}, body: opts.body, mode: opts.mode || '' });
   // 路由**按顺序消费**（同一方法连续多次调用时，依次匹配第 1、2… 条）
   const idx = routes.findIndex((r) => {
     if (String(r.method || 'GET').toUpperCase() !== method) return false;
@@ -520,10 +520,15 @@ console.log('\n[v0.9.2 逐步诊断 diagnose()：每一步都给结论]');
     '分步结论：连通性 ✓ / 预检 ✗（用户能看懂卡在哪一步）'
   );
 
-  // ④-3 连 GET 都不通
-  resetFetch([{ method: 'GET', throws: netErr }, { method: 'PROPFIND', throws: netErr }, { method: 'PROPFIND', throws: netErr }]);
+  // ④-3 连 GET 与 no-cors 探测都不通 → 明确是网络层面（v0.9.3 起会多探一步）
+  resetFetch([
+    { method: 'GET', throws: netErr },
+    { method: 'GET', throws: netErr },
+    { method: 'PROPFIND', throws: netErr },
+    { method: 'PROPFIND', throws: netErr }
+  ]);
   const dDown = await webdav.diagnose('https://dav.example.com/dav', { auth: { user: 'me', pass: 'pw' } });
-  ok(dDown.ok === false && /都没连上/.test(dDown.verdict), '诊断：连 GET 都不通 → 结论「连服务器都没连上」');
+  ok(dDown.ok === false && /根本到不了服务器/.test(dDown.verdict), '诊断：连通性与可达性都不通 → 结论「根本到不了服务器」');
 
   // ④-4 跨域 OK 但 401（坚果云典型：用了登录密码 / 用户名填成昵称）
   resetFetch([
@@ -588,6 +593,64 @@ console.log('\n[v0.9.2 诊断报告与自查清单（可复制 / 不含密码）
   ok(jgyHints.some((h) => /跨域|CORS/.test(h)) && jgyHints.some((h) => /插件|代理/.test(h)), '清单覆盖「跨域」与「插件 / 代理」两类常见原因');
   const nasHints = webdav.setupHints('https://nas.local:5006/dav');
   ok(!nasHints.some((h) => /坚果云在网页端/.test(h)) && nasHints.some((h) => /应用专用密码/.test(h)), '非坚果云地址：不塞坚果云专属提示，但保留「用应用密码」的通用建议');
+}
+
+console.log('\n[v0.9.3 no-cors 探测：把「网络不通」与「缺 CORS 头」分开]');
+{
+  const netErr = Object.assign(new TypeError('Load failed'), { name: 'TypeError' }); // Safari 的文案
+
+  // ① 探测本身：no-cors 简单 GET；resolve → 可达；reject → 不可达
+  resetFetch([{ method: 'GET', status: 0, body: '' }]);
+  const r1 = await webdav.probeReachable('https://dav.example.com/dav/mycard', { timeout: 5000 });
+  ok(r1.ok === true, 'no-cors 探测：请求完成 → 视为「服务器可达」');
+  ok(calls.length === 1 && calls[0].mode === 'no-cors', '确实用了 mode: "no-cors"（不要求跨域头）');
+  ok(calls[0].method === 'GET' && !calls[0].headers.Authorization, '探测不带认证头（只是连通性探测）');
+
+  resetFetch([{ method: 'GET', throws: netErr }]);
+  const r2 = await webdav.probeReachable('https://dav.example.com/dav/mycard');
+  ok(r2.ok === false && r2.reason === 'unreachable' && webdav.causeText(r2.cause) === 'TypeError: Load failed', '请求抛错 → 不可达（并保留 Load failed 原文）');
+
+  const savedF = globalThis.fetch;
+  globalThis.fetch = undefined;
+  const r3 = await webdav.probeReachable('https://dav.example.com/dav');
+  ok(r3.ok === false && r3.reason === 'no-fetch', '无 fetch 环境 → 直接判不可达（不抛错）');
+  globalThis.fetch = savedF;
+
+  // ② 把探测接进诊断：GET 失败但 no-cors 可达 → 明确结论「缺跨域许可」
+  resetFetch([
+    { method: 'GET', throws: netErr },
+    { method: 'GET', status: 0, body: '' }, // no-cors 探测（同一方法，第二条路由）
+    { method: 'PROPFIND', throws: netErr },
+    { method: 'PROPFIND', throws: netErr }
+  ]);
+  const dCors2 = await webdav.diagnose('https://dav.jianguoyun.com/dav', { auth: { user: 'me', pass: 'pw' }, dir: 'mycard' });
+  ok(
+    dCors2.steps.map((s) => s.id).join(',') === 'url,env,simple,reach,preflight,auth',
+    '简单请求失败时会插入「服务器可达性」这一步',
+    dCors2.steps.map((s) => s.id)
+  );
+  ok(dCors2.steps.find((s) => s.id === 'reach').status === 'ok', '可达性探测标为通过（服务器可达）');
+  ok(dCors2.ok === false && /可达/.test(dCors2.verdict) && /CORS/.test(dCors2.verdict), '结论：「服务器可达，但缺少跨域许可」：' + dCors2.verdict);
+  ok(/Worker|Nextcloud/.test(dCors2.verdict), '结论里给出可执行的出路（换支持跨域的网盘 / Worker 反代）');
+  ok(calls.some((c) => c.mode === 'no-cors'), '诊断期间确实发出了 no-cors 探测');
+
+  // ③ 两条都失败 → 结论「根本到不了服务器」，且不再误导用户去查 CORS
+  resetFetch([
+    { method: 'GET', throws: netErr },
+    { method: 'GET', throws: netErr },
+    { method: 'PROPFIND', throws: netErr },
+    { method: 'PROPFIND', throws: netErr }
+  ]);
+  const dDown2 = await webdav.diagnose('https://dav.jianguoyun.com/dav', { auth: { user: 'me', pass: 'pw' } });
+  ok(dDown2.steps.find((s) => s.id === 'reach').status === 'fail', '可达性探测标为失败');
+  ok(dDown2.ok === false && /根本到不了服务器/.test(dDown2.verdict), '结论：「这台设备根本到不了服务器」（网络 / DNS / 证书 / 拦截）');
+  ok(/手机热点|换网络/.test(dDown2.verdict) && !/CORS/.test(dDown2.verdict), '结论给网络层面的可执行建议、且不再扯 CORS');
+
+  // ④ 清单：覆盖「可达但缺 CORS」与「根本到不了」两条分支
+  const hints = webdav.setupHints('https://dav.jianguoyun.com/dav/');
+  ok(hints.some((h) => /服务器可达性/.test(h) && /CORS/.test(h)), '清单解释「可达性通过但连通性失败 = 缺跨域头」');
+  ok(hints.some((h) => /服务器可达性/.test(h) && /没完成|压根没完成/.test(h)), '清单解释「可达性也失败 = 网络层面」，并给出换网络 / 关拦截器');
+  ok(hints.some((h) => /Worker/.test(h)), '清单给出「Worker 反代」这条出路');
 }
 
 console.log('\n[配置 / 状态]');

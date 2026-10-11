@@ -83,11 +83,15 @@ index.html ──► js/app.js（入口：路由 / 顶栏 / 设置页 / boot）
     - **计划要尊重可用性，但别打乱题型比例**：候选里**有可用**的只在可用的里挑；**都不可用**时改用「借一个基础题型顶上（挑当前派得最少的）」，把那个槽位**留给后面合适的卡**——而不是硬塞给用不了的卡再被出题回退（那样会让 word2def 之类的题型异常膨胀）。`test-deck-test` 有「计划与出题完全一致」的守卫断言。
     - **回退链固定**：`buildQuestionSafe` = `buildOneQuestion(按计划的题型)` → 不成则 `word2def`（基础题型永远出得来），所以任何数据不足都不会出现空题，也不会偷偷变成英文题。
 
-26. **「连不上」必须分级成可判定的结论，而不是转述浏览器那句话**（v0.9.2，`js/webdav.js` + `js/app.js`）：
-    - **错误对象要带够信息**：`WebdavError` 带 `status` / `url` / `kind`（`timeout` / `offline` / `mixed-content` / `network`）/ `cause`；`causeText()` 把浏览器那句 `TypeError: Failed to fetch` 原样带出来。**永远不要把失败压成一句没有信息量的英文**（`'request failed'` 是反面教材）。
+26. **「连不上」必须分级成可判定的结论，而不是转述浏览器那句话**（v0.9.2 起，v0.9.3 补齐判别手段；`js/webdav.js` + `js/app.js`）：
+    - **错误对象要带够信息**：`WebdavError` 带 `status` / `url` / `kind`（`timeout` / `offline` / `mixed-content` / `network`）/ `cause`；`causeText()` 把浏览器那句 `TypeError: Failed to fetch` / Safari 的 `Load failed` 原样带出来。**永远不要把失败压成一句没有信息量的英文**（`'request failed'` 是反面教材）。
     - **可本地判定的先判**：`https` 页面 + `http://` 地址 = 混合内容（不请求、直接结论）；离线（`navigator.onLine === false`）直接结论。
-    - **用「请求形态」把原因切开**：先发**简单请求**（`GET`，无 `Authorization`、无自定义头 → 不触发 CORS 预检）→ 拿到状态码就证明「网络通 + 允许简单跨域」；再发 `PROPFIND`（必然触发预检）→ 两者对比即可把 **CORS 预检被拒** 与 **网络不通** 分开（这是浏览器环境下唯一可靠的判别法）。
+    - **用「请求形态」把原因切开**（三步递进，每步都要有明确语义）：
+      1. **简单请求** `GET`（无 `Authorization` / 无自定义头）→ 不触发预检：拿到状态码 = 网络通 + 允许简单跨域；
+      2. **`no-cors` 探测**（`probeReachable`，只在第 1 步失败时跑）→ 不要求跨域头：`resolve` = 服务器可达（缺 CORS 头）/ `reject` = 请求没完成（网络层）；
+      3. **`PROPFIND`**（必然触发预检）→ 与第 1 步对比即可判定「预检被拒」。
     - **诊断接口 `diagnose()` 永不抛错**：每步记录 `{ id, label, status, detail }`，最后给 `verdict` 一句话结论；上层只负责渲染（`syncDiagModal`）+ 复制（`diagnoseReport()`，**不含密码**）。
+    - **结论必须能指导行动、且不能指错方向**：可达+缺 CORS ⇒ 换支持跨域的网盘 / Worker 反代；不可达 ⇒ 换网络 / 关拦截器 / 避开代理。含糊的「网络 / CORS / 插件」会把人引到错误方向，属于**不可接受**的结论。
     - **失败路径要顺手给用户出路**：「测试连接 / 立即同步 / 预览差异」遇到**无 HTTP 状态**的失败时自动打开诊断；按钮常驻（用户也可主动点）。
     - **扩展方向**：新的网络类失败一律走同一套（分类 → `explainError` 说清 → `diagnose` 定位），不要另起一套文案。
 

@@ -765,6 +765,21 @@ console.log('\n[同步诊断（v0.9.2：连不上也说得清）]');
   const m2 = fakeBody.children.filter((c) => c && c.className === 'modal-overlay').pop();
   ok(fakeBody.children.length > before && m2 && String(m2.innerHTML).includes('同步诊断'), '「测试连接」失败后自动弹出诊断（不再只弹一句「request failed」）');
   uiMod2.closeModal();
+
+  // ④ Safari 场景：普通请求一律 Load failed，但 no-cors 探测能通 → 结论必须指向「缺跨域许可」
+  globalThis.fetch = async (url, opts = {}) => {
+    if (opts && opts.mode === 'no-cors') return { status: 0, text: async () => '' }; // 可达（opaque 响应）
+    throw Object.assign(new TypeError('Load failed'), { name: 'TypeError' });
+  };
+  await fire('sync-diag');
+  await tick(120);
+  const m3 = fakeBody.children.filter((c) => c && c.className === 'modal-overlay').pop();
+  const html3 = m3 ? String(m3.innerHTML) : '';
+  ok(html3.includes('服务器可达性'), '失败时多探一步「服务器可达性」（no-cors）');
+  ok(/可达.*跨域许可|跨域许可.*可达/.test(html3), '结论：「服务器可达，只是缺少跨域许可」——不再让用户误以为是自家网络问题');
+  ok(html3.includes('Load failed'), '保留 Safari 的原始信息（Load failed）');
+  ok(html3.includes('Worker') || html3.includes('Nextcloud'), '给出可执行的出路（Worker 反代 / 换支持跨域的网盘）');
+  uiMod2.closeModal();
   globalThis.fetch = saved;
 }
 

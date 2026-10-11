@@ -275,6 +275,45 @@ export async function remove(base, file, { auth = null, timeout = DEFAULT_TIMEOU
 /* --------------------------- 连不上时的逐步诊断 --------------------------- */
 
 /**
+ * 「服务器到底可不可达」的黑盒探测（v0.9.3）。
+ *
+ * 原理：`mode: 'no-cors'` 的**简单** GET 不要求服务端给 CORS 头（响应是 opaque，读不到内容），
+ * 于是能用「resolve / reject」把两类原因彻底分开：
+ *   · **resolve** → 请求确实到达了服务器并拿到响应（DNS / TLS / 网络 / 插件都没问题）
+ *     ⇒ 之前失败的原因就是**服务端没给浏览器跨域许可（CORS 响应头缺失）**；
+ *   · **reject**  → 请求压根没完成（DNS / 证书 / 网络策略 / 内容拦截 / 代理）。
+ * 这是浏览器环境下唯一能把「网络问题」与「CORS 问题」区分开的可靠手段
+ * （普通 fetch 两者都只报 `TypeError: Failed to fetch` / Safari 的 `Load failed`）。
+ */
+export async function probeReachable(url, { timeout = DEFAULT_TIMEOUT } = {}) {
+  const doFetch = fetchImpl();
+  if (!doFetch) return { ok: false, reason: 'no-fetch' };
+  if (pageIsHttps() && /^http:\/\//i.test(String(url))) return { ok: false, reason: 'mixed-content' };
+  let timer = null;
+  let signal;
+  try {
+    if (typeof AbortController === 'function' && timeout > 0) {
+      const ctl = new AbortController();
+      signal = ctl.signal;
+      timer = setTimeout(() => ctl.abort(), timeout);
+    }
+    await doFetch(String(url), {
+      method: 'GET',
+      mode: 'no-cors',
+      cache: 'no-store',
+      redirect: 'follow',
+      signal
+    });
+    return { ok: true };
+  } catch (e) {
+    const aborted = e && (e.name === 'AbortError' || /abort/i.test(String(e.message || '')));
+    return { ok: false, reason: aborted ? 'timeout' : deviceOffline() ? 'offline' : 'unreachable', cause: e };
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+/**
  * 自查清单（页面上展示 / 报告里附带）。
  * 浏览器不会告诉我们「为什么连不上」，所以把**最可能的几类原因**直接摆给用户。
  */
@@ -286,9 +325,9 @@ export function setupHints(base = '') {
       ? '坚果云：用户名 = 你的注册邮箱；密码 = 「账户信息 → 安全选项 → 添加应用」生成的【应用密码】（登录密码连不上）'
       : '多数网盘要求「应用专用密码」而不是登录密码（坚果云 / Nextcloud / 群晖都有各自的应用密码）',
     '页面是 https 时，WebDAV 地址也必须 https（http 会被浏览器当混合内容直接拦掉）',
-    '网盘必须允许浏览器跨域（CORS）：被拒时浏览器只报「连不上」。诊断里若「简单请求」通过而「预检」失败，就是这一类',
-    '关掉广告拦截 / 隐私插件（uBlock、AdGuard、Brave Shields）与公司代理后再试',
-    '换个网络（如手机热点）再试，排除局域网 / DNS / 运营商问题',
+    '诊断里「基础连通性」通过而「跨域预检」失败 → 网盘没给浏览器跨域许可（CORS）：换支持跨域的网盘，或按 README 用一段 Cloudflare Worker 反代',
+    '诊断里「服务器可达性」通过、但「基础连通性」失败 → 网络其实是通的，是服务端缺少跨域响应头（CORS），**不是你网络的问题**',
+    '诊断里「服务器可达性」也失败 → 请求压根没完成：先在浏览器地址栏直接打开该地址；换网络（手机热点）；关掉内容拦截 / 隐私扩展（iOS「内容拦截器」·iCloud 私密代理、Android AdGuard、uBlock 等）；避开公司代理',
     '坚果云在网页端「安全选项」里可查看/重置应用密码；同一个应用密码可多设备共用'
   ];
   return jgy ? hints : hints.filter((h) => !/坚果云在网页端/.test(h));
@@ -345,7 +384,7 @@ export async function diagnose(base, { auth = null, dir = '', timeout = DEFAULT_
   }
   add('env', '环境检查', 'ok', `页面协议 ${https ? 'HTTPS' : 'HTTP'}，目标地址协议 ${/^https:/i.test(root) ? 'HTTPS' : 'HTTP'}`);
 
-  // ② 简单请求（无认证、无自定义头 → 不触发预检）
+  // ③ 简单请求（无认证、无自定义头 → 不触发预检）
   let simpleOk = false;
   let simpleStatus = 0;
   try {
@@ -358,7 +397,22 @@ export async function diagnose(base, { auth = null, dir = '', timeout = DEFAULT_
     add('simple', '基础连通性（GET，不带认证）', 'fail', brief(e));
   }
 
-  // ③ 预检（PROPFIND 不在 CORS 简单方法里 → 一定先发 OPTIONS 预检）
+  // ③′ 简单请求失败时，用 no-cors 探测把「网络不通」与「缺 CORS 头」分开（v0.9.3）
+  let reach = null;
+  if (!simpleOk) {
+    reach = await probeReachable(root, { timeout });
+    const why = reach.ok ? '' : `（${reach.reason === 'timeout' ? '超时' : reach.reason === 'offline' ? '设备离线' : '请求未完成'}${causeText(reach.cause) ? `：${causeText(reach.cause)}` : ''}）`;
+    add(
+      'reach',
+      '服务器可达性（no-cors 探测）',
+      reach.ok ? 'ok' : 'fail',
+      reach.ok
+        ? '请求「到达了」服务器并拿到响应（no-cors 只要求连通、不要求跨域头）→ 网络与服务器都正常，缺的是跨域许可'
+        : `请求没能完成${why}→ 属于网络 / DNS / 证书 / 拦截层面`
+    );
+  }
+
+  // ④ 预检（PROPFIND 不在 CORS 简单方法里 → 一定先发 OPTIONS 预检）
   let preflightOk = false;
   let preflightStatus = 0;
   try {
@@ -390,8 +444,16 @@ export async function diagnose(base, { auth = null, dir = '', timeout = DEFAULT_
 
   let verdict;
   if (authOk) verdict = '连接正常：填账号 → 点「立即同步」即可';
-  else if (!simpleOk) verdict = '连服务器都没连上（网络 / DNS / 证书 / 插件或代理拦截）——先在浏览器里直接打开这个地址试试';
-  else if (!preflightOk) verdict = '服务器拒绝了浏览器的跨域预检（CORS）——这台设备无法直连该 WebDAV 地址；换支持 CORS 的地址或改用同源部署';
+  else if (!simpleOk && reach && reach.ok) {
+    verdict =
+      '服务器其实是「可达」的，只是它没有给浏览器跨域许可（响应缺少 CORS 头）——' +
+      '所以浏览器直连这个地址会被拦死，换网络 / 关插件都没用。' +
+      '出路：① 换支持跨域的 WebDAV（如自建 Nextcloud 的 remote.php/dav）；② 按 README「连不上怎么办」用一段 Cloudflare Worker 反代该网盘（免费，几分钟，地址填 Worker 的地址即可）';
+  } else if (!simpleOk) {
+    verdict =
+      '这台设备根本到不了服务器（请求没完成）：DNS / 证书 / 网络策略 / 内容拦截插件 / 代理都可能 —— ' +
+      '先在浏览器地址栏直接打开这个地址，再依次试：换网络（手机热点）、关掉内容拦截与隐私扩展、避开公司代理';
+  } else if (!preflightOk) verdict = '服务器拒绝了浏览器的跨域预检（CORS）——这台设备无法直连该 WebDAV 地址；换支持 CORS 的地址，或按 README 用 Cloudflare Worker 反代';
   else if (authStatus === 401) verdict = '跨域正常，是账号或密码不对：坚果云要用「账号邮箱 + 应用密码」（登录密码无效）';
   else if (authStatus === 403) verdict = '跨域与账号都正常，但该目录没有读写权限';
   else if (authStatus === 404) verdict = '跨域与账号都正常，是路径不存在：检查服务器地址末尾（如坚果云要 /dav/）与「同步目录」';

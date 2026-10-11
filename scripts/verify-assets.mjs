@@ -612,7 +612,7 @@ console.log('\n[我的生词批量整理（js/wordbook.js + js/wordbook-view.js�
   must(existsSync(rel('js/wordbook-view.js')), 'js/wordbook-view.js 存在（整理页）');
   must(sw.includes("'./js/wordbook.js'"), 'sw.js PRECACHE 含 ./js/wordbook.js');
   must(sw.includes("'./js/wordbook-view.js'"), 'sw.js PRECACHE 含 ./js/wordbook-view.js');
-  must(/const VERSION = 'v1\.16\.0'/.test(sw), 'sw.js VERSION 已递增（v1.16.0）');
+  must(/const VERSION = 'v1\.17\.0'/.test(sw), 'sw.js VERSION 已递增（v1.17.0）');
 
   // 内核：去重合并 / 标签 / 筛选排序 / 选中集 / 补查目标
   must(/export function normKey/.test(wbSrc), 'wordbook.js：normKey（大小写 / 空格归一为同一个词）');
@@ -630,7 +630,7 @@ console.log('\n[我的生词批量整理（js/wordbook.js + js/wordbook-view.js�
   must(/merge: true/.test(storeSrc2) && /extraBacks/.test(storeSrc2), 'store.js：addWords 支持 { merge: true } 合并释义');
 
   // 路由与入口
-  must(/APP_VERSION = 'v0\.9\.2'/.test(appSrc), 'app.js 版本号更新为 v0.9.2');
+  must(/APP_VERSION = 'v0\.9\.3'/.test(appSrc), 'app.js 版本号更新为 v0.9.3');
   must(/from '\.\/wordbook-view\.js'/.test(appSrc) && /renderWordbook\(root\)/.test(appSrc), 'app.js 挂载 renderWordbook');
   must(/seg\[0\] === 'words'/.test(appSrc) && /#\/words/.test(appSrc), 'app.js 解析 #/words 路由（含 ?page=N 分页）');
   must(/on\('nav-words'/.test(decksSrc3), 'decks.js 提供 nav-words 入口动作');
@@ -1051,6 +1051,37 @@ console.log('\n[同步连通性诊断（v0.9.2：错误说清原因 + 逐步定�
   must(/kind === 'network'/.test(testSyncSrc2) && /diagnose\('https:\/\/dav\.example\.com\/dav'/.test(testSyncSrc2), 'test-sync：覆盖错误分类 + 逐步诊断多场景');
   must(/报告绝不含密码/.test(testSyncSrc2), 'test-sync：断言诊断报告不含密码');
   must(readFileSync(rel('scripts/smoke-dom.mjs'), 'utf8').includes('data-action="sync-diag"'), 'smoke-dom：覆盖「诊断连接」弹窗（跨域 / 连接正常两种结论）');
+}
+
+// 15) v0.9.3：no-cors 可达性探测（把「网络不通」与「缺 CORS 头」彻底分开）
+console.log('\n[同步诊断增强（v0.9.3：no-cors 可达性 → 区分网络 / CORS）]');
+{
+  const wdSrc2 = readFileSync(rel('js/webdav.js'), 'utf8');
+  must(/export async function probeReachable/.test(wdSrc2), 'webdav.js：probeReachable（no-cors 黑盒探测）');
+  must(/mode: 'no-cors'/.test(wdSrc2) && /cache: 'no-store'/.test(wdSrc2), 'webdav.js：探测用 mode:"no-cors" + no-store 的简单 GET');
+  must(
+    /return \{ ok: true \}/.test(wdSrc2) && /reason: aborted \? 'timeout' : deviceOffline\(\) \? 'offline' : 'unreachable'/.test(wdSrc2),
+    'webdav.js：探测结果区分 resolve（可达）与 reject（超时 / 离线 / 不可达）'
+  );
+  must(/if \(!simpleOk\) \{\s*reach = await probeReachable/.test(wdSrc2), 'webdav.js：仅在「基础连通性」失败时才补一次可达性探测（不多发无用请求）');
+  must(/服务器可达性（no-cors 探测）/.test(wdSrc2), 'webdav.js：诊断步骤名「服务器可达性」');
+  must(
+    /服务器其实是「可达」的，只是它没有给浏览器跨域许可/.test(wdSrc2) && /Worker/.test(wdSrc2),
+    'webdav.js：可达 → 结论明确「缺 CORS 头」并给出出路（换网盘 / Worker 反代）'
+  );
+  must(
+    /这台设备根本到不了服务器（请求没完成）/.test(wdSrc2) && /手机热点/.test(wdSrc2),
+    'webdav.js：不可达 → 结论指向网络层面并给出换网络 / 关拦截器'
+  );
+  must(/Access-Control|CORS 响应头缺失/.test(wdSrc2), 'webdav.js：解释里点明「CORS 响应头缺失」这一机制');
+  must(
+    /诊断里「服务器可达性」也失败/.test(wdSrc2) && /内容拦截/.test(wdSrc2),
+    'webdav.js：自查清单含「可达性也失败 = 网络 / 拦截」分支'
+  );
+  must(/Load failed/.test(wdSrc2) || /Failed to fetch/.test(wdSrc2), 'webdav.js：兼容 Safari 的 Load failed 与 Chrome 的 Failed to fetch 文案');
+  const testSyncSrc3 = readFileSync(rel('scripts/test-sync.mjs'), 'utf8');
+  must(/mode === 'no-cors'/.test(testSyncSrc3) && /服务器可达性/.test(testSyncSrc3), 'test-sync：覆盖 no-cors 探测与两条结论分支');
+  must(/根本到不了服务器/.test(readFileSync(rel('scripts/smoke-dom.mjs'), 'utf8')) || /跨域许可/.test(readFileSync(rel('scripts/smoke-dom.mjs'), 'utf8')), 'smoke-dom：覆盖 Safari「Load failed + 可达」场景的结论');
 }
 
 console.log('\n[大卡组性能（单遍统计 / 复用 levels / 抽题快路径）]');

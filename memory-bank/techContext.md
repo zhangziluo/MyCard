@@ -26,7 +26,7 @@
 # 本地运行（必须 http(s)，file:// 下模块与 SW 受限）
 python3 -m http.server 8080
 
-# 全量校验（30 个 test-*.mjs + smoke-dom + verify-assets = 32 个脚本，3916 条断言）
+# 全量校验（30 个 test-*.mjs + smoke-dom + verify-assets = 32 个脚本，3948 条断言）
 for f in scripts/test-*.mjs scripts/smoke-dom.mjs scripts/verify-assets.mjs; do node "$f"; done
 node --check js/*.js sw.js scripts/*.mjs      # 语法检查
 node scripts/verify-assets.mjs                # 资源/一致性校验（含 CSS 变量审计）
@@ -52,7 +52,7 @@ node scripts/gen-examples.mjs --data data/words.json --sample 8
 
 ## 版本号约定
 - **两处必须同步递增**：`sw.js` 的 `VERSION`（缓存键）与 `js/app.js` 的 `APP_VERSION`（顶栏显示）
-- 当前：`APP v0.9.2` / `SW v1.16.0`
+- 当前：`APP v0.9.3` / `SW v1.17.0`
 
 ## 测试工程要点（写新测试时照抄）
 - 每个测试是独立 `.mjs`，自建浏览器桩（localStorage/document/window/location/requestAnimationFrame/HashChangeEvent）
@@ -87,10 +87,13 @@ node scripts/gen-examples.mjs --data data/words.json --sample 8
 20. **测试里的服务端桩要「按路径存文本」而不是「按顺序消费路由」（v0.9.0）**：增量同步会出现「同一方法打不同路径」的请求（`GET mycard-sync.json` / `GET mycard-decks/x.json` / 多个 `PUT`），顺序消费的路由表非常容易写歪。`test-sync` 现在用内存假服务端 `makeServer()`（`Map<路径, 文本>` + 记录 `ops`），既能断言最终文件内容，也能断言「这次到底发了几个 PUT / 有没有多余的 GET」——**写「只传变化」这类断言时，记得把 `.prev.json` 备份 PUT 一起算或显式排除**（否则计数会多一个）。
 21. **「允许出英文题」只有一个开关：`eng_eng`（v0.9.1）**：`allowEnSenses`（是否允许英文题）**必须由「英英选择」是否开启派生**，并**同时**传给两条链路——抽题计划（`samplePlan({ canType })`）与出题（`buildQuestionsFromPlan({ allowEnSenses })`）。只改其中一条就会出现「计划派了多义题、出题却回退成英文/基础题」的不一致。可用性判定统一走 `test.js` 的 `canBuildType(card, type, { allowEnSenses })`，别再各处自己写条件。另外 `multiSenseSet()` 的英文兜底是**显式参数**（`{ allowEnglish }`，默认 true 仅为兼容旧调用），新代码请按场景显式传入。
 22. **测试里读「当前整卡组测试题目」要读对键（v0.9.1）**：整卡组测试（`startDeckTest`）的进度写的是 `engine.saveProgress(deckId, T, mode)` → `localStorage['test_progress_<deckId>']`，**不是** `mycard-test-session`（那个 key 只给关卡测试的 `sessionStorage` 用）。读错 key 会拿到上一次关卡测试的题目，断言「看起来过了」其实全是空转（本次就踩过：20 道 fill 被当成了整卡组测试的结果）。
-23. **浏览器对「为什么连不上」是失明的（v0.9.2）**：`fetch` 失败在浏览器里**只有** `TypeError: Failed to fetch` —— DNS、自签证书、CORS 预检被拒、广告拦截插件、公司代理**全都长一个样**，网页拿不到任何区分信息（状态码、`response` 都不存在）。所以：
+23. **浏览器对「为什么连不上」是失明的（v0.9.2）**：`fetch` 失败在浏览器里**只有** `TypeError: Failed to fetch`（Safari/iOS 是 `TypeError: Load failed`）—— DNS、自签证书、CORS 预检被拒、CORS 响应头缺失、广告拦截插件、公司代理**全都长一个样**，网页拿不到任何区分信息（状态码、`response` 都不存在）。所以：
     - **不要把错误压成一句没信息的话**（v0.8.0 的 `'request failed'` 就是这么埋的坑：`explainError()` 认不出它、也没带 `cause`，用户只看到一句英文）—— 要保留 `cause`（`name` + `message`）、带上 `url` 与 `kind`（`timeout` / `offline` / `mixed-content` / `network`）；
     - **能本地判定的先判定**：HTTPS 页面 + `http://` 地址属**混合内容**，浏览器会直接拦（我们连 `fetch` 都不发，直接给结论）；
-    - **用「简单请求」把 CORS 单独隔离出来**：`GET`（不带 `Authorization`、不带自定义头）不触发预检 → 能拿到状态码就说明「网络通 + 允许简单跨域」；再发 `PROPFIND`（必然触发预检）→ 若前者通过而后者失败，就是**网盘不允许浏览器跨域**（这个结论是可靠的，不是猜的）。诊断（`webdav.diagnose()`）就按这个顺序走，且**每步都不抛错**；
+    - **用「请求形态」把原因切开**：先发**简单请求**（`GET`，无 `Authorization`、无自定义头 → 不触发 CORS 预检）→ 拿到状态码就证明「网络通 + 允许简单跨域」；再发 `PROPFIND`（必然触发预检）→ 两者对比即可把 **CORS 预检被拒** 与 **网络不通** 分开；
+    - **`no-cors` 是最后一个判别手段（v0.9.3）**：`fetch(url, { mode: 'no-cors' })` 的简单 GET **不要求服务端回 CORS 头**（响应 opaque、读不到内容），于是「resolve / reject」正好把两类原因彻底分开：**resolve** = 请求到达服务器 ⇒ 缺的是跨域许可；**reject** = 请求没完成 ⇒ 网络 / DNS / 证书 / 拦截。`webdav.probeReachable()` 就干这件事，**只在简单请求失败时才补跑**（避免多发无用请求）；
+    - **结论要能指导行动**：可达但缺 CORS ⇒ 换支持跨域的网盘 / 加一层 Cloudflare Worker 反代（README 有可直接粘贴的代码）；不可达 ⇒ 换网络 / 关内容拦截与隐私扩展 / 避开公司代理。**别让用户去查错方向**（v0.9.2 的含糊结论会让人以为自己网络有问题）；
     - **报告不要带密码**（`diagnoseReport()` 只写地址 / 用户名 / 目录 / UA / 逐步结果），这样用户才敢复制求助。
 
 24. **`flushPending()` 不许「先清空再写」（v0.9.2 修的真实竞态）**：Store 的增量落盘是「pending Map + 防抖 flush」。旧实现一进 `flushPending()` 就把四个容器（`pendingDecks` / `pendingCards` / `pendingRevlogs` / 删除集合）**同步清空**，然后才 `await` 写 IndexedDB —— 于是 `await` 期间存在**「pending 里没有、IDB 里也还没写」的空窗**：`revlogsOfDeck()`（合并 pending + IDB 读）会读到 0 条，而 `sync.buildSnapshot()` → `push` 的快照就会漏掉刚产生的复习日志（高负载下 `test-import-file` 的偶发失败正是这个，不是测试写错）。现在改为「**先取快照 → 写完（成功或失败）后在 `finally` 里只删掉快照中未被再次修改的条目**」：期间被改成新对象的条目留在 pending 等下一轮，新加入/新删除的条目不受影响。**同类代码（任何「清空待办 + 异步写」）都要避免这个空窗**：先移除会让读路径看不到、后移除只会导致重复写一次。
+

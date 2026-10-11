@@ -1,6 +1,6 @@
 # Progress — 完成度与遗留
 
-> 更新时间：2026-10-10 ｜ APP `v0.9.2` / SW `v1.16.0` ｜ **3916 条校验全绿**
+> 更新时间：2026-10-10 ｜ APP `v0.9.3` / SW `v1.17.0` ｜ **3948 条校验全绿**
 
 ## 已交付（按版本）
 
@@ -266,7 +266,16 @@
 - 测试：`test-sync` 169 → **198**（错误分类 / 原始信息保留 / 混合内容不发请求 / diagnose 六种场景 / 报告不含密码 / 清单针对性）；`smoke-dom` 313 → **326**（诊断按钮、跨域与「连接正常」两种结论、测试连接失败自动弹诊断、页面不出现密码）；`test-a11y` 146 → **154**；`verify-assets` 574 → **593**
 - **顺手修掉一个存储层真实竞态**：`store.flushPending()` 原来**一进函数就清空 pending 队列**再 `await` 写 IndexedDB → 中间存在「pending 里没有、IDB 里也还没写」的空窗，期间 `revlogsOfDeck()`（`sync.buildSnapshot()` 也走它）会**漏读刚产生的复习日志**（高负载下 `test-import-file` 偶发失败正是它）。现在改为「取快照 → 写完后只删掉快照里那些**未被再次修改**的条目」，空窗消失；`test-idb-store` 80 → **83**（`test-idb-store` 新增「flushPending 进行中也能读到刚写的日志」守卫）
 
-## 测试资产（30 个 test-*.mjs + `smoke-dom` + `verify-assets` = 32 个脚本 / 3916 条断言）
+**v0.9.3** 诊断再进一步：`no-cors` 可达性探测（把「网络不通」与「缺跨域头」分开）
+- **动机**：v0.9.2 的诊断仍会在「基础连通性失败」时含糊地说「网络 / CORS / 插件」——因为浏览器对这两类失败给的是同一句 `TypeError: Failed to fetch`（Safari 是 `Load failed`）
+- **`webdav.probeReachable(url)`**：`mode: 'no-cors'` + `cache: 'no-store'` 的**简单 GET**（响应 opaque、读不到内容，但**不要求服务端回 CORS 头**）→ `resolve` = 请求真的到了服务器 ⇒ 缺的是跨域许可；`reject` = 请求压根没完成 ⇒ 网络 / DNS / 证书 / 内容拦截 / 代理。返回 `{ ok, reason: 'timeout'|'offline'|'unreachable'|'no-fetch'|'mixed-content', cause }`
+- **接进 `diagnose()`**：新步骤 `reach`「服务器可达性（no-cors 探测）」，**只在「基础连通性」失败时才补**（不多发无用请求）；结论分两支：①「服务器其实是可达的，只是它没有给浏览器跨域许可（响应缺少 CORS 头）——换网络 / 关插件都没用」+ 出路（换支持跨域的 WebDAV / Cloudflare Worker 反代）；②「这台设备根本到不了服务器」+ 网络层面建议（换网络 / 关内容拦截与隐私扩展 / 避开代理）
+- **`setupHints()`**：补「可达性通过但连通性失败 = 缺跨域头」「可达性也失败 = 网络层面」两条互斥说明
+- **README**：新增「结论是『服务器可达，但缺少跨域许可』怎么办」——含**可直接粘贴的 Cloudflare Worker 反代代码**（OPTIONS 直接 204、转发 `Authorization`、补 CORS 头、可选口令校验）
+- **接线**：`js/app.js` `APP_VERSION = 'v0.9.3'`；`sw.js` `VERSION = 'v1.17.0'`
+- 测试：`test-sync` 198 → **214**（探测三种结果 + 结论两分支 + 清单分支 + 不再误导去查 CORS）；`smoke-dom` 326 → **330**（Safari `Load failed` + no-cors 可达 → 结论必须指向「缺跨域许可」并给出出路）；`verify-assets` 593 → **605**
+
+## 测试资产（30 个 test-*.mjs + `smoke-dom` + `verify-assets` = 32 个脚本 / 3948 条断言）
 | 分类 | 脚本 |
 | --- | --- |
 | 核心纯函数 | `test-core`(43) `test-difficulty`(39) `test-arrange`(22) `test-pagination`(25) `test-resplit-levels`(26) `test-revlog`(58) |
