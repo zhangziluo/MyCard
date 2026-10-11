@@ -17,7 +17,7 @@ import { renderWordbook } from './wordbook-view.js'; // v0.5.9 生词本批量�
 import { renderMatch, clearMatchSession } from './match.js'; // v0.5.12 明牌配对（#/match/{deck}）
 import { renderCrossword, clearCrosswordSession } from './crossword.js'; // v0.6.0 填字游戏（#/crossword/{deck}）
 
-const APP_VERSION = 'v0.9.3';
+const APP_VERSION = 'v0.9.4';
 
 /* ------------------------------ 路由解析 ------------------------------ */
 
@@ -400,7 +400,7 @@ function syncPreviewModal(pv) {
   });
 }
 
-/** 诊断结果弹窗：逐步结果 + 结论 + 自查清单 + 「复制诊断信息」（连不上时给用户可行动的东西） */
+/** 诊断结果弹窗：逐步结果 + 结论 + 「怎么修」+ 自查清单 + 复制（连不上时给用户可行动的东西） */
 function syncDiagModal(rep, cfg) {
   const steps = (rep && rep.steps) || [];
   const okCount = steps.filter((s) => s.status === 'ok').length;
@@ -417,32 +417,57 @@ function syncDiagModal(rep, cfg) {
     .setupHints(cfg.url)
     .map((h) => `<li>${esc(h)}</li>`)
     .join('');
+  // v0.9.4：网盘不给跨域许可 → 直接给「三步修好」（复制 Worker 代码 / 新建 Worker / 改地址）
+  const corsFix =
+    rep && rep.reason === 'cors'
+      ? `
+    <div class="diag-fix">
+      <b>怎么修：加一层「允许跨域」的中转（约 3 分钟，免费）</b>
+      <ol>
+        <li>点下面 <b>「复制 Worker 反代代码」</b>（目标服务器已按你填的地址自动填好，无需改代码）</li>
+        <li>打开 <a href="https://dash.cloudflare.com/?to=/:account/workers-and-pages" target="_blank" rel="noopener noreferrer">Cloudflare Workers</a> → 创建 Worker → 整段粘贴 → 部署</li>
+        <li>回到本页，「服务器地址」改成 <code>https://你的worker.workers.dev/dav</code>（Worker 地址 + 原路径前缀），用户名 / 应用密码照旧 → 点「测试连接」</li>
+      </ol>
+      <p class="hint">也可以换用支持跨域的 WebDAV（自建 Nextcloud 的 <code>remote.php/dav</code> 等）。<b>不要用公共 CORS 代理</b>——那会让第三方经手你的网盘密码。</p>
+    </div>`
+      : '';
   const body = `
     <p class="sync-status ${rep && rep.ok ? 'is-good' : 'is-bad'}">
       <b>${esc((rep && rep.verdict) || '诊断未得出结论')}</b>
       <span>地址 ${esc(cfg.url || '(未填)')}${cfg.dir ? ` · 目录 ${esc(cfg.dir)}` : ''} · ${okCount}/${steps.length} 步通过</span>
     </p>
+    ${corsFix}
     <ul class="diag-list">${rows || '<li class="diag-step">没有可显示的步骤（地址未填？）</li>'}</ul>
     <details class="weight-box" open>
       <summary>常见原因自查清单</summary>
       <ul class="diag-hints">${hints}</ul>
     </details>
     <p class="hint">诊断只做<b>只读</b>请求（GET / PROPFIND），不会修改网盘上的任何文件，也不会改动本机数据；报告里<b>不包含密码</b>，可放心复制。</p>`;
+  const actions = [];
+  if (rep && rep.reason === 'cors') {
+    actions.push({
+      label: '复制 Worker 反代代码',
+      cls: 'btn-primary',
+      onClick: () => {
+        copyText(webdav.workerProxyCode(cfg.url));
+        return false; // 保持弹窗打开，方便照着三步做
+      }
+    });
+  }
+  actions.push({
+    label: '复制诊断信息',
+    cls: 'btn-ghost',
+    onClick: () => {
+      copyText(webdav.diagnoseReport(rep, cfg));
+      return false;
+    }
+  });
+  actions.push({ label: '关闭', cls: 'btn-ghost' });
   openModal({
     title: '同步诊断（连不上的原因）',
     wide: true,
     body,
-    actions: [
-      {
-        label: '复制诊断信息',
-        cls: 'btn-ghost',
-        onClick: () => {
-          copyText(webdav.diagnoseReport(rep, cfg));
-          return false; // 复制后保持弹窗打开，方便继续看清单
-        }
-      },
-      { label: '关闭', cls: 'btn-primary' }
-    ]
+    actions
   });
 }
 

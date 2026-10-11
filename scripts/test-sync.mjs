@@ -653,6 +653,58 @@ console.log('\n[v0.9.3 no-cors 探测：把「网络不通」与「缺 CORS 头�
   ok(hints.some((h) => /Worker/.test(h)), '清单给出「Worker 反代」这条出路');
 }
 
+console.log('\n[v0.9.4 跨域场景一键方案：reason 标记 + Worker 反代代码]');
+{
+  const netErr = Object.assign(new TypeError('Load failed'), { name: 'TypeError' });
+
+  // ① 诊断结果带机器可读的 reason（UI 据此渲染「怎么修」）
+  resetFetch([
+    { method: 'GET', throws: netErr },
+    { method: 'GET', status: 0, body: '' }, // no-cors 可达
+    { method: 'PROPFIND', throws: netErr },
+    { method: 'PROPFIND', throws: netErr }
+  ]);
+  const rCors = await webdav.diagnose('https://dav.jianguoyun.com/dav', { auth: { user: 'me', pass: 'pw' } });
+  ok(rCors.reason === 'cors', '「可达但缺跨域头」→ reason = "cors"');
+  resetFetch([
+    { method: 'GET', throws: netErr },
+    { method: 'GET', throws: netErr },
+    { method: 'PROPFIND', throws: netErr },
+    { method: 'PROPFIND', throws: netErr }
+  ]);
+  const rNet = await webdav.diagnose('https://dav.example.com/dav', { auth: { user: 'me', pass: 'pw' } });
+  ok(rNet.reason === 'network', '「连不上」→ reason = "network"');
+  resetFetch([
+    { method: 'GET', status: 401, body: '' },
+    { method: 'PROPFIND', status: 207, body: '' },
+    { method: 'PROPFIND', status: 401, body: '' }
+  ]);
+  const rAuth = await webdav.diagnose('https://dav.example.com/dav', { auth: { user: 'me', pass: 'bad' } });
+  ok(rAuth.reason === 'auth', '401 → reason = "auth"');
+  resetFetch([
+    { method: 'GET', status: 401, body: '' },
+    { method: 'PROPFIND', status: 207, body: '' },
+    { method: 'PROPFIND', status: 207, body: '' }
+  ]);
+  const rOk = await webdav.diagnose('https://dav.example.com/dav', { auth: { user: 'me', pass: 'pw' } });
+  ok(rOk.reason === 'ok' && rOk.ok === true, '全通 → reason = "ok"');
+  const rBad = await webdav.diagnose('', {});
+  ok(rBad.reason === 'address' && rBad.ok === false, '地址为空/非法 → reason = "address"');
+
+  // ② Worker 反代代码：目标服务器按用户地址自动推导，且带齐 CORS 头 / 预检放行
+  const worker = webdav.workerProxyCode('https://dav.jianguoyun.com/dav/');
+  ok(/const TARGET = 'https:\/\/dav\.jianguoyun\.com'/.test(worker), 'Worker 代码里 TARGET 自动填成用户填的网盘域名');
+  ok(/Access-Control-Allow-Origin/.test(worker) && /Access-Control-Allow-Headers'?:\s*'Authorization/.test(worker), '补齐 CORS 头（含 Authorization / Depth / If-None-Match）');
+  ok(/req\.method === 'OPTIONS'/.test(worker) && /status: 204/.test(worker), '预检 OPTIONS 直接 204 放行');
+  ok(/PROPFIND/.test(worker) && /MKCOL/.test(worker), 'Allow-Methods 覆盖 WebDAV 方法（PROPFIND / MKCOL 等）');
+  ok(/export default \{/.test(worker) && /async fetch\(req\)/.test(worker), '是一个可直接粘贴部署的 Cloudflare Worker 模块');
+  ok(!/YOUR_|TODO|请填写/.test(worker), '不需要用户改任何占位符即可部署');
+  const worker2 = webdav.workerProxyCode('not a url');
+  ok(/TARGET = 'https:\/\/dav\.jianguoyun\.com'/.test(worker2), '地址非法时回退到示例域名（不抛错）');
+  const worker3 = webdav.workerProxyCode('http://nas.local:5005/dav');
+  ok(/TARGET = 'http:\/\/nas\.local:5005'/.test(worker3), '局域网地址也能正确推导（协议 + 端口保留）');
+}
+
 console.log('\n[配置 / 状态]');
 syncMod.clearCredentials();
 syncMod.saveConfig({ url: 'https://dav.example.com/dav/', user: 'me', pass: 'secret', dir: 'mybackup', remember: false });

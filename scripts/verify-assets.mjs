@@ -612,7 +612,7 @@ console.log('\n[我的生词批量整理（js/wordbook.js + js/wordbook-view.js�
   must(existsSync(rel('js/wordbook-view.js')), 'js/wordbook-view.js 存在（整理页）');
   must(sw.includes("'./js/wordbook.js'"), 'sw.js PRECACHE 含 ./js/wordbook.js');
   must(sw.includes("'./js/wordbook-view.js'"), 'sw.js PRECACHE 含 ./js/wordbook-view.js');
-  must(/const VERSION = 'v1\.17\.0'/.test(sw), 'sw.js VERSION 已递增（v1.17.0）');
+  must(/const VERSION = 'v1\.18\.0'/.test(sw), 'sw.js VERSION 已递增（v1.18.0）');
 
   // 内核：去重合并 / 标签 / 筛选排序 / 选中集 / 补查目标
   must(/export function normKey/.test(wbSrc), 'wordbook.js：normKey（大小写 / 空格归一为同一个词）');
@@ -630,7 +630,7 @@ console.log('\n[我的生词批量整理（js/wordbook.js + js/wordbook-view.js�
   must(/merge: true/.test(storeSrc2) && /extraBacks/.test(storeSrc2), 'store.js：addWords 支持 { merge: true } 合并释义');
 
   // 路由与入口
-  must(/APP_VERSION = 'v0\.9\.3'/.test(appSrc), 'app.js 版本号更新为 v0.9.3');
+  must(/APP_VERSION = 'v0\.9\.4'/.test(appSrc), 'app.js 版本号更新为 v0.9.4');
   must(/from '\.\/wordbook-view\.js'/.test(appSrc) && /renderWordbook\(root\)/.test(appSrc), 'app.js 挂载 renderWordbook');
   must(/seg\[0\] === 'words'/.test(appSrc) && /#\/words/.test(appSrc), 'app.js 解析 #/words 路由（含 ?page=N 分页）');
   must(/on\('nav-words'/.test(decksSrc3), 'decks.js 提供 nav-words 入口动作');
@@ -1082,6 +1082,39 @@ console.log('\n[同步诊断增强（v0.9.3：no-cors 可达性 → 区分网络
   const testSyncSrc3 = readFileSync(rel('scripts/test-sync.mjs'), 'utf8');
   must(/mode === 'no-cors'/.test(testSyncSrc3) && /服务器可达性/.test(testSyncSrc3), 'test-sync：覆盖 no-cors 探测与两条结论分支');
   must(/根本到不了服务器/.test(readFileSync(rel('scripts/smoke-dom.mjs'), 'utf8')) || /跨域许可/.test(readFileSync(rel('scripts/smoke-dom.mjs'), 'utf8')), 'smoke-dom：覆盖 Safari「Load failed + 可达」场景的结论');
+}
+
+// 16) v0.9.4：跨域场景的「一键方案」（reason 标记 + 应用内复制 Worker 反代代码）
+console.log('\n[跨域场景一键方案（v0.9.4：reason + 复制 Worker 反代代码）]');
+{
+  const wdSrc3 = readFileSync(rel('js/webdav.js'), 'utf8');
+  const appSrc6 = readFileSync(rel('js/app.js'), 'utf8');
+  must(/export function workerProxyCode/.test(wdSrc3), 'webdav.js：workerProxyCode（生成可粘贴的 Worker 反代代码）');
+  must(
+    /host = new URL\(normalizeBase\(base\)\)\.origin/.test(wdSrc3),
+    'webdav.js：Worker 的 TARGET 从用户填的地址自动推导（用户不用改代码）'
+  );
+  must(
+    /'Access-Control-Allow-Origin': '\*'/.test(wdSrc3) &&
+      /'Access-Control-Allow-Methods': 'GET,HEAD,PUT,DELETE,PROPFIND,MKCOL,OPTIONS'/.test(wdSrc3) &&
+      /Authorization,Content-Type,Depth,If-None-Match/.test(wdSrc3),
+    'webdav.js：Worker 补齐 CORS 头（Methods / Headers 覆盖 WebDAV 所需）'
+  );
+  must(/req\.method === 'OPTIONS'/.test(wdSrc3) && /status: 204, headers: CORS/.test(wdSrc3), 'webdav.js：Worker 直接放行跨域预检（OPTIONS → 204）');
+  must(/out\.delete\('set-cookie'\)/.test(wdSrc3), 'webdav.js：Worker 不透传 set-cookie（尽量少暴露）');
+  must(
+    /reason = 'cors'/.test(wdSrc3) && /reason = 'network'/.test(wdSrc3) && /reason = 'auth'/.test(wdSrc3) && /reason = 'ok'/.test(wdSrc3),
+    'webdav.js：diagnose 返回机器可读的 reason（ok / cors / network / auth / permission / path / server）'
+  );
+  must(/reason: 'address'/.test(wdSrc3) && /reason: 'mixed-content'/.test(wdSrc3) && /reason: 'offline'/.test(wdSrc3), 'webdav.js：提前返回的分支也带 reason');
+  must(/rep\.reason === 'cors'/.test(appSrc6) && /class="diag-fix"/.test(appSrc6), 'app.js：跨域场景渲染「怎么修」三步区块');
+  must(/复制 Worker 反代代码/.test(appSrc6) && /webdav\.workerProxyCode\(cfg\.url\)/.test(appSrc6), 'app.js：「复制 Worker 反代代码」按钮（按当前地址生成）');
+  must(/dash\.cloudflare\.com/.test(appSrc6) && /workers\.dev\/dav/.test(appSrc6), 'app.js：三步里给出 Cloudflare 入口与「地址该填成什么」示例');
+  must(/不要用公共 CORS 代理/.test(appSrc6), 'app.js：明确提示不要用公共代理（密码会经手第三方）');
+  must(/\.diag-fix/.test(css) && /\.diag-fix ol/.test(css), 'css：.diag-fix 三步区块样式');
+  const testSyncSrc4 = readFileSync(rel('scripts/test-sync.mjs'), 'utf8');
+  must(/workerProxyCode/.test(testSyncSrc4) && /reason === 'cors'/.test(testSyncSrc4), 'test-sync：覆盖 reason 取值与 Worker 代码生成');
+  must(/复制 Worker 反代代码/.test(readFileSync(rel('scripts/smoke-dom.mjs'), 'utf8')), 'smoke-dom：覆盖「跨域 → 三步修好」弹窗');
 }
 
 console.log('\n[大卡组性能（单遍统计 / 复用 levels / 抽题快路径）]');

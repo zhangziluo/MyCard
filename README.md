@@ -75,7 +75,7 @@
   - 整份文件解析后**一次事务批量写入**本地库，按单词去重并报告跳过数；新建牌组时 `source=null` 故可重复导入（各自新建卡组）
 - **数据存储（v0.4，v0.5.8 库升到 v3）**：卡片正文与学习进度存 **IndexedDB**（库 `mycard` v3，stores：`decks` / `cards` / `meta` / `lookup` / **`revlog`**），localStorage 只保留设置与卡组清单（key `mycard-meta`）；旧版 `mycard-v1` 整库会在首次启动时**自动迁移**到 IndexedDB 并删除旧键，v2 → v3 为**增量升级**（只补建 `revlog` store 与其 `byDeck` / `byCard` 索引，既有数据不动），从而支持万词级词库
 - **内置词库**：仅内置「英语高频词（示范）」约 60 词（`data/words.json` ＋ 易混分组 `data/confusables.json`），首次打开**自动导入**并按难度编排 3 关；应用不再内置其它词库，需要时可用首页「导入」按钮导入自己的 CSV / JSON 词表（见上一条）。旧版本曾内置的 10 本考试词库（考研 / 四级 / 六级 / 托福 / 雅思 / 专四 / 专八 / SAT / 初中 / 高中）已下线，浏览器里**遗留的历史卡组会在启动时自动清理**（按 `source` 精确匹配，仅删这些内置卡组，不影响你自建的卡组与「我的生词」）
-- **PWA**：`manifest.json` ＋ `sw.js`；**代码 / 数据走网络优先**（在线总是最新，离线回退缓存），图片走缓存优先；新版本 SW 接管后自动刷新一次，通常**一次刷新即可看到新功能**；顶栏显示当前版本号（当前 `v0.9.3`），设置页另提供「强制刷新到最新版（清理离线缓存）」应对极端缓存情况
+- **PWA**：`manifest.json` ＋ `sw.js`；**代码 / 数据走网络优先**（在线总是最新，离线回退缓存），图片走缓存优先；新版本 SW 接管后自动刷新一次，通常**一次刷新即可看到新功能**；顶栏显示当前版本号（当前 `v0.9.4`），设置页另提供「强制刷新到最新版（清理离线缓存）」应对极端缓存情况
 - **界面**：移动端优先、深色主题、毛玻璃（glassmorphism）卡片；**桌面端自适应** —— `#app` 按 640 / 960 / 1280 / 1600px 断点逐级放宽（600 → 760 → 1080 → 1280 → 1440px），卡组用 `auto-fill` 网格随宽度平铺 2–5 列，宽屏下关卡列表两列平铺
 - **无障碍（v0.5.10）**：全局键盘焦点环（`:focus-visible`）、「跳到主要内容」跳转链接、路由变化用 `#sr-announce` 实时区域播报页面名、可点击卡片（`role="button"`）支持 Enter / 空格、弹窗焦点陷阱与关闭后焦点还原、系统「减少动态效果」全局生效——详见下文「无障碍与键盘可达性」
 
@@ -158,15 +158,15 @@
     ├── test-xlsx.mjs       # 极简 .xlsx 读取器（ZIP STORED/DEFLATE、共享字符串、日期、多工作表/公式求值/合并单元格，125 项断言）
     ├── test-table-editor.mjs # 表格编辑页 #/editor（模版列一致性 / 表格内核 / 草稿 / 载入 / 粘贴多行 / 预览报告 / 渲染 / 事件 / 导入为卡组 / xlsx 指定工作表，223 项断言）
     ├── test-export.mjs     # 导出 txt/CSV/Markdown/JSON/Anki apkg（RFC4180、meta protobuf、Anki 调度、revlog 日志、ZIP+CRC32、Python sqlite3 校验产物，155 项断言）
-    ├── smoke-dom.mjs       # 无头 DOM 冒烟（各界面渲染 + 分页 + 明暗切换 + 导出/导入入口 + 表格编辑页 + 生词本整理页 + 明牌配对（含整卡组词源）+ 填字游戏 + 移动端字母键盘 + 多端同步设置页 + 只开多义多选不出英文题，330 项断言）
+    ├── smoke-dom.mjs       # 无头 DOM 冒烟（各界面渲染 + 分页 + 明暗切换 + 导出/导入入口 + 表格编辑页 + 生词本整理页 + 明牌配对（含整卡组词源）+ 填字游戏 + 移动端字母键盘 + 多端同步设置页 + 只开多义多选不出英文题，334 项断言）
     ├── test-perf.mjs       # 大卡组（1 万词 / 500 关）规模：统计/分组/抽题（含优先池读取次数）正确性 + 耗时金丝雀（29 项）
     ├── test-wordbook.mjs   # 生词本整理（同词归并 / 保留卡片优先级 / 合并语义 / 标签整理 / 筛选排序 / 多选批量 / 页面渲染与分页，124 项断言）
     ├── test-a11y.mjs       # 无障碍（键盘焦点环 / aria 覆盖 / 减少动效 / 弹窗焦点管理 / 配对页·填字页·字母键盘·同步表单标注，154 项断言）
     ├── test-match.mjs      # 明牌配对（解锁 / 词源（整卡组·关卡）/ 分轮建牌洗牌 / 牌面文案 / 点击状态机 / 连击 / 薄 UI 与入口横幅 / 棋局只存内存重进即重洗，292 项断言）
     ├── test-crossword.mjs  # 填字游戏（解锁 / 词条清洗 / 交叉排版规则 / 棋盘生成 / 状态机 / 移动端格子尺寸与字母键盘 / 薄 UI 与入口横幅，213 项断言）
     ├── test-keyboard.mjs   # 移动端英文字母键盘（环境判定 / 键位 HTML / 四态状态机 / DOM 三态 / inputmode 同步 / 事件派发 / 只绑一次，52 项断言）
-    ├── test-sync.mjs       # 多端同步（WebDAV 客户端 / 合并内核（内容与进度分治 / 日志并集 / 删除墓碑 / 幂等 / 统计）/ 快照往返 / 墓碑与配置，214 项断言）
-    └── verify-assets.mjs   # 资源完整性校验（605 项）
+    ├── test-sync.mjs       # 多端同步（WebDAV 客户端 / 合并内核（内容与进度分治 / 日志并集 / 删除墓碑 / 幂等 / 统计）/ 快照往返 / 墓碑与配置，227 项断言）
+    └── verify-assets.mjs   # 资源完整性校验（619 项）
 ```
 
 ## 本地运行
@@ -207,19 +207,19 @@ node scripts/test-import-file.mjs     # 本地文件导入（解析/预览/字�
 node scripts/test-xlsx.mjs            # 极简 .xlsx 读取器（ZIP STORED/DEFLATE、共享字符串、日期、多工作表/公式求值/合并单元格，125 项）
 node scripts/test-table-editor.mjs    # 表格编辑页 #/editor（模版列一致性 / 表格内核 / 草稿 / 载入 / 粘贴多行 / 预览报告 / 导入为卡组 / xlsx 指定工作表，223 项）
 node scripts/test-export.mjs          # 导出 txt / CSV / Markdown / JSON / Anki apkg（RFC4180·meta protobuf·Anki 调度·revlog 日志·ZIP·CRC32，Python sqlite3 校验，155 项）
-node scripts/smoke-dom.mjs            # 无头 DOM 冒烟（各界面渲染 + 分页 + 明暗切换 + 导出/导入入口 + 表格编辑页 + 生词本整理页 + 明牌配对（含整卡组词源）+ 填字游戏 + 移动端字母键盘 + 多端同步设置页 + 只开多义多选不出英文题，330 项）
+node scripts/smoke-dom.mjs            # 无头 DOM 冒烟（各界面渲染 + 分页 + 明暗切换 + 导出/导入入口 + 表格编辑页 + 生词本整理页 + 明牌配对（含整卡组词源）+ 填字游戏 + 移动端字母键盘 + 多端同步设置页 + 只开多义多选不出英文题，334 项）
 node scripts/test-perf.mjs            # 大卡组（1 万词）规模：单遍统计 / 复用关卡分组 / 抽题快路径（含优先池）× 读取次数 + 耗时（29 项）
 node scripts/test-wordbook.mjs        # 生词本整理（同词归并 / 保留卡片优先级 / 合并语义 / 标签整理 / 筛选排序 / 多选批量 / 页面渲染与分页，124 项）
 node scripts/test-a11y.mjs            # 无障碍（键盘焦点环 / aria 覆盖 / prefers-reduced-motion / 弹窗焦点陷阱与还原 / 配对·填字·字母键盘·同步表单标注，154 项）
 node scripts/test-match.mjs           # 明牌配对（解锁门槛 / 词源（整卡组·已通关关卡）/ 分轮建牌与可复现洗牌 / 点击状态机 / 连击与用时 / 薄 UI 与入口横幅 / 重进同一关重新洗牌，292 项）
 node scripts/test-crossword.mjs       # 填字游戏（解锁门槛 / 词条清洗 / 交叉排版规则 / 棋盘生成与可复现 / 状态机 / 移动端格子尺寸 + 字母键盘 / 薄 UI 与入口横幅，213 项）
 node scripts/test-keyboard.mjs        # 移动端英文字母键盘（环境判定 / 键位 HTML / 四态状态机 / DOM 三态 / inputmode 同步 / 事件派发，52 项）
-node scripts/test-sync.mjs            # 多端同步（WebDAV 客户端（URL/认证/PROPFIND/MKCOL/GET/PUT/DELETE/错误映射/超时）/ 合并内核（内容与进度分治·日志并集·删除墓碑·幂等·统计）/ 快照与存储往返 / 配置，214 项）
-node scripts/verify-assets.mjs        # PWA 资源完整性 + 字段映射 / 明暗模式 / 导出（含 revlog）/ 导入增强（xlsx 多表·公式·合并）/ 表格编辑 / 生词本整理 / 明牌配对（含整卡组词源）/ 填字游戏 / 移动端字母键盘 / 多端同步 / 性能校验（605 项）
+node scripts/test-sync.mjs            # 多端同步（WebDAV 客户端（URL/认证/PROPFIND/MKCOL/GET/PUT/DELETE/错误映射/超时）/ 合并内核（内容与进度分治·日志并集·删除墓碑·幂等·统计）/ 快照与存储往返 / 配置，227 项）
+node scripts/verify-assets.mjs        # PWA 资源完整性 + 字段映射 / 明暗模式 / 导出（含 revlog）/ 导入增强（xlsx 多表·公式·合并）/ 表格编辑 / 生词本整理 / 明牌配对（含整卡组词源）/ 填字游戏 / 移动端字母键盘 / 多端同步 / 性能校验（619 项）
 node --check js/*.js                  # 语法检查
 ```
 
-当前合计 **3948 条校验**（32 个脚本，各套件输出的 `✓`）**全部通过、0 失败**（含纯函数单测、无头 DOM 冒烟、IndexedDB 存储与 v2→v3 升级、大词表导入、Anki 卡包产物（含 `revlog`）、明牌配对与填字游戏两套游戏断言、移动端字母键盘、多端同步（WebDAV），万级性能金丝雀）。
+当前合计 **3979 条校验**（32 个脚本，各套件输出的 `✓`）**全部通过、0 失败**（含纯函数单测、无头 DOM 冒烟、IndexedDB 存储与 v2→v3 升级、大词表导入、Anki 卡包产物（含 `revlog`）、明牌配对与填字游戏两套游戏断言、移动端字母键盘、多端同步（WebDAV），万级性能金丝雀）。
 
 ## 部署：Cloudflare Pages
 
@@ -520,15 +520,23 @@ node --check js/*.js                  # 语法检查
 - 兼容各浏览器的原始文案：Chrome/Edge 的 `Failed to fetch`、Safari/iOS 的 `Load failed` 都会如实显示。
 
 ### 结论是「服务器可达，但缺少跨域许可」怎么办
-这表示**不是你的网络问题**——网盘（坚果云 WebDAV 常见）没有回 `Access-Control-Allow-Origin` 等响应头，浏览器就会把请求判为失败。两条出路：
+这表示**不是你的网络问题**——网盘（坚果云 WebDAV 常见）没有回 `Access-Control-Allow-Origin` 等响应头，浏览器就会把请求判为失败。**诊断弹窗会直接显示「怎么修：三步」并给出「复制 Worker 反代代码」按钮**（目标服务器已按你填的地址自动填好），照做即可：
 
-1. **换一个给浏览器开跨域的 WebDAV**：自建 Nextcloud（`https://域名/remote.php/dav/files/用户名/`）、群晖 / 威联通等大多可配；地址换掉、账号密码照旧即可。
-2. **自己加一层「允许跨域」的反向代理（免费，几分钟）**：把下面这段贴到 Cloudflare Workers（Workers → 新建 → 粘贴 → 部署），拿到形如 `https://xxxx.workers.dev` 的地址后，把它当作**服务器地址**填进设置页即可（目录照旧填 `mycard`）：
+1. 点弹窗里的 **「复制 Worker 反代代码」**；
+2. 打开 [Cloudflare Workers](https://dash.cloudflare.com/?to=/:account/workers-and-pages) → 创建 Worker → 整段粘贴 → 部署（免费）；
+3. 回到设置页，把 **「服务器地址」改成 `https://你的worker.workers.dev/dav`**（Worker 地址 + 原来 `/dav` 这段路径前缀），用户名 / 应用密码照旧 → 点「测试连接」。
+
+也可以换用**本身支持跨域的 WebDAV**：自建 Nextcloud（`https://域名/remote.php/dav/files/用户名/`）、群晖 / 威联通等大多可配；地址换掉、账号密码照旧即可。
+
+> **不要用公共 CORS 代理**（网上搜到的那些免费代理 URL）：你的网盘密码（Basic 认证头）会经手第三方。
+
+下面是从应用里复制出来的 Worker 代码（`export function workerProxyCode()` 生成，`TARGET` 会按你填的地址自动替换）：
 
 ```js
-// Cloudflare Worker：把任意 WebDAV 变成「允许浏览器跨域」的地址
-// 部署后：设置页「服务器地址」填 Worker 域名 + 原 WebDAV 的路径前缀（如 https://xxxx.workers.dev/dav）
-const TARGET = 'https://dav.jianguoyun.com'; // ← 你的 WebDAV 服务器（不含 /dav 之后的部分）
+// Mycard · WebDAV CORS 反代（Cloudflare Worker，免费）
+// 部署：dash.cloudflare.com → Workers & Pages → 创建 Worker → 粘贴 → 部署
+// 用法：设置页「服务器地址」= https://<你的 Worker 域名>/dav（目录仍填 mycard）
+const TARGET = 'https://dav.jianguoyun.com'; // ← 你的 WebDAV 服务器（只到域名，不含 /dav 之后的路径）
 const CORS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET,HEAD,PUT,DELETE,PROPFIND,MKCOL,OPTIONS',
@@ -536,27 +544,30 @@ const CORS = {
   'Access-Control-Expose-Headers': 'ETag,Content-Length',
   'Access-Control-Max-Age': '86400'
 };
+
 export default {
   async fetch(req) {
-    if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS }); // 预检直接放行
-    const u = new URL(req.url);
+    if (req.method === 'OPTIONS') {
+      return new Response(null, { status: 204, headers: CORS }); // 跨域预检直接放行
+    }
+    const url = new URL(req.url);
     const headers = new Headers(req.headers);
     ['host', 'origin', 'referer', 'cf-connecting-ip', 'cf-ray', 'cf-ipcountry'].forEach((h) => headers.delete(h));
-    const res = await fetch(TARGET + u.pathname + u.search, {
+    const res = await fetch(TARGET + url.pathname + url.search, {
       method: req.method,
       headers,
       body: ['GET', 'HEAD'].includes(req.method) ? undefined : req.body
     });
     const out = new Headers(res.headers);
     Object.entries(CORS).forEach(([k, v]) => out.set(k, v));
-    out.delete('set-cookie'); // 不需要把网盘的 cookie 透给浏览器
+    out.delete('set-cookie'); // 不必把网盘的 cookie 透给浏览器
     return new Response(res.body, { status: res.status, headers: out });
   }
 };
 ```
 
-> 说明：`Authorization`（Basic 认证头）会被原样转发，所以**密码仍然只在你和 Worker / 网盘之间**，本应用也不落盘（勾了「记住密码」才存本机）。
-> 安全提示：这个 Worker 只转发到 `TARGET` 这一个主机，别人拿到地址也只能用自己的账号密码访问自己的空间；若仍不放心，可在 `fetch()` 开头加一句 `if (u.searchParams.get('k') !== '你的口令') return new Response('forbidden', { status: 403 });`，并在服务器地址里带上 `?k=你的口令`。
+> 说明：`Authorization`（Basic 认证头）会被原样转发，**密码仍然只在你和 Worker / 网盘之间**；本应用依旧不落盘密码（勾了「记住密码」才存本机）。
+> 安全提示：这个 Worker 只转发到 `TARGET` 这一个主机，别人拿到地址也只能用自己的账号密码访问自己的空间；若仍不放心，可在 `fetch()` 开头加一句 `if (url.searchParams.get('k') !== '你的口令') return new Response('forbidden', { status: 403 });`，并在服务器地址里带上 `?k=你的口令`。
 
 ### 实现分工
 - `js/webdav.js` = **极简 WebDAV 客户端**（零依赖，只用 `fetch`）：`normalizeBase` / `normalizeDir` / `buildUrl`（逐段编码，中文目录可用）/ `authHeader`（Basic，UTF-8 安全）/ `probe`（PROPFIND）/ `ensureCollection`（逐级 MKCOL，405 视为已存在）/ `getText`（404 → `exists:false`，不是错误）/ `putText`（`createOnly` 时带 `If-None-Match: *` 用于抢锁）/ `remove`；所有失败统一抛 `WebdavError`（带 `status` / `kind` / `url` / 原始 `cause`），`explainError()` 转成「原因 + 地址 + 浏览器原始信息 + 建议」；**v0.9.2 新增** `causeText()`（保住浏览器那句 `Failed to fetch`）、`diagnose()`（逐步探测：地址 → 环境 → 连通性 → 跨域预检 → 认证，**永不抛错**）、`setupHints()`（自查清单）、`diagnoseReport()`（可复制、**不含密码**）。

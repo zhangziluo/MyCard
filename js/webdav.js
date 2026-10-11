@@ -334,14 +334,71 @@ export function setupHints(base = '') {
 }
 
 /**
+ * 生成「Cloudflare Worker 反代」代码（v0.9.4）。
+ *
+ * 用途：网盘**不给浏览器跨域许可**（诊断里「服务器可达性 ✓、基础连通性 ✗」）时，
+ * 用它把 WebDAV 包一层「允许跨域」的地址；几分钟部署完，之后照常填账号密码即可同步。
+ * TARGET 从用户填的地址自动推导，用户无需改任何代码。
+ */
+export function workerProxyCode(base = '') {
+  let host = 'https://dav.jianguoyun.com';
+  try {
+    host = new URL(normalizeBase(base)).origin;
+  } catch (e) {
+    /* 地址非法就用示例值 */
+  }
+  return `// Mycard · WebDAV CORS 反代（Cloudflare Worker，免费）
+// 为什么需要它：很多网盘（坚果云等）不回 CORS 响应头，浏览器会直接拦住「网页 → 网盘」的请求。
+// 这个 Worker 站中间：浏览器 → Worker（允许跨域）→ 网盘；认证头原样转发，密码不经过第三方。
+//
+// 部署（约 3 分钟）：
+//   1) 打开 https://dash.cloudflare.com/ → Workers & Pages → 创建 Worker
+//   2) 把本文件内容整段粘贴进去 → 部署
+//   3) 回到 Mycard 设置页，「服务器地址」改成：https://<你的 Worker 域名>/dav
+//      （Worker 地址 + 原来 /dav 这段路径前缀；「同步目录」仍填 mycard）
+//   4) 用户名 / 应用密码照旧 → 点「测试连接」，应显示连接成功
+
+const TARGET = '${host}'; // ← 你的 WebDAV 服务器（只到域名，不含 /dav 之后的路径）
+const CORS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET,HEAD,PUT,DELETE,PROPFIND,MKCOL,OPTIONS',
+  'Access-Control-Allow-Headers': 'Authorization,Content-Type,Depth,If-None-Match,If-Match,Overwrite',
+  'Access-Control-Expose-Headers': 'ETag,Content-Length',
+  'Access-Control-Max-Age': '86400'
+};
+
+export default {
+  async fetch(req) {
+    if (req.method === 'OPTIONS') {
+      return new Response(null, { status: 204, headers: CORS }); // 跨域预检直接放行
+    }
+    const url = new URL(req.url);
+    const headers = new Headers(req.headers);
+    ['host', 'origin', 'referer', 'cf-connecting-ip', 'cf-ray', 'cf-ipcountry'].forEach((h) => headers.delete(h));
+    const res = await fetch(TARGET + url.pathname + url.search, {
+      method: req.method,
+      headers,
+      body: ['GET', 'HEAD'].includes(req.method) ? undefined : req.body
+    });
+    const out = new Headers(res.headers);
+    Object.entries(CORS).forEach(([k, v]) => out.set(k, v));
+    out.delete('set-cookie'); // 不必把网盘的 cookie 透给浏览器
+    return new Response(res.body, { status: res.status, headers: out });
+  }
+};
+`;
+}
+
+/**
  * 逐步诊断（**任何一步失败都不会抛错**，把「哪一步、得到什么、说明什么」如实列出）。
  * 顺序有讲究：
  *   ① 地址 / 环境（混合内容、离线）→ 本地就能判断的，先判掉；
  *   ② GET（**不带认证、不带自定义头** → 不触发 CORS 预检）：能拿到状态码 = 网络通 + 服务端允许简单跨域；
- *   ③ PROPFIND 不带认证（会触发预检）：若 ② 通过而 ③ 失败 → **预检被拒**（结论明确）；
- *   ④ 带认证的 PROPFIND = 「测试连接」本体：区分 401（账号/密码）与 403（权限）；
- * 最后给一句可执行结论。
- * @returns {{ ok:boolean, verdict:string, steps:Array<{id:string,label:string,status:'ok'|'fail'|'warn',detail:string}> }}
+ *   ③ ②失败时用 `no-cors` 探测把「网络不通」与「缺 CORS 头」分开（v0.9.3）；
+ *   ④ PROPFIND 不带认证（会触发预检）：若 ② 通过而 ④ 失败 → **预检被拒**（结论明确）；
+ *   ⑤ 带认证的 PROPFIND = 「测试连接」本体：区分 401（账号/密码）与 403（权限）；
+ * 最后给一句可执行结论 + 机器可读的 `reason`（供 UI 分支渲染「怎么修」）。
+ * @returns {{ ok:boolean, verdict:string, reason:string, steps:Array<{id:string,label:string,status:'ok'|'fail'|'warn',detail:string}> }}
  */
 export async function diagnose(base, { auth = null, dir = '', timeout = DEFAULT_TIMEOUT } = {}) {
   const steps = [];
@@ -369,18 +426,18 @@ export async function diagnose(base, { auth = null, dir = '', timeout = DEFAULT_
     root = buildUrl(base, dir);
   } catch (e) {
     add('url', '解析服务器地址', 'fail', explainError(e));
-    return { ok: false, verdict: '服务器地址填错了，先改对地址再试', steps };
+    return { ok: false, verdict: '服务器地址填错了，先改对地址再试', reason: 'address', steps };
   }
   add('url', '解析服务器地址', 'ok', root);
 
   const https = pageIsHttps();
   if (https && /^http:\/\//i.test(root)) {
     add('env', '环境检查', 'fail', '当前页面是 HTTPS，不能访问 http:// 的 WebDAV 地址（浏览器会直接拦截）');
-    return { ok: false, verdict: '混合内容被拦：请把服务器地址改成 https://', steps };
+    return { ok: false, verdict: '混合内容被拦：请把服务器地址改成 https://', reason: 'mixed-content', steps };
   }
   if (deviceOffline()) {
     add('env', '环境检查', 'fail', '设备当前处于离线状态');
-    return { ok: false, verdict: '设备离线：先连上网络再试', steps };
+    return { ok: false, verdict: '设备离线：先连上网络再试', reason: 'offline', steps };
   }
   add('env', '环境检查', 'ok', `页面协议 ${https ? 'HTTPS' : 'HTTP'}，目标地址协议 ${/^https:/i.test(root) ? 'HTTPS' : 'HTTP'}`);
 
@@ -443,24 +500,40 @@ export async function diagnose(base, { auth = null, dir = '', timeout = DEFAULT_
   }
 
   let verdict;
-  if (authOk) verdict = '连接正常：填账号 → 点「立即同步」即可';
-  else if (!simpleOk && reach && reach.ok) {
+  let reason = 'unknown';
+  if (authOk) {
+    verdict = '连接正常：填账号 → 点「立即同步」即可';
+    reason = 'ok';
+  } else if (!simpleOk && reach && reach.ok) {
+    reason = 'cors';
     verdict =
       '服务器其实是「可达」的，只是它没有给浏览器跨域许可（响应缺少 CORS 头）——' +
       '所以浏览器直连这个地址会被拦死，换网络 / 关插件都没用。' +
       '出路：① 换支持跨域的 WebDAV（如自建 Nextcloud 的 remote.php/dav）；② 按 README「连不上怎么办」用一段 Cloudflare Worker 反代该网盘（免费，几分钟，地址填 Worker 的地址即可）';
   } else if (!simpleOk) {
+    reason = 'network';
     verdict =
       '这台设备根本到不了服务器（请求没完成）：DNS / 证书 / 网络策略 / 内容拦截插件 / 代理都可能 —— ' +
       '先在浏览器地址栏直接打开这个地址，再依次试：换网络（手机热点）、关掉内容拦截与隐私扩展、避开公司代理';
-  } else if (!preflightOk) verdict = '服务器拒绝了浏览器的跨域预检（CORS）——这台设备无法直连该 WebDAV 地址；换支持 CORS 的地址，或按 README 用 Cloudflare Worker 反代';
-  else if (authStatus === 401) verdict = '跨域正常，是账号或密码不对：坚果云要用「账号邮箱 + 应用密码」（登录密码无效）';
-  else if (authStatus === 403) verdict = '跨域与账号都正常，但该目录没有读写权限';
-  else if (authStatus === 404) verdict = '跨域与账号都正常，是路径不存在：检查服务器地址末尾（如坚果云要 /dav/）与「同步目录」';
-  else verdict = `跨域与账号基本正常，但服务器返回 HTTP ${authStatus || '未知'}：${steps[steps.length - 1].detail}`;
+  } else if (!preflightOk) {
+    reason = 'cors';
+    verdict = '服务器拒绝了浏览器的跨域预检（CORS）——这台设备无法直连该 WebDAV 地址；换支持 CORS 的地址，或按 README 用 Cloudflare Worker 反代';
+  } else if (authStatus === 401) {
+    reason = 'auth';
+    verdict = '跨域正常，是账号或密码不对：坚果云要用「账号邮箱 + 应用密码」（登录密码无效）';
+  } else if (authStatus === 403) {
+    reason = 'permission';
+    verdict = '跨域与账号都正常，但该目录没有读写权限';
+  } else if (authStatus === 404) {
+    reason = 'path';
+    verdict = '跨域与账号都正常，是路径不存在：检查服务器地址末尾（如坚果云要 /dav/）与「同步目录」';
+  } else {
+    reason = 'server';
+    verdict = `跨域与账号基本正常，但服务器返回 HTTP ${authStatus || '未知'}：${steps[steps.length - 1].detail}`;
+  }
   void simpleStatus;
   void preflightStatus;
-  return { ok: authOk, verdict, steps };
+  return { ok: authOk, verdict, reason, steps };
 }
 
 /** 把诊断结果拼成一段可复制的纯文本报告（**绝不含密码**） */

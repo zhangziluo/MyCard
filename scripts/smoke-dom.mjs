@@ -779,6 +779,10 @@ console.log('\n[同步诊断（v0.9.2：连不上也说得清）]');
   ok(/可达.*跨域许可|跨域许可.*可达/.test(html3), '结论：「服务器可达，只是缺少跨域许可」——不再让用户误以为是自家网络问题');
   ok(html3.includes('Load failed'), '保留 Safari 的原始信息（Load failed）');
   ok(html3.includes('Worker') || html3.includes('Nextcloud'), '给出可执行的出路（Worker 反代 / 换支持跨域的网盘）');
+  ok(html3.includes('怎么修') && html3.includes('diag-fix') && html3.includes('dash.cloudflare.com'), '「跨域」场景直接给「三步修好」方案（含 Cloudflare 入口）');
+  ok(html3.includes('复制 Worker 反代代码'), '提供「复制 Worker 反代代码」按钮（目标服务器已自动填好）');
+  ok(/workers\.dev\/dav/.test(html3), '步骤里写清「服务器地址」该填成什么样子');
+  ok(html3.includes('不要用公共 CORS 代理'), '提示别用公共代理（免得密码经手第三方）');
   uiMod2.closeModal();
   globalThis.fetch = saved;
 }

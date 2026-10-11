@@ -26,7 +26,7 @@
 # 本地运行（必须 http(s)，file:// 下模块与 SW 受限）
 python3 -m http.server 8080
 
-# 全量校验（30 个 test-*.mjs + smoke-dom + verify-assets = 32 个脚本，3948 条断言）
+# 全量校验（30 个 test-*.mjs + smoke-dom + verify-assets = 32 个脚本，3979 条断言）
 for f in scripts/test-*.mjs scripts/smoke-dom.mjs scripts/verify-assets.mjs; do node "$f"; done
 node --check js/*.js sw.js scripts/*.mjs      # 语法检查
 node scripts/verify-assets.mjs                # 资源/一致性校验（含 CSS 变量审计）
@@ -52,7 +52,7 @@ node scripts/gen-examples.mjs --data data/words.json --sample 8
 
 ## 版本号约定
 - **两处必须同步递增**：`sw.js` 的 `VERSION`（缓存键）与 `js/app.js` 的 `APP_VERSION`（顶栏显示）
-- 当前：`APP v0.9.3` / `SW v1.17.0`
+- 当前：`APP v0.9.4` / `SW v1.18.0`
 
 ## 测试工程要点（写新测试时照抄）
 - 每个测试是独立 `.mjs`，自建浏览器桩（localStorage/document/window/location/requestAnimationFrame/HashChangeEvent）
@@ -96,4 +96,4 @@ node scripts/gen-examples.mjs --data data/words.json --sample 8
     - **报告不要带密码**（`diagnoseReport()` 只写地址 / 用户名 / 目录 / UA / 逐步结果），这样用户才敢复制求助。
 
 24. **`flushPending()` 不许「先清空再写」（v0.9.2 修的真实竞态）**：Store 的增量落盘是「pending Map + 防抖 flush」。旧实现一进 `flushPending()` 就把四个容器（`pendingDecks` / `pendingCards` / `pendingRevlogs` / 删除集合）**同步清空**，然后才 `await` 写 IndexedDB —— 于是 `await` 期间存在**「pending 里没有、IDB 里也还没写」的空窗**：`revlogsOfDeck()`（合并 pending + IDB 读）会读到 0 条，而 `sync.buildSnapshot()` → `push` 的快照就会漏掉刚产生的复习日志（高负载下 `test-import-file` 的偶发失败正是这个，不是测试写错）。现在改为「**先取快照 → 写完（成功或失败）后在 `finally` 里只删掉快照中未被再次修改的条目**」：期间被改成新对象的条目留在 pending 等下一轮，新加入/新删除的条目不受影响。**同类代码（任何「清空待办 + 异步写」）都要避免这个空窗**：先移除会让读路径看不到、后移除只会导致重复写一次。
-
+25. **网盘不给浏览器跨域时，出路是「自建一层反代」，而且要能把代码递给用户（v0.9.4）**：诊断能定位到「服务器可达但缺 CORS 头」，但**用户拿不到可执行的下一步**就等于没修。做法：① `diagnose()` 返回**机器可读的 `reason`**（`ok`/`cors`/`network`/`auth`/`permission`/`path`/`server`/`address`/`mixed-content`/`offline`），UI 据此分支（别用文案 contains 判断）；② `webdav.workerProxyCode(base)` **在应用内生成可粘贴部署的 Cloudflare Worker 源码**，`TARGET` 用 `new URL(normalizeBase(base)).origin` 从用户已填的地址推导（非法地址回退示例值），代码里覆盖 `OPTIONS → 204`、`Access-Control-Allow-Methods/Headers`（PROPFIND/MKCOL、Authorization/Depth/If-None-Match）、`set-cookie` 不透传，**不留任何占位符**；③ 弹窗里给「怎么修：三步」+ 一键复制按钮。**安全红线**：Worker 只转发到固定 `TARGET`（别人拿到地址也只能用自己的账号），并在 UI 明确提示**不要用公共 CORS 代理**——Basic 认证头会让第三方经手网盘密码。

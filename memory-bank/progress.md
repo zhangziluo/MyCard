@@ -1,6 +1,6 @@
 # Progress — 完成度与遗留
 
-> 更新时间：2026-10-10 ｜ APP `v0.9.3` / SW `v1.17.0` ｜ **3948 条校验全绿**
+> 更新时间：2026-10-10 ｜ APP `v0.9.4` / SW `v1.18.0` ｜ **3979 条校验全绿**
 
 ## 已交付（按版本）
 
@@ -266,6 +266,14 @@
 - 测试：`test-sync` 169 → **198**（错误分类 / 原始信息保留 / 混合内容不发请求 / diagnose 六种场景 / 报告不含密码 / 清单针对性）；`smoke-dom` 313 → **326**（诊断按钮、跨域与「连接正常」两种结论、测试连接失败自动弹诊断、页面不出现密码）；`test-a11y` 146 → **154**；`verify-assets` 574 → **593**
 - **顺手修掉一个存储层真实竞态**：`store.flushPending()` 原来**一进函数就清空 pending 队列**再 `await` 写 IndexedDB → 中间存在「pending 里没有、IDB 里也还没写」的空窗，期间 `revlogsOfDeck()`（`sync.buildSnapshot()` 也走它）会**漏读刚产生的复习日志**（高负载下 `test-import-file` 偶发失败正是它）。现在改为「取快照 → 写完后只删掉快照里那些**未被再次修改**的条目」，空窗消失；`test-idb-store` 80 → **83**（`test-idb-store` 新增「flushPending 进行中也能读到刚写的日志」守卫）
 
+**v0.9.4** 跨域场景「一键方案」：诊断带 `reason` + 应用内复制 Worker 反代代码
+- **动机**：实测诊断显示「基础连通性 ✗、**服务器可达性 ✓**」= 网盘（坚果云）不给浏览器跨域许可。结论已经准确，但「出路」只写在 README 里，用户还得自己找、自己改代码
+- **`diagnose()` 返回 `reason`**：`ok` / `cors` / `network` / `auth` / `permission` / `path` / `server`（+ 提前返回的 `address` / `mixed-content` / `offline`）——UI 不再靠文案匹配来分支
+- **`webdav.workerProxyCode(base)`**：生成**可直接粘贴部署**的 Cloudflare Worker 反代源码；`TARGET` = `new URL(normalizeBase(base)).origin`（非法地址回退示例域名）；内含 OPTIONS → 204 预检放行、完整 CORS 头（Methods 含 PROPFIND/MKCOL、Headers 含 Authorization/Depth/If-None-Match）、`set-cookie` 不透传
+- **UI**：`syncDiagModal` 在 `reason === 'cors'` 时渲染「**怎么修：三步**」（复制 Worker 代码 → Cloudflare 新建 Worker 粘贴部署 → 服务器地址改成 `https://xxx.workers.dev/dav`）+ 主按钮 **「复制 Worker 反代代码」**；并明确提示**不要用公共 CORS 代理**（密码会经手第三方）。`css/style.css` 新增 `.diag-fix`
+- **接线**：`js/app.js` `APP_VERSION = 'v0.9.4'`；`sw.js` `VERSION = 'v1.18.0'`
+- 测试：`test-sync` 214 → **227**（`reason` 六种取值 + Worker 代码 8 条：TARGET 推导 / CORS 头 / 预检 / 无占位符 / 非法地址回退 / 端口保留）；`smoke-dom` 330 → **334**（跨域弹窗出现三步方案 + 复制按钮 + 地址示例 + 公共代理警告）；`verify-assets` 605 → **619**
+
 **v0.9.3** 诊断再进一步：`no-cors` 可达性探测（把「网络不通」与「缺跨域头」分开）
 - **动机**：v0.9.2 的诊断仍会在「基础连通性失败」时含糊地说「网络 / CORS / 插件」——因为浏览器对这两类失败给的是同一句 `TypeError: Failed to fetch`（Safari 是 `Load failed`）
 - **`webdav.probeReachable(url)`**：`mode: 'no-cors'` + `cache: 'no-store'` 的**简单 GET**（响应 opaque、读不到内容，但**不要求服务端回 CORS 头**）→ `resolve` = 请求真的到了服务器 ⇒ 缺的是跨域许可；`reject` = 请求压根没完成 ⇒ 网络 / DNS / 证书 / 内容拦截 / 代理。返回 `{ ok, reason: 'timeout'|'offline'|'unreachable'|'no-fetch'|'mixed-content', cause }`
@@ -275,7 +283,7 @@
 - **接线**：`js/app.js` `APP_VERSION = 'v0.9.3'`；`sw.js` `VERSION = 'v1.17.0'`
 - 测试：`test-sync` 198 → **214**（探测三种结果 + 结论两分支 + 清单分支 + 不再误导去查 CORS）；`smoke-dom` 326 → **330**（Safari `Load failed` + no-cors 可达 → 结论必须指向「缺跨域许可」并给出出路）；`verify-assets` 593 → **605**
 
-## 测试资产（30 个 test-*.mjs + `smoke-dom` + `verify-assets` = 32 个脚本 / 3948 条断言）
+## 测试资产（30 个 test-*.mjs + `smoke-dom` + `verify-assets` = 32 个脚本 / 3979 条断言）
 | 分类 | 脚本 |
 | --- | --- |
 | 核心纯函数 | `test-core`(43) `test-difficulty`(39) `test-arrange`(22) `test-pagination`(25) `test-resplit-levels`(26) `test-revlog`(58) |
