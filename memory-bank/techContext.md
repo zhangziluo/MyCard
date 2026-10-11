@@ -26,7 +26,7 @@
 # 本地运行（必须 http(s)，file:// 下模块与 SW 受限）
 python3 -m http.server 8080
 
-# 全量校验（30 个 test-*.mjs + smoke-dom + verify-assets = 32 个脚本，3979 条断言）
+# 全量校验（31 个 test-*.mjs + smoke-dom + verify-assets = 33 个脚本，4058 条断言）
 for f in scripts/test-*.mjs scripts/smoke-dom.mjs scripts/verify-assets.mjs; do node "$f"; done
 node --check js/*.js sw.js scripts/*.mjs      # 语法检查
 node scripts/verify-assets.mjs                # 资源/一致性校验（含 CSS 变量审计）
@@ -40,7 +40,8 @@ node scripts/test-wordbook.mjs                # 生词本整理 #/words（同词
 node scripts/test-match.mjs                   # 明牌配对 #/match（解锁 ≥1 关 / **词源：整卡组与已通关关卡（normalizeSource·sourceCards·MAX_DECK_PAIRS）** / 分轮建牌（每轮 5 对）与可复现洗牌 / 六态点击状态机 / 连击·失误·用时 / 薄 UI 局部打补丁与入口横幅 / 连击提示贴棋盘右下角 / 棋局只存内存：同一页内重渲染不重排、**重进同一关重新洗牌**）
 node scripts/test-crossword.mjs               # 填字游戏 #/crossword（解锁 ≥1 关 / 词条清洗（纯字母·长度·去重）/ canPlace 四条排版规则 · findPlacement 评分 / 棋盘生成与可复现 / 逐格状态机（检查·提示·显示本词）/ **移动端：cellSize 触屏下限 30px + 屏幕字母键盘** / 薄 UI（打字只打补丁、焦点推进、结算、会话复活与清场）与入口横幅）
 node scripts/test-keyboard.mjs                # 移动端英文字母键盘 #kb-bar（环境判定 / 键位 HTML / open·hide·show·close 四态 / DOM 三态（键盘·迷你胶囊·隐藏）/ inputmode 同步 / 事件派发 / 视口监听只绑一次）
-node scripts/test-sync.mjs                    # 多端同步（WebDAV 客户端：URL 规范化·Basic·PROPFIND/MKCOL/GET/PUT/DELETE·错误映射·超时·无 fetch；合并内核：内容按 updatedAt / 进度按 lastReview / 日志并集 / 墓碑与复活 / 幂等 / 变更统计；快照往返：本地→快照→清库→应用（id / 进度 / revlog 全还原）；墓碑与配置；**v0.9.0 增量布局：内存假 WebDAV 服务端 `makeServer` + 只传变化 / 只下载变化 / 预览只读 / 本机专用 / v1 单文件自动升级**）
+node scripts/test-sync.mjs                    # 多端同步（WebDAV 客户端：URL 规范化·Basic·PROPFIND/MKCOL/GET/PUT/DELETE·错误映射·超时·无 fetch；合并内核：内容按 updatedAt / 进度按 lastReview / 日志并集 / 墓碑与复活 / 幂等 / 变更统计；快照往返：本地→快照→清库→应用（id / 进度 / revlog 全还原）；墓碑与配置；**v0.9.0 起增量布局（内存假 WebDAV 服务端 `makeServer`）/ v0.9.2-0.9.6 连通性诊断·no-cors 可达性·修复步骤·本机代理推荐**）
+node scripts/test-dav-proxy.mjs               # 本机同源代理 scripts/dav-proxy.py（Node 起假 WebDAV + spawn 真 python 代理：静态站点 / 方法·路径·认证头·Depth·请求体 / 401 回传 / OPTIONS / 目录穿越被拒 / 不可达 502；无 python3 自动跳过）
 
 # 数据准备（可选，需本地具备 gcide-0.51/）
 node scripts/split-gcide.mjs
@@ -52,7 +53,7 @@ node scripts/gen-examples.mjs --data data/words.json --sample 8
 
 ## 版本号约定
 - **两处必须同步递增**：`sw.js` 的 `VERSION`（缓存键）与 `js/app.js` 的 `APP_VERSION`（顶栏显示）
-- 当前：`APP v0.9.4` / `SW v1.18.0`
+- 当前：`APP v0.9.6` / `SW v1.20.0`
 
 ## 测试工程要点（写新测试时照抄）
 - 每个测试是独立 `.mjs`，自建浏览器桩（localStorage/document/window/location/requestAnimationFrame/HashChangeEvent）
@@ -97,3 +98,4 @@ node scripts/gen-examples.mjs --data data/words.json --sample 8
 
 24. **`flushPending()` 不许「先清空再写」（v0.9.2 修的真实竞态）**：Store 的增量落盘是「pending Map + 防抖 flush」。旧实现一进 `flushPending()` 就把四个容器（`pendingDecks` / `pendingCards` / `pendingRevlogs` / 删除集合）**同步清空**，然后才 `await` 写 IndexedDB —— 于是 `await` 期间存在**「pending 里没有、IDB 里也还没写」的空窗**：`revlogsOfDeck()`（合并 pending + IDB 读）会读到 0 条，而 `sync.buildSnapshot()` → `push` 的快照就会漏掉刚产生的复习日志（高负载下 `test-import-file` 的偶发失败正是这个，不是测试写错）。现在改为「**先取快照 → 写完（成功或失败）后在 `finally` 里只删掉快照中未被再次修改的条目**」：期间被改成新对象的条目留在 pending 等下一轮，新加入/新删除的条目不受影响。**同类代码（任何「清空待办 + 异步写」）都要避免这个空窗**：先移除会让读路径看不到、后移除只会导致重复写一次。
 25. **网盘不给浏览器跨域时，出路是「自建一层反代」，而且要能把代码递给用户（v0.9.4）**：诊断能定位到「服务器可达但缺 CORS 头」，但**用户拿不到可执行的下一步**就等于没修。做法：① `diagnose()` 返回**机器可读的 `reason`**（`ok`/`cors`/`network`/`auth`/`permission`/`path`/`server`/`address`/`mixed-content`/`offline`），UI 据此分支（别用文案 contains 判断）；② `webdav.workerProxyCode(base)` **在应用内生成可粘贴部署的 Cloudflare Worker 源码**，`TARGET` 用 `new URL(normalizeBase(base)).origin` 从用户已填的地址推导（非法地址回退示例值），代码里覆盖 `OPTIONS → 204`、`Access-Control-Allow-Methods/Headers`（PROPFIND/MKCOL、Authorization/Depth/If-None-Match）、`set-cookie` 不透传，**不留任何占位符**；③ 弹窗里给「怎么修：三步」+ 一键复制按钮。**安全红线**：Worker 只转发到固定 `TARGET`（别人拿到地址也只能用自己的账号），并在 UI 明确提示**不要用公共 CORS 代理**——Basic 认证头会让第三方经手网盘密码。
+26. **「用模板字符串生成代码」必须真的跑一遍（v0.9.5 踩到的真 bug）**：`workerProxyCode()` 里我加了「可选口令校验」的注释行 `// const url = new URL(req.url);`，而函数正文本来就有 `const url = new URL(req.url);` —— 用户一旦取消注释就 `SyntaxError: Identifier 'url' has already been declared`（更要命的是**生成的整段代码里就有重复声明**，直接粘贴部署会编译失败）。修法：模板里同名变量**只声明一次**，可选行只注释「使用」而不重复声明；并且**把「生成的代码能作为 ES 模块 import 成功」写成硬断言**（test-sync：写盘 → `import(pathToFileURL(tmp))` → 校验 `default.fetch`）。**任何「生成代码 / 配置 / SQL」的功能，都要有一条「产出物真能跑」的测试**。

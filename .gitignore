@@ -3,6 +3,9 @@ node_modules/
 *.log
 .env
 .env.*
+# Python 字节码缓存（scripts/dav-proxy.py 等本地脚本）
+__pycache__/
+*.pyc
 # 考试词库（本地测试用，不入库；需要时用首页「导入」按钮从任意位置选择文件导入）
 data/CET4.json
 data/CET6.json

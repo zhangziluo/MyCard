@@ -31,6 +31,8 @@ const storage = {
 globalThis.localStorage = storage;
 globalThis.sessionStorage = storage;
 globalThis.window = { addEventListener() {}, matchMedia: () => ({ matches: false }) };
+// 默认按「已部署在 https」模拟（真实浏览器下 location 一定有协议）；测试里需要 http 场景时再覆盖
+globalThis.location = { protocol: 'https:', hostname: 'mycard.example', href: 'https://mycard.example/' };
 // Node ≥21 的 navigator 是只读 getter（不可赋值）→ 不强行覆盖；deviceName() 会自行降级为 'device-x'
 installFakeIndexedDB();
 
@@ -703,6 +705,101 @@ console.log('\n[v0.9.4 跨域场景一键方案：reason 标记 + Worker 反代�
   ok(/TARGET = 'https:\/\/dav\.jianguoyun\.com'/.test(worker2), '地址非法时回退到示例域名（不抛错）');
   const worker3 = webdav.workerProxyCode('http://nas.local:5005/dav');
   ok(/TARGET = 'http:\/\/nas\.local:5005'/.test(worker3), '局域网地址也能正确推导（协议 + 端口保留）');
+}
+
+console.log('\n[v0.9.5 报告自带「怎么修」+ 生成的 Worker 代码必须真能跑]');
+{
+  const netErr = Object.assign(new TypeError('Load failed'), { name: 'TypeError' });
+  resetFetch([
+    { method: 'GET', throws: netErr },
+    { method: 'GET', status: 0, body: '' },
+    { method: 'PROPFIND', throws: netErr },
+    { method: 'PROPFIND', throws: netErr }
+  ]);
+  const cors = await webdav.diagnose('https://dav.jianguoyun.com/dav', { auth: { user: 'me@example.com', pass: 'PW' }, dir: 'mycard' });
+  const cfg = { url: 'https://dav.jianguoyun.com/dav', dir: 'mycard', user: 'me@example.com', pass: 'SUPER-SECRET-PW' };
+  const rep = webdav.diagnoseReport(cors, cfg);
+  ok(/怎么修：/.test(rep), '报告里直接带「怎么修」（不用另外去翻文档）');
+  ok(/复制 Worker 反代代码|Cloudflare/.test(rep) && /workers\.dev/.test(rep), '跨域结论的修复步骤写清「去哪建 Worker / 地址改成什么」');
+  ok(/附：修好它的 Worker 反代代码/.test(rep) && /export default \{/.test(rep), '跨域结论下附完整 Worker 代码（复制报告即可直接部署）');
+  ok(!rep.includes('SUPER-SECRET-PW'), '报告依然绝不含密码');
+
+  // 生成的 Worker 代码必须是**合法可导入的模块**（v0.9.4 曾因模板里重复声明 url 而报错）
+  const { writeFileSync } = await import('node:fs');
+  const { pathToFileURL } = await import('node:url');
+  const tmp = `${process.cwd()}/scripts/.tmp-worker-check.mjs`;
+  writeFileSync(tmp, webdav.workerProxyCode('https://dav.jianguoyun.com/dav'), 'utf8');
+  let workerMod = null;
+  let importErr = null;
+  try {
+    workerMod = await import(pathToFileURL(tmp).href);
+  } catch (e) {
+    importErr = e;
+  }
+  const { unlinkSync } = await import('node:fs');
+  try {
+    unlinkSync(tmp);
+  } catch (e) {}
+  ok(!importErr, '生成的 Worker 代码能作为 ES 模块加载（无语法/重复声明错误）：' + (importErr ? importErr.message : 'ok'));
+  ok(workerMod && workerMod.default && typeof workerMod.default.fetch === 'function', 'Worker 导出 default.fetch（Cloudflare 模块格式正确）');
+
+  // 非跨域结论不硬塞 Worker 代码，但仍给对应建议
+  resetFetch([
+    { method: 'GET', throws: netErr },
+    { method: 'GET', throws: netErr },
+    { method: 'PROPFIND', throws: netErr },
+    { method: 'PROPFIND', throws: netErr }
+  ]);
+  const netRep = webdav.diagnoseReport(await webdav.diagnose('https://nas.local/dav', { auth: { user: 'me', pass: 'pw' } }), {
+    url: 'https://nas.local/dav',
+    dir: 'mycard',
+    user: 'me'
+  });
+  ok(!/Worker 反代代码/.test(netRep) && /手机热点/.test(netRep), '网络类结论给网络建议、不硬塞 Worker 代码');
+  ok(webdav.fixSteps({ reason: 'auth' }).length > 0 && /注册邮箱/.test(webdav.fixSteps({ reason: 'auth' })[0]), 'fixSteps 覆盖 401（注册邮箱 / 应用密码）');
+  ok(webdav.fixSteps({ reason: 'path' })[0].includes('/dav'), 'fixSteps 覆盖路径问题');
+  ok(webdav.fixSteps({ ok: true, reason: 'ok' })[0].includes('立即同步'), 'fixSteps 通过时提示直接同步');
+  ok(Array.isArray(webdav.fixSteps({ reason: 'unknown-x' })) && webdav.fixSteps({ reason: 'unknown-x' }).length === 0, '未知 reason 不编造建议');
+}
+
+console.log('\n[v0.9.6 页面非 HTTPS / 本机运行：警告 + 本机代理方案]');
+{
+  // http + 非本机 → 警告步骤（但结论不受影响）
+  const saved = globalThis.location;
+  globalThis.location = { protocol: 'http:', hostname: '192.168.1.9', href: 'http://192.168.1.9:8080/' };
+  resetFetch([
+    { method: 'GET', status: 401, body: '' },
+    { method: 'PROPFIND', status: 207, body: '' },
+    { method: 'PROPFIND', status: 207, body: '' }
+  ]);
+  const dHttp = await webdav.diagnose('https://dav.example.com/dav', { auth: { user: 'me', pass: 'pw' } });
+  const secure = dHttp.steps.find((s) => s.id === 'secure');
+  ok(!!secure && secure.status === 'warn', 'http 页面 → 多一个「页面安全性」警告步骤（不算失败）');
+  ok(/Service Worker|剪贴板/.test(secure.detail), '警告说明具体后果（Service Worker / 剪贴板不可用）');
+  ok(dHttp.ok === true, '警告不影响连接判定（该通还是通）');
+
+  // http + localhost → 修复步骤优先给「本机代理脚本」（零账号）
+  globalThis.location = { protocol: 'http:', hostname: 'localhost', href: 'http://localhost:8080/' };
+  ok(webdav.isLocalPage() === true, 'isLocalPage：localhost 判定为真');
+  resetFetch([
+    { method: 'GET', throws: Object.assign(new TypeError('Load failed'), { name: 'TypeError' }) },
+    { method: 'GET', status: 0, body: '' },
+    { method: 'PROPFIND', throws: Object.assign(new TypeError('Load failed'), { name: 'TypeError' }) },
+    { method: 'PROPFIND', throws: Object.assign(new TypeError('Load failed'), { name: 'TypeError' }) }
+  ]);
+  const localCors = await webdav.diagnose('https://dav.jianguoyun.com/dav', { auth: { user: 'me@example.com', pass: 'pw' }, dir: 'mycard' });
+  const localSteps = webdav.fixSteps(localCors, { dir: 'mycard' });
+  ok(localSteps[0].includes('dav-proxy.py'), '本机运行时，首要建议是 scripts/dav-proxy.py（零账号）');
+  ok(localSteps.some((s) => s.includes('localhost:8080/dav')), '并给出该填的服务器地址 http://localhost:8080/dav');
+  ok(localSteps.some((s) => s.includes('python3 -m http.server')), '说明它就是静态站点服务器（可替代 python3 -m http.server）');
+  ok(webdav.diagnoseReport(localCors, { url: 'https://dav.jianguoyun.com/dav', dir: 'mycard', user: 'me' }).includes('dav-proxy.py'), '报告里同样给出本机代理方案');
+  ok(webdav.setupHints('https://dav.jianguoyun.com/dav').some((h) => h.includes('dav-proxy.py')), '自查清单也提到本机代理脚本');
+
+  // 非本机 http（局域网）→ 不推本机脚本，走 Worker 方案
+  globalThis.location = saved;
+  const remoteSteps = webdav.fixSteps({ reason: 'cors', steps: [] }, { dir: 'mycard' });
+  ok(remoteSteps[0].includes('Worker') && !remoteSteps[0].includes('dav-proxy.py'), '非本机页面：修复步骤走 Worker 方案（不推本机脚本）');
+  ok(webdav.isLocalPage() === false, 'isLocalPage：非本机页面为假');
 }
 
 console.log('\n[配置 / 状态]');

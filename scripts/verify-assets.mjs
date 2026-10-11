@@ -612,7 +612,7 @@ console.log('\n[我的生词批量整理（js/wordbook.js + js/wordbook-view.js�
   must(existsSync(rel('js/wordbook-view.js')), 'js/wordbook-view.js 存在（整理页）');
   must(sw.includes("'./js/wordbook.js'"), 'sw.js PRECACHE 含 ./js/wordbook.js');
   must(sw.includes("'./js/wordbook-view.js'"), 'sw.js PRECACHE 含 ./js/wordbook-view.js');
-  must(/const VERSION = 'v1\.18\.0'/.test(sw), 'sw.js VERSION 已递增（v1.18.0）');
+  must(/const VERSION = 'v1\.20\.0'/.test(sw), 'sw.js VERSION 已递增（v1.20.0）');
 
   // 内核：去重合并 / 标签 / 筛选排序 / 选中集 / 补查目标
   must(/export function normKey/.test(wbSrc), 'wordbook.js：normKey（大小写 / 空格归一为同一个词）');
@@ -630,7 +630,7 @@ console.log('\n[我的生词批量整理（js/wordbook.js + js/wordbook-view.js�
   must(/merge: true/.test(storeSrc2) && /extraBacks/.test(storeSrc2), 'store.js：addWords 支持 { merge: true } 合并释义');
 
   // 路由与入口
-  must(/APP_VERSION = 'v0\.9\.4'/.test(appSrc), 'app.js 版本号更新为 v0.9.4');
+  must(/APP_VERSION = 'v0\.9\.6'/.test(appSrc), 'app.js 版本号更新为 v0.9.6');
   must(/from '\.\/wordbook-view\.js'/.test(appSrc) && /renderWordbook\(root\)/.test(appSrc), 'app.js 挂载 renderWordbook');
   must(/seg\[0\] === 'words'/.test(appSrc) && /#\/words/.test(appSrc), 'app.js 解析 #/words 路由（含 ?page=N 分页）');
   must(/on\('nav-words'/.test(decksSrc3), 'decks.js 提供 nav-words 入口动作');
@@ -1115,6 +1115,56 @@ console.log('\n[跨域场景一键方案（v0.9.4：reason + 复制 Worker 反�
   const testSyncSrc4 = readFileSync(rel('scripts/test-sync.mjs'), 'utf8');
   must(/workerProxyCode/.test(testSyncSrc4) && /reason === 'cors'/.test(testSyncSrc4), 'test-sync：覆盖 reason 取值与 Worker 代码生成');
   must(/复制 Worker 反代代码/.test(readFileSync(rel('scripts/smoke-dom.mjs'), 'utf8')), 'smoke-dom：覆盖「跨域 → 三步修好」弹窗');
+}
+
+// 17) v0.9.6：可复制的报告自带「怎么修」+ Worker 代码必须真能跑 + 剪贴板兜底
+console.log('\n[报告自带修复步骤（v0.9.6：怎么修 + 可执行代码 + 复制兜底）]');
+{
+  const wdSrc4 = readFileSync(rel('js/webdav.js'), 'utf8');
+  const appSrc7 = readFileSync(rel('js/app.js'), 'utf8');
+  must(/export function fixSteps/.test(wdSrc4), 'webdav.js：fixSteps（把结论转成「怎么修」步骤）');
+  must(/if \(r\.reason === 'cors'\)/.test(wdSrc4) && /if \(r\.reason === 'network'\)/.test(wdSrc4) && /if \(r\.reason === 'auth'\)/.test(wdSrc4), 'webdav.js：fixSteps 覆盖 cors / network / auth 三类');
+  must(/workers\.dev\/dav/.test(wdSrc4), 'webdav.js：cors 的修复步骤给出「地址该填成什么样」的具体例子');
+  must(
+    /lines\.push\('怎么修：'\)/.test(wdSrc4) && /lines\.push\('附：修好它的 Worker 反代代码/.test(wdSrc4) && /lines\.push\(workerProxyCode\(cfg\.url\)\)/.test(wdSrc4),
+    'webdav.js：诊断报告里直接带「怎么修」+ 完整 Worker 代码（复制报告即可照做）'
+  );
+  must(/const url = new URL\(req\.url\);\s*\n\s*\/\/ 想再收紧一点/.test(wdSrc4), 'webdav.js：Worker 模板里 url 只声明一次（可选口令校验以注释给出）');
+  must(/export function copyText\(/.test(appSrc7), 'app.js：copyText 导出（便于测试与复用）');
+  must(/class="copy-box"/.test(appSrc7) && /⌘\/Ctrl \+ C/.test(appSrc7), 'app.js：剪贴板不可用时弹出「手动复制」文本框（含 ⌘/Ctrl+C 提示）');
+  must(/navigator\.clipboard\.writeText\(text\)\.then\(/.test(appSrc7) && /\(\) => fallback\(\)/.test(appSrc7), 'app.js：剪贴板被拒时也走兜底弹窗');
+  must(/\.copy-box/.test(css), 'css：.copy-box 等宽文本框样式');
+  const testSyncSrc5 = readFileSync(rel('scripts/test-sync.mjs'), 'utf8');
+  must(/pathToFileURL/.test(testSyncSrc5) && /生成的 Worker 代码能作为 ES 模块加载/.test(testSyncSrc5), 'test-sync：把生成的 Worker 代码写盘并 import，验证其语法与导出');
+  must(/fixSteps/.test(testSyncSrc5), 'test-sync：覆盖 fixSteps 各分支');
+  must(readFileSync(rel('scripts/smoke-dom.mjs'), 'utf8').includes('copy-box'), 'smoke-dom：覆盖剪贴板不可用 → 手动复制弹窗');
+}
+
+// 18) v0.9.6：本机「同源代理」脚本（零账号绕过网盘跨域限制）
+console.log('\n[本机代理脚本（v0.9.6：dav-proxy.py）]');
+{
+  must(existsSync(rel('scripts/dav-proxy.py')), '存在 scripts/dav-proxy.py（零依赖本机代理 + 静态站点）');
+  const py = readFileSync(rel('scripts/dav-proxy.py'), 'utf8');
+  must(/ThreadingHTTPServer|SimpleHTTPRequestHandler/.test(py) && !/^import (requests|flask|aiohttp)/m.test(py), '只用 Python 标准库（无第三方依赖）');
+  must(/DEFAULT_TARGET = "https:\/\/dav\.jianguoyun\.com\/dav"/.test(py), '默认目标 = 坚果云 WebDAV 基地址（含 /dav 前缀）');
+  must(/PROXY_PREFIX = "\/dav"/.test(py) && /def build_target_url/.test(py), '本机路径前缀 /dav + 目标地址拼接函数');
+  must(/if "\.\." in clean\.split\("\/"\)/.test(py), '拒绝带 .. 的路径（不做目录穿越）');
+  must(/FORWARD_HEADERS = \(/.test(py) && /"authorization"/.test(py) && /"depth"/.test(py) && /"if-none-match"/.test(py), '转发 Authorization / Depth / If-None-Match（WebDAV 语义与抢锁不丢）');
+  must(/def do_PROPFIND/.test(py) && /def do_MKCOL/.test(py) && /def do_PUT/.test(py) && /def do_DELETE/.test(py), '支持 WebDAV 所需方法（PROPFIND / MKCOL / PUT / DELETE）');
+  must(/urllib\.error\.HTTPError/.test(py) && /e\.code/.test(py), '4xx/5xx（含 401 的 WWW-Authenticate）如实回传');
+  must(/status=502/.test(py) && /代理转发失败/.test(py), '网盘不可达 → 502 + 可读原因（不会是空白错误）');
+  must(/Access-Control-Allow-Origin/.test(py), '顺带补 CORS 头（换源打开页面时也能用）');
+  must(/flush=True/.test(py), '启动信息 flush 输出（非 TTY 下也能立刻看到用法）');
+  must(/同步地址/.test(py) && /localhost:8080/.test(py), '启动时打印「填进设置页的服务器地址」');
+  must(existsSync(rel('scripts/test-dav-proxy.mjs')), '存在 scripts/test-dav-proxy.mjs（真实起进程的功能测试）');
+  const pyTest = readFileSync(rel('scripts/test-dav-proxy.mjs'), 'utf8');
+  must(/spawn\('python3'/.test(pyTest) && /http\.createServer/.test(pyTest), '测试用 Node 假 WebDAV + spawn 真代理（端到端验证）');
+  must(/跳过本机代理测试/.test(pyTest), '无 python3 环境时优雅跳过（不把套件拖红）');
+  const wdSrc5 = readFileSync(rel('js/webdav.js'), 'utf8');
+  must(/export function isLocalPage/.test(wdSrc5) && /host === 'localhost'/.test(wdSrc5), 'webdav.js：isLocalPage（localhost / 127.0.0.1 / [::1]）');
+  must(/id: 'secure'|'页面安全性'/.test(wdSrc5) && /Service Worker（离线 \/ 自动更新）与剪贴板 API 不可用/.test(wdSrc5), 'webdav.js：http 页面时给出「页面安全性」警告步骤');
+  must(/dav-proxy\.py/.test(wdSrc5) && /python3 -m http\.server/.test(wdSrc5), 'webdav.js：本机页面时把 dav-proxy.py 作为首要修复步骤');
+  must(/dav-proxy\.py/.test(readFileSync(rel('README.md'), 'utf8')), 'README 记录了本机代理方案');
 }
 
 console.log('\n[大卡组性能（单遍统计 / 复用 levels / 抽题快路径）]');

@@ -93,7 +93,8 @@ index.html ──► js/app.js（入口：路由 / 顶栏 / 设置页 / boot）
     - **诊断接口 `diagnose()` 永不抛错**：每步记录 `{ id, label, status, detail }`，最后给 `verdict` 一句话结论；上层只负责渲染（`syncDiagModal`）+ 复制（`diagnoseReport()`，**不含密码**）。
     - **结论必须能指导行动、且不能指错方向**：可达+缺 CORS ⇒ 换支持跨域的网盘 / Worker 反代；不可达 ⇒ 换网络 / 关拦截器 / 避开代理。含糊的「网络 / CORS / 插件」会把人引到错误方向，属于**不可接受**的结论。
     - **失败路径要顺手给用户出路**：「测试连接 / 立即同步 / 预览差异」遇到**无 HTTP 状态**的失败时自动打开诊断；按钮常驻（用户也可主动点）。
-    - **扩展方向**：新的网络类失败一律走同一套（分类 → `explainError` 说清 → `diagnose` 定位），不要另起一套文案。
+    - **可复制的产物必须自带「怎么做」**：用户复制的诊断报告就是他的全部上下文——**结论、逐步结果、修复步骤、可执行代码（涉及跨域时）都要在同一份文本里**（`fixSteps()` + `diagnoseReport()`），否则「诊断到了但没法照做」。同理，`copyText()` 要准备**剪贴板被拒时的兜底**（只读文本框 + ⌘/Ctrl + C 提示），别假设 `navigator.clipboard` 一定可用。
+    - **扩展方向**：新的网络类失败一律走同一套（分类 → `explainError` 说清 → `diagnose` 定位 → `fixSteps` 给步骤），不要另起一套文案。
 
 ## 数据模型（store.js）
 - **Card**：`id, front, back, example, exampleZh, phonetic, tags[], groups[], extraBacks[], createdAt, level, state('new'|'learning'|'review'), repetitions, interval, easeFactor, due, lastReview, src, addedAt`

@@ -1338,6 +1338,23 @@ body.kb-open #view { padding-bottom: calc(var(--safe-b) + 76px + var(--kb-h, 190
 .diag-fix code { font-size: 12px; }
 .diag-fix a { color: var(--accent-tx); text-decoration: underline; }
 .diag-fix .hint { margin: 6px 0 0; }
+/* v0.9.5：剪贴板不可用时的「手动复制」文本框 */
+.copy-box {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 190px;
+  padding: 10px 12px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--brd-mid);
+  background: var(--ovl-1);
+  color: var(--tx2);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  resize: vertical;
+  white-space: pre;
+  overflow: auto;
+}
 @media (max-width: 520px) {
   .sync-counts { grid-template-columns: 1fr; }
 }

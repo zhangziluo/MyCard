@@ -47,6 +47,17 @@ export function causeText(err) {
   return msg || name;
 }
 
+/** 当前页面是否在本机（localhost / 127.0.0.1 / [::1]）——用于推荐「本机代理」这条零账号方案 */
+export function isLocalPage() {
+  let host = '';
+  try {
+    host = typeof location !== 'undefined' && location ? String(location.hostname || '') : '';
+  } catch (e) {
+    host = '';
+  }
+  return host === 'localhost' || host === '127.0.0.1' || host === '[::1]' || host === '::1';
+}
+
 /** 当前页面是不是 HTTPS（混合内容判断用；非浏览器环境 → false） */
 function pageIsHttps() {
   try {
@@ -328,6 +339,7 @@ export function setupHints(base = '') {
     '诊断里「基础连通性」通过而「跨域预检」失败 → 网盘没给浏览器跨域许可（CORS）：换支持跨域的网盘，或按 README 用一段 Cloudflare Worker 反代',
     '诊断里「服务器可达性」通过、但「基础连通性」失败 → 网络其实是通的，是服务端缺少跨域响应头（CORS），**不是你网络的问题**',
     '诊断里「服务器可达性」也失败 → 请求压根没完成：先在浏览器地址栏直接打开该地址；换网络（手机热点）；关掉内容拦截 / 隐私扩展（iOS「内容拦截器」·iCloud 私密代理、Android AdGuard、uBlock 等）；避开公司代理',
+    '本机运行 Mycard 时（http://localhost:…）：可用 scripts/dav-proxy.py 做「同源代理」——零账号、免跨域，同时它就是个静态站点服务器（可替代 python3 -m http.server）',
     '坚果云在网页端「安全选项」里可查看/重置应用密码；同一个应用密码可多设备共用'
   ];
   return jgy ? hints : hints.filter((h) => !/坚果云在网页端/.test(h));
@@ -369,10 +381,12 @@ const CORS = {
 
 export default {
   async fetch(req) {
+    const url = new URL(req.url);
+    // 想再收紧一点可以打开下面这行（配合「服务器地址」里带 ?k=你的口令 使用）：
+    // if (url.searchParams.get('k') !== '你的口令') return new Response('forbidden', { status: 403 });
     if (req.method === 'OPTIONS') {
       return new Response(null, { status: 204, headers: CORS }); // 跨域预检直接放行
     }
-    const url = new URL(req.url);
     const headers = new Headers(req.headers);
     ['host', 'origin', 'referer', 'cf-connecting-ip', 'cf-ray', 'cf-ipcountry'].forEach((h) => headers.delete(h));
     const res = await fetch(TARGET + url.pathname + url.search, {
@@ -440,6 +454,18 @@ export async function diagnose(base, { auth = null, dir = '', timeout = DEFAULT_
     return { ok: false, verdict: '设备离线：先连上网络再试', reason: 'offline', steps };
   }
   add('env', '环境检查', 'ok', `页面协议 ${https ? 'HTTPS' : 'HTTP'}，目标地址协议 ${/^https:/i.test(root) ? 'HTTPS' : 'HTTP'}`);
+
+  // v0.9.6：非 HTTPS 页面 → 提醒后果（Service Worker / 剪贴板不可用），本机页面则直接指向本机代理脚本
+  if (!https) {
+    add(
+      'secure',
+      '页面安全性',
+      'warn',
+      isLocalPage()
+        ? '页面通过 http://localhost 打开：Service Worker（离线 / 自动更新）与剪贴板 API 不可用（复制会走「手动复制」弹窗）。若正被「网盘不给跨域许可」卡住，跑 scripts/dav-proxy.py 是零账号的最省事方案'
+        : '页面不是 HTTPS：Service Worker（离线 / 自动更新）与剪贴板 API 不可用，建议改用 https 打开（localhost 除外）'
+    );
+  }
 
   // ③ 简单请求（无认证、无自定义头 → 不触发预检）
   let simpleOk = false;
@@ -509,7 +535,7 @@ export async function diagnose(base, { auth = null, dir = '', timeout = DEFAULT_
     verdict =
       '服务器其实是「可达」的，只是它没有给浏览器跨域许可（响应缺少 CORS 头）——' +
       '所以浏览器直连这个地址会被拦死，换网络 / 关插件都没用。' +
-      '出路：① 换支持跨域的 WebDAV（如自建 Nextcloud 的 remote.php/dav）；② 按 README「连不上怎么办」用一段 Cloudflare Worker 反代该网盘（免费，几分钟，地址填 Worker 的地址即可）';
+      '出路：① 点弹窗里的「复制 Worker 反代代码」，按三步加一层中转（免费，几分钟）；② 或换支持跨域的 WebDAV（自建 Nextcloud 的 remote.php/dav）';
   } else if (!simpleOk) {
     reason = 'network';
     verdict =
@@ -536,7 +562,46 @@ export async function diagnose(base, { auth = null, dir = '', timeout = DEFAULT_
   return { ok: authOk, verdict, reason, steps };
 }
 
-/** 把诊断结果拼成一段可复制的纯文本报告（**绝不含密码**） */
+/** 把一个可执行结论转成「怎么修」的步骤文本（报告里要用，保证用户复制出去的是一份能照做的东西） */
+export function fixSteps(rep, cfg = {}) {
+  const r = rep || {};
+  if (r.reason === 'cors') {
+    if (isLocalPage()) {
+      return [
+        '①（推荐，零账号）在 Mycard 目录里运行：python3 scripts/dav-proxy.py',
+        '② 用它给的地址打开 Mycard：http://localhost:8080/（该脚本同时就是静态站点服务器，可直接替代 python3 -m http.server）',
+        `③ 设置页「服务器地址」填 http://localhost:8080/dav（与页面同源 → 浏览器不做跨域检查），用户名 / 应用密码照旧，目录仍填 ${cfg.dir || 'mycard'}`,
+        '④ 不想在本机跑脚本时：点「复制 Worker 反代代码」部署到 Cloudflare Workers（免费），再把地址换成 Worker 的地址',
+        '（也可以换成本身支持跨域的 WebDAV，如自建 Nextcloud 的 remote.php/dav）'
+      ];
+    }
+    return [
+      '① 点亮「复制 Worker 反代代码」（或在诊断报告末尾取用），到 https://dash.cloudflare.com/ 新建一个 Worker，整段粘贴后部署（免费）',
+      `② 回到 Mycard 设置页，把「服务器地址」改成 https://你的worker.workers.dev/dav（即在 Worker 地址后保留原来的 /dav 前缀；同步目录仍填 ${cfg.dir || 'mycard'}）`,
+      '③ 用户名 / 应用密码照旧 →「测试连接」应显示成功 →「立即同步」',
+      '（也可以换成本身支持跨域的 WebDAV，如自建 Nextcloud 的 remote.php/dav）'
+    ];
+  }
+  if (r.reason === 'network') {
+    return [
+      '① 先在浏览器地址栏直接打开这个地址，确认能不能打开',
+      '② 换网络（手机热点）再试；关掉内容拦截 / 隐私扩展（iOS「内容拦截器」·iCloud 私密代理、AdGuard、uBlock 等）',
+      '③ 避开公司 / 校园代理；确认没有开启全局 VPN 或自定义 DNS 拦截'
+    ];
+  }
+  if (r.reason === 'auth') {
+    return ['① 用户名填网盘「注册邮箱」（不是昵称）；② 密码用「应用专用密码」，坚果云在「账户信息 → 安全选项 → 添加应用」生成'];
+  }
+  if (r.reason === 'permission') return ['① 该目录不可读写：换成有读写权限的目录，或检查网盘里的文件夹权限设置'];
+  if (r.reason === 'path') return ['① 检查服务器地址末尾（坚果云要 /dav/）；② 检查「同步目录」名字是否拼错'];
+  if (r.reason === 'mixed-content') return ['① 把服务器地址改成 https://（HTTPS 页面不能访问 http 地址）'];
+  if (r.reason === 'offline') return ['① 先连上网络再试'];
+  if (r.reason === 'address') return ['① 服务器地址填 WebDAV 端点，例：https://dav.jianguoyun.com/dav/'];
+  if (r.ok) return ['连接正常：直接点「立即同步」即可'];
+  return [];
+}
+
+/** 把诊断结果拼成一段可复制的纯文本报告（**绝不含密码**；结论里直接带「怎么修」，必要时附 Worker 代码） */
 export function diagnoseReport(rep, cfg = {}) {
   const lines = [];
   lines.push('Mycard 同步诊断报告');
@@ -548,6 +613,13 @@ export function diagnoseReport(rep, cfg = {}) {
   lines.push(`浏览器：${typeof navigator !== 'undefined' && navigator ? String(navigator.userAgent || '') : '(未知)'}`);
   lines.push('');
   lines.push(`结论：${(rep && rep.verdict) || '(无)'}`);
+  const steps = fixSteps(rep, cfg);
+  if (steps.length) {
+    lines.push('');
+    lines.push('怎么修：');
+    steps.forEach((s) => lines.push(`  ${s}`));
+  }
+  lines.push('');
   lines.push('步骤：');
   for (const s of (rep && rep.steps) || []) {
     const mark = s.status === 'ok' ? '✓' : s.status === 'warn' ? '!' : '✗';
@@ -556,6 +628,12 @@ export function diagnoseReport(rep, cfg = {}) {
   lines.push('');
   lines.push('自查清单：');
   setupHints(cfg.url).forEach((h, i) => lines.push(`  ${i + 1}. ${h}`));
+  if (rep && rep.reason === 'cors') {
+    lines.push('');
+    lines.push('附：修好它的 Worker 反代代码（整段粘到 Cloudflare Workers 新建的 Worker 里，部署即可）');
+    lines.push('');
+    lines.push(workerProxyCode(cfg.url));
+  }
   return lines.join('\n');
 }
 

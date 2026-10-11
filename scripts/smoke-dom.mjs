@@ -787,6 +787,36 @@ console.log('\n[同步诊断（v0.9.2：连不上也说得清）]');
   globalThis.fetch = saved;
 }
 
+// ---- v0.9.5：剪贴板不可用时的「手动复制」兜底（Safari 可能拒绝 clipboard 权限）----
+console.log('\n[剪贴板不可用 → 手动复制弹窗（v0.9.5）]');
+{
+  const appMod = await import('../js/app.js');
+  const uiMod3 = await import('../js/ui.js');
+  ok(typeof appMod.copyText === 'function', 'app.js 导出 copyText（便于直接验证这条兜底路径）');
+
+  // 临时拿掉 navigator（Node 的 navigator 是只读 getter，用 defineProperty 覆盖）
+  const desc = Object.getOwnPropertyDescriptor(globalThis, 'navigator');
+  let patched = false;
+  try {
+    Object.defineProperty(globalThis, 'navigator', { value: undefined, configurable: true });
+    patched = true;
+  } catch (e) {}
+  const before = fakeBody.children.length;
+  appMod.copyText('const TARGET = "https://dav.jianguoyun.com";', { label: 'Worker 反代代码' });
+  const m = fakeBody.children.filter((c) => c && c.className === 'modal-overlay').pop();
+  const html = m ? String(m.innerHTML) : '';
+  ok(fakeBody.children.length > before && html.includes('copy-box'), '剪贴板不可用 → 弹出带文本框的「手动复制」弹窗');
+  ok(html.includes('https://dav.jianguoyun.com'), '文本框里就是要复制的内容（Worker 代码 / 诊断报告全文）');
+  ok(/⌘\/Ctrl \+ C/.test(html), '提示用户按 ⌘/Ctrl + C 复制');
+  ok(html.includes('Worker 反代代码'), '标题/文案标明复制的是什么');
+  uiMod3.closeModal();
+  if (patched && desc) {
+    try {
+      Object.defineProperty(globalThis, 'navigator', desc);
+    } catch (e) {}
+  }
+}
+
 // ---- 设置页：外观（明暗模式）+ 顶栏快捷切换 ----
 console.log('\n[设置页 · 外观（明暗模式）]');
 {

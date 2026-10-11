@@ -17,7 +17,7 @@ import { renderWordbook } from './wordbook-view.js'; // v0.5.9 生词本批量�
 import { renderMatch, clearMatchSession } from './match.js'; // v0.5.12 明牌配对（#/match/{deck}）
 import { renderCrossword, clearCrosswordSession } from './crossword.js'; // v0.6.0 填字游戏（#/crossword/{deck}）
 
-const APP_VERSION = 'v0.9.4';
+const APP_VERSION = 'v0.9.6';
 
 /* ------------------------------ 路由解析 ------------------------------ */
 
@@ -449,7 +449,7 @@ function syncDiagModal(rep, cfg) {
       label: '复制 Worker 反代代码',
       cls: 'btn-primary',
       onClick: () => {
-        copyText(webdav.workerProxyCode(cfg.url));
+        copyText(webdav.workerProxyCode(cfg.url), { label: 'Worker 反代代码', title: '复制 Worker 反代代码' });
         return false; // 保持弹窗打开，方便照着三步做
       }
     });
@@ -458,7 +458,7 @@ function syncDiagModal(rep, cfg) {
     label: '复制诊断信息',
     cls: 'btn-ghost',
     onClick: () => {
-      copyText(webdav.diagnoseReport(rep, cfg));
+      copyText(webdav.diagnoseReport(rep, cfg), { label: '诊断信息', title: '复制诊断信息' });
       return false;
     }
   });
@@ -471,18 +471,35 @@ function syncDiagModal(rep, cfg) {
   });
 }
 
-/** 复制文本（不支持剪贴板 API 时降级为提示手选） */
-function copyText(text) {
+/** 复制文本：优先剪贴板 API；不可用 / 被拒时弹出可手选的文本框（Safari 有时会拒绝 clipboard 权限） */
+export function copyText(text, { label = '内容', title = '手动复制' } = {}) {
+  const fallback = () => {
+    openModal({
+      title,
+      wide: true,
+      body: `
+        <p class="hint">当前浏览器的剪贴板不可用（或权限被拒）。请点一下下面的框，按 <b>⌘/Ctrl + C</b> 复制${esc(label)}。</p>
+        <textarea class="copy-box" rows="12" readonly spellcheck="false">${esc(text)}</textarea>`,
+      actions: [{ label: '关闭', cls: 'btn-primary' }]
+    });
+    const box = document.querySelector ? document.querySelector('.copy-box') : null;
+    if (box && typeof box.focus === 'function') {
+      try {
+        box.focus();
+        if (typeof box.select === 'function') box.select();
+      } catch (e) {}
+    }
+  };
   try {
     if (typeof navigator !== 'undefined' && navigator.clipboard && navigator.clipboard.writeText) {
       navigator.clipboard.writeText(text).then(
-        () => toast('诊断信息已复制，可直接粘贴给他人排查', 'good'),
-        () => toast('复制失败：请手动选中弹窗里的文字复制', 'warn')
+        () => toast(`${label}已复制，可直接粘贴`, 'good'),
+        () => fallback()
       );
       return;
     }
   } catch (e) {}
-  toast('当前环境不支持自动复制：请手动选中弹窗里的文字复制', 'warn');
+  fallback();
 }
 
 /** 跑一次逐步诊断并弹窗（测试连接失败时自动跑，也可手动点「诊断连接」） */
