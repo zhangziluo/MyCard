@@ -234,24 +234,29 @@ export function buildCardSequence(cards, n, priorityIds = new Set(), random = Ma
 /**
  * 生成抽题计划：[{ cardId, type }]
  * @param {{ count?:number, weights?:object, priorityIds?:Set, random?:Function, enabled?:object,
- *           canType?:Function|null, omitTypes?:string[] }} [opts]
+ *           types?:string[]|null, canType?:Function|null, omitTypes?:string[] }} [opts]
+ *   `types`（可选）：显式指定题型集合（如元素周期表的 9 种 / 世界各国的 11 种专属题型），优先于 `enabled`。
  *   `canType(card, type) → boolean`（可选）：把「卡片级可用性」纳入题型分配 —— 例如没开
  *   「英英选择」时「多义多选」只派给有 ≥2 条中文释义的卡（见 js/test.js 的 canBuildType）。
  *   `omitTypes`（可选）：本次完全不参与的题型（如卡组正反面同语种时不含 `sentence2word`）。
  */
-export function samplePlan(deck, { count = 50, weights = null, priorityIds = new Set(), random = Math.random, enabled = null, canType = null, omitTypes = [] } = {}) {
+export function samplePlan(deck, { count = 50, weights = null, priorityIds = new Set(), random = Math.random, enabled = null, types: typeIds = null, canType = null, omitTypes = [] } = {}) {
   const cards = (deck && deck.cards ? deck.cards : []).filter((c) => c.front);
   const n = Math.max(1, Math.floor(Number(count) || 0));
   if (!cards.length) return [];
   const seq = buildCardSequence(cards, n, priorityIds, random);
   const omit = new Set(Array.isArray(omitTypes) ? omitTypes : []);
-  let typesList = (enabled ? enabledTypeIds(enabled) : QUESTION_TYPES).filter((t) => !omit.has(t));
+  let typesList = (Array.isArray(typeIds) && typeIds.length ? typeIds : enabled ? enabledTypeIds(enabled) : QUESTION_TYPES).filter(
+    (t) => !omit.has(t)
+  );
   if (!typesList.length) typesList = QUESTION_TYPES.filter((t) => !omit.has(t));
   if (!typesList.length) typesList = [...QUESTION_TYPES];
   const typeList = allocateTypes(seq.length, weights, typesList, random);
   const byId = typeof canType === 'function' ? new Map(cards.map((c) => [c.id, c])) : null;
   const basics = typesList.filter((t) => QUESTION_TYPES.includes(t));
-  const types = assignTypesByCard(seq, typeList, random, { byId, canType, basics });
+  // 专属题型卡组（如元素周期表 / 世界各国）没有通用基础题型 → 用本次题型集合兜底
+  const fallbackBasics = basics.length ? basics : typesList;
+  const types = assignTypesByCard(seq, typeList, random, { byId, canType, basics: fallbackBasics });
   return seq.map((cardId, i) => ({ cardId, type: types[i] }));
 }
 

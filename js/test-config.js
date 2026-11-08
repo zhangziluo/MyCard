@@ -109,6 +109,22 @@ export function enabledTypeIds(enabled = DEFAULT_ENABLED) {
 
 /** 权重归一：在「已启用题型」内缩放到总和 100（未启用的可选题型固定 0）
  *  兼容旧签名：不传 enabled 时只归一基础 5 种（保持旧测试/调用行为） */
+/** 最大余数法：把精确占比四舍五入到整数百分比，并保证合计恰好 100 */
+function apportion(raw, set) {
+  const sum = set.reduce((s, t) => s + (raw[t] || 0), 0);
+  const parts = set.map((t) => {
+    const exact = (raw[t] / sum) * 100;
+    const base = Math.floor(exact);
+    return { t, base, frac: exact - base };
+  });
+  let rest = 100 - parts.reduce((s, p) => s + p.base, 0);
+  const order = parts.map((p, i) => ({ p, i })).sort((a, b) => b.p.frac - a.p.frac || a.i - b.i);
+  for (let k = 0; k < rest; k++) order[k % order.length].p.base += 1;
+  const out = {};
+  for (const p of parts) out[p.t] = p.base;
+  return out;
+}
+
 export function normalizeWeights(w, enabled) {
   const set = enabled ? enabledTypeIds(enabled) : [...QUESTION_TYPES];
   const raw = {};
@@ -118,21 +134,7 @@ export function normalizeWeights(w, enabled) {
     raw[t] = v;
     sum += v;
   }
-  const out = {};
-  let acc = 0;
-  if (sum <= 0) {
-    // 全 0 → 等比平分（6 项 → 17/17/17/17/16/16）
-    const split = equalSplit(set);
-    for (const t of set) out[t] = split[t];
-  } else {
-    set.forEach((t, i) => {
-      if (i === set.length - 1) out[t] = Math.max(0, 100 - acc);
-      else {
-        out[t] = Math.round((raw[t] / sum) * 100);
-        acc += out[t];
-      }
-    });
-  }
+  const out = sum <= 0 ? equalSplit(set) : apportion(raw, set);
   for (const t of ALL_TYPES) if (!(t in out)) out[t] = 0;
   return out;
 }

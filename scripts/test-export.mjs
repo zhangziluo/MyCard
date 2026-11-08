@@ -206,6 +206,8 @@ console.log('\n[Anki schema / 模板 JSON]');
   ok(fields[1].includes('v. 预订'), '多释义并入背面');
   ok(fields[1].includes('I read a book.'), '例句并入背面');
   ok(ex.cardToAnkiFields(live.cards[0])[0].includes('/əˈbændən/'), '有音标 → 正面附音标');
+  const b2fields = ex.cardToAnkiFields({ front: '氢', back: 'H · Hydrogen', back2: '原子序号：1', back3: '宇宙中最丰富的元素。' });
+  ok(b2fields[1].includes('原子序号：1') && b2fields[1].includes('宇宙中最丰富的元素。'), '背面 2 / 背面 3 并入 Anki 背面');
 }
 
 console.log('\n[下载触发]');
@@ -295,6 +297,10 @@ console.log('\n[JSON 导出（含复习进度 + 复习日志）]');
     Object.keys(c0)
   );
   ok(c0.state === 'new' && c0.easeFactor === 2.5 && c0.repetitions === 0, '新卡默认进度');
+  const dj2 = store.createDeck({ name: '背面 2 / 3' });
+  store.addCard(dj2.id, { front: '氢', back: 'H · Hydrogen', back2: '原子序号：1', back3: '宇宙中最丰富的元素。' });
+  const b2json = JSON.parse(ex.deckToJson(store.getDeck(dj2.id))).cards[0];
+  ok(b2json.back2 === '原子序号：1' && b2json.back3 === '宇宙中最丰富的元素。', 'JSON 导出保留背面 2 / 背面 3', b2json);
   ok(ex.deckToJson(live, { pretty: false }).indexOf('\n') === -1, 'pretty:false 输出单行');
 
   const dj = store.createDeck({ name: 'JSON 进度' });

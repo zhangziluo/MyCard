@@ -18,6 +18,8 @@
 | `data/words.json`（示范 60 词） | 项目自编 | — |
 | `data/confusables.json`（39 易混组 + 51 词多义） | 项目自编 | — |
 | `data/frequency.json`（17634 词频序） | COCA 2 万高频词表 | — |
+| `data/periodic-table.json`（118 种元素） | 内置元素周期表数据 | 随仓库提供 |
+| `data/countries-capitals.json`（195 个国家） | 内置世界各国与首都中英对照数据 | 随仓库提供 |
 | `data/eng-defs.json`（14428 词英文释义） | GCIDE（`gcide-0.51/`，本地不入库） | `node scripts/build-engdefs.mjs` |
 | 在线查词 | Free Dictionary API（英/德/法/希腊/…）+ Jisho（日语） | 运行时 fetch，结果缓存进 IDB `lookup` |
 
@@ -26,7 +28,7 @@
 # 本地运行（必须 http(s)，file:// 下模块与 SW 受限）
 python3 -m http.server 8080
 
-# 全量校验（30 个 test-*.mjs + smoke-dom + verify-assets = 32 个脚本，3979 条断言）
+# 全量校验（35 个 test-*.mjs + smoke-dom + verify-assets = 37 个脚本）
 for f in scripts/test-*.mjs scripts/smoke-dom.mjs scripts/verify-assets.mjs; do node "$f"; done
 node --check js/*.js sw.js scripts/*.mjs      # 语法检查
 node scripts/verify-assets.mjs                # 资源/一致性校验（含 CSS 变量审计）
@@ -52,7 +54,7 @@ node scripts/gen-examples.mjs --data data/words.json --sample 8
 
 ## 版本号约定
 - **两处必须同步递增**：`sw.js` 的 `VERSION`（缓存键）与 `js/app.js` 的 `APP_VERSION`（顶栏显示）
-- 当前：`APP v0.9.4` / `SW v1.18.0`
+- 当前：`APP v0.14.0` / `SW v1.26.0`
 
 ## 测试工程要点（写新测试时照抄）
 - 每个测试是独立 `.mjs`，自建浏览器桩（localStorage/document/window/location/requestAnimationFrame/HashChangeEvent）

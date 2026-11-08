@@ -106,6 +106,8 @@ export function normalizeKey(s) {
 export const FIELD_ALIASES = {
   front: ['front', 'word', 'term', 'headword', 'spelling', '单词', '生词', '词汇', '正面', '词'],
   back: ['back', 'meaning', 'meaningzh', 'definition', 'gloss', 'translation', '释义', '解释', '背面', '翻译', '中文', '意思'],
+  back2: ['back2', 'back_2', '背面2', '补充', '备注'],
+  back3: ['back3', 'back_3', '背面3', '背面-3', '简介', '描述'],
   example: ['example', 'sentence', 'eg', '例句', '例'],
   exampleZh: ['examplezh', 'sentencezh', '例句翻译', '例句中文', '例句释义'],
   phonetic: ['phonetic', 'ipa', 'pronunciation', 'pron', '音标', '发音'],
@@ -149,6 +151,10 @@ export function rowsToWords(rows, { hasHeader = null } = {}) {
     const front = String(pick(r, idx.front) ?? '').trim();
     if (!front || front.length > 80) continue;
     const w = { front, back: String(pick(r, idx.back) ?? '').trim() };
+    const b2 = pick(r, idx.back2);
+    if (b2) w.back2 = String(b2).trim();
+    const b3 = pick(r, idx.back3);
+    if (b3) w.back3 = String(b3).trim();
     const ex = pick(r, idx.example);
     if (ex) w.example = String(ex).trim();
     const ez = pick(r, idx.exampleZh);
@@ -211,6 +217,10 @@ export function normalizeWordObjects(list) {
       };
       const ex = w.example ?? w.sentence;
       if (ex) out.example = String(ex);
+      const b2 = w.back2 ?? w.back_2;
+      if (b2) out.back2 = String(b2);
+      const b3 = w.back3 ?? w.back_3;
+      if (b3) out.back3 = String(b3);
       const ez = w.exampleZh ?? w.example_zh;
       if (ez) out.exampleZh = String(ez);
       const ph = w.phonetic ?? w.ipa;
@@ -565,12 +575,14 @@ export const COLUMN_FIELDS = [
   { value: 'ignore', label: '忽略' },
   { value: 'front', label: '正面（单词）· 必选' },
   { value: 'back', label: '背面（释义）· 必选' },
+  { value: 'back2', label: '背面 2 · 补充（可选）' },
+  { value: 'back3', label: '背面 3 · 简介（可选）' },
   { value: 'example', label: '例句 · 可选' },
   { value: 'exampleZh', label: '例句翻译 · 可选' },
   { value: 'phonetic', label: '音标 · 可选' },
   { value: 'tags', label: '标签（逗号分隔）· 可选' }
 ];
-export const MAPPABLE_FIELDS = ['front', 'back', 'example', 'exampleZh', 'phonetic', 'tags'];
+export const MAPPABLE_FIELDS = ['front', 'back', 'back2', 'back3', 'example', 'exampleZh', 'phonetic', 'tags'];
 
 /**
  * 默认字段映射（长度 = 列数）：识别到表头时按表头别名对号，
@@ -624,6 +636,10 @@ export function applyMapping(rows, mapping) {
     if (!front || front.length > 80) continue;
     const w = { front, back: idx.back != null ? String(r[idx.back] ?? '').trim() : '' };
     const take = (key) => (idx[key] != null && r[idx[key]] != null ? String(r[idx[key]]).trim() : '');
+    const b2 = take('back2');
+    if (b2) w.back2 = b2;
+    const b3 = take('back3');
+    if (b3) w.back3 = b3;
     const ex = take('example');
     if (ex) w.example = ex;
     const ez = take('exampleZh');

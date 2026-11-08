@@ -117,20 +117,32 @@ scripts/dav-proxy.py      ──► 本机同源代理 + 静态站点服务器�
     - **截断只发生在显示层**：`buildTiles` 的释义牌 `text` 用截取结果，原文另存 `fullText`；UI 渲染 `title`（悬停看全文）与 `aria-label`（读屏读全文）——视觉变短，信息不丢。
     - 单测要覆盖：短文本不变、中文 `，/。`、英文 `,/.`、日文 `、/。`、无标点硬截、emoji 不被切半、`buildTiles` 的 `text` / `fullText`，以及 DOM 上的 `title` / `aria-label`（`scripts/test-match.mjs`）。
 
+29. **内置数据包与「可选卡片字段」的加法原则**（v0.11.0 `data/periodic-table.json` / `back2` / `seededPeriodic`；v0.12.0 扩到 `back3`；v0.13.0 扩到周期表专属题型与范围拆卡组；v0.14.0 扩到世界各国与首都）：
+    - 新增内置卡组一律走 `seedBuiltinDeck(payload, { demo:false, source:'<id>', meta })`，用 `source` 去重；需要保持原始顺序时传 `arrange:false`（元素周期表 1→118）。v0.13.0 起同一来源要生成多个范围卡组时传 `allowMultiple:true`（如 `source='periodic'` 的 `元素周期表 1–20` / `21–40`），否则第二次会被来源去重拦掉。
+    - 「自动导入」与「删除后可再导入」分离：`seededPeriodic` 只落一次自动导入标记，首页横幅按 `store.hasSource(source)` 决定是否显示 → 用户删了不会每次启动又被塞回来，但仍可手动导入。
+    - 新的展示型字段（如 `back2` / `back3`）必须**显式加入所有手写字段白名单**：`normalizeCard` / `addCard` / `addManyCards` / `addWords` / `seedBuiltinDeck` / `CARD_CONTENT_KEYS` / `sync.cardPayload` / `deckToJson` / Anki 字段；漏一处就会「编辑后刷新丢失 / 同步丢字段」。
+    - 展示型字段**不能塞进 `extraBacks`**：通用干扰项池与多义多选把 `extraBacks` 当释义，原子序号 / 中文简介会污染选项。`back2` / `back3` 只做展示与备份，通用出题链路不读取；周期表专属题型在 `js/periodic.js` 中**显式解析**这些字段，不复用通用池。
+    - **专属题型卡组**（v0.13.0 元素周期表）：用 `periodic.isPeriodicDeck(deck)` 识别 `source='periodic'`；JSON 备份回导会丢 `source`，故同时按「元素周期表」标签 + 全部卡片可解析出中文名 / 缩写 / 原子序号兜底识别。题型 id、选项池、可选题开关与权重全部收敛在 `js/periodic.js`（`mycard-periodic-test-config`），`test.js` 只负责按题型取字段 / 渲染。`test-engine.samplePlan` 支持显式 `types`；当题型集合不含通用基础题型时，兜底也用本次题型集合，避免漏出通用题。
+    - 范围导入用 `periodic.normalizeRange` / `splitRange`（1–118 夹取、起止可反、size≤0 或超大 → 单卡组）；`decks.importPeriodicDecks` 只 fetch 一次数据，再按组 `wordsInRange` 播种。
+    - **老内置数据升级**：新增展示字段时不要只改 JSON（已导入的 `source` 会跳过播种）；提供幂等 backfill（如 `store.backfillBack3()`，仅当整组都缺该字段时按稳定键 `front` 回填，不覆盖用户编辑），并在 `app.js` 用独立入口调用，避免破坏「删除后不自动重建」。v0.13.0 起 backfill 需遍历**所有** `source='periodic'` 卡组。
+    - **v0.14.0 世界各国与首都**：`data/countries-capitals.json` 走通用字段（`front` = `国家中文名 · 英文名`，`back` = `首都中文名 · 英文名`），不新增卡片字段 / 题型；`source='countries'`，`arrange:false` 保持英文字母顺序，每关 20 张 → 10 关；`seededCountries` 与 `seededPeriodic` 同构（自动导入只做一次，删除后首页横幅可再导入）。`isCountriesDeck` 先用 `source` 判定，JSON 备份回导丢 `source` 时按卡组标签「世界各国」兜底。
+
 ## 数据模型（store.js）
-- **Card**：`id, front, back, example, exampleZh, phonetic, tags[], groups[], extraBacks[], createdAt, level, state('new'|'learning'|'review'), repetitions, interval, easeFactor, due, lastReview, src, addedAt`
+- **Card**：`id, front, back, back2, back3, example, exampleZh, phonetic, tags[], groups[], extraBacks[], createdAt, level, state('new'|'learning'|'review'), repetitions, interval, easeFactor, due, lastReview, src, addedAt`（`back2` = 背面 2 / 补充信息，v0.11.0；`back3` = 背面 3 / 一句话简介，v0.12.0；通用题型不读取，周期表专属题型在 `js/periodic.js` 中显式用于出题）
 - **导入时的复习进度**：`store.pickScheduling()` 统一校验（state 白名单 / easeFactor 1.3–3.0 / 数值钳制，非法 → 新卡）；`seedBuiltinDeck` 与 `addManyCards` 均调用 → JSON 完整导出可无损回导
 - **复习日志（RevlogEntry，v0.5.8）**：`id('ts-cardId'), cardId, ts, ease(1–4), type(0 学习/1 复习/2 重学), ivl(天), lastIvl(天), factor(easeFactor×1000), time(毫秒)`；`ivl`/`lastIvl` **本机统一存「天」**，仅导出 Anki 时换算（`>=1 天 = 正数天`、`不足 1 天的学习步 = 负秒数`，与 Anki 的 `interval_secs()` 一致）；校验 / 截断 / 换算全在纯函数模块 `js/revlog.js`
 - **多释义（`extraBacks`）与合并语义（v0.5.9）**：首义永远在 `back`、其余义按顺序在 `extraBacks`（自动去重）；「我的生词」整理页合并重复卡时，**保留卡片的 `back` 仍是第一义**（不会被副卡覆盖），副卡释义追加进 `extraBacks`、标签取并集，**复习进度 / `lastReview` / revlog 一律不动**；「同一个词」= `wordbook.normKey(front)`（`trim` + 小写，不做空格 / 连字符归一）
 - **Deck**：`id, name, description, tags[], paused, cardsPerLevel(null=跟随全局), createdAt, demo, source, passedLevels{}, cards[]`
-  - `source`：`'demo'`（内置示范）/ `'custom'`（我的生词）/ `null`（用户自建/导入）/ `'online_lookup'` 等（卡片级 src）
+  - `source`：`'demo'`（内置示范）/ `'custom'`（我的生词）/ `'periodic'`（内置元素周期表，v0.11.0；v0.13.0 起同一 source 可有多个范围卡组）/ `'countries'`（内置世界各国与首都，v0.14.0）/ `null`（用户自建/导入）/ `'online_lookup'` 等（卡片级 src）
+  - `seededPeriodic`（库级标记）：内置元素周期表是否已尝试导入；**只控制自动导入，不影响首页横幅**（删掉后 `hasSource('periodic')` 为 false → 横幅可重新导入）
+  - `seededCountries`（库级标记）：内置世界各国与首都的同类标记（v0.14.0）
 - **关卡**：`level` 即关卡索引（整数），每关 `clampPerLevel(15–30, 默认 20)`；`LEVELS_PER_PAGE = 15`
 
 ## 存储与迁移
 - IndexedDB 库 `mycard` **v3**：`decks`(id) / `cards`(id, 索引 byDeck=deckId) / `meta`(key) / `lookup`(key=`${lang}_${word}`) / **`revlog`**(id, 索引 byDeck=deckId / byCard=cardId)
   - **升级策略**：`onupgradeneeded` 里用 `objectStoreNames.contains()` **逐 store 增量补建**（v2→v3 只加 `revlog`，既有数据不动）；`clearAll()` 清空时**必须把所有业务 store 都列上**（漏一个就会「清空后又读回旧数据」）
   - **复习日志落盘**：`pendingRevlogs` 并入 `flushPending()` 的写穿队列；查询 `revlogsOfDeck()` = IDB ∪ 未落盘 ∪ 回退模式内存（`deck.revlogs`）；删卡片 / 删卡组走 `purgeRevlogs()` **异步级联清理**（不阻塞 UI）
-- localStorage：`mycard-meta`（设置+卡组清单）、`mycard-accent`、`mycard-mode`、`mycard-active-tag`、`mycard-hard-words`、`mycard-test-config`、`mycard-test-priority`、`mycard-import-history`（导入历史摘要，最近 20 条）、`mycard-table-draft`（`#/editor` 表格草稿，防抖写入，≤5000 行）、`mycard-aw-merge`（首页添加单词的「重复词自动合并」偏好，v0.5.9，默认开）、`mycard-sync`（多端同步配置 + 上次结果；**密码仅在「记住密码」时保存**）、`mycard-sync-tombstones`（同步删除墓碑，TTL 90 天 / 上限 4000）、`test_progress_{deckId}[__wrong]`；IndexedDB `meta` 另存 `import-rollback:{id}`（追加导入的 cardIds，最近 5 次可精确回滚）；sessionStorage：`mycard-level-stats`、`mycard-review-session`、`mycard-review-all-session`、`mycard-test-session`、`mycard-crossword-session`（填字棋盘：词源 / 每局词数 / 含答案的排版结果 / 已填与已提示的格 / 提示次数与用时）——**明牌配对的棋局不落盘（v0.6.1 起只存内存）**，故这里没有 `mycard-match-session`
+- localStorage：`mycard-meta`（设置 + 卡组清单 + `seededDemo` / `seededPeriodic` / `seededCountries`）、`mycard-accent`、`mycard-mode`、`mycard-active-tag`、`mycard-hard-words`、`mycard-test-config`、`mycard-periodic-test-config`（周期表 9 种题型权重 / 可选开关）、`mycard-test-priority`、`mycard-import-history`（导入历史摘要，最近 20 条）、`mycard-table-draft`（`#/editor` 表格草稿，防抖写入，≤5000 行）、`mycard-aw-merge`（首页添加单词的「重复词自动合并」偏好，v0.5.9，默认开）、`mycard-sync`（多端同步配置 + 上次结果；**密码仅在「记住密码」时保存**）、`mycard-sync-tombstones`（同步删除墓碑，TTL 90 天 / 上限 4000）、`test_progress_{deckId}[__wrong]`；IndexedDB `meta` 另存 `import-rollback:{id}`（追加导入的 cardIds，最近 5 次可精确回滚）；sessionStorage：`mycard-level-stats`、`mycard-review-session`、`mycard-review-all-session`、`mycard-test-session`、`mycard-crossword-session`（填字棋盘：词源 / 每局词数 / 含答案的排版结果 / 已填与已提示的格 / 提示次数与用时）——**明牌配对的棋局不落盘（v0.6.1 起只存内存）**，故这里没有 `mycard-match-session`
 - 旧库 `localStorage['mycard-v1']` 首启自动迁移到 IndexedDB 并删键
 - **下线词库清理**：`store.purgeRemovedBuiltins()` 按 `REMOVED_BUILTIN_SOURCES`（kaoyan/cet4/… 共 10 本）删除旧版自动导入的内置卡组，启动时执行、幂等；只删 source 命中的，不影响 demo/custom/自建
 

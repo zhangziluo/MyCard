@@ -1,11 +1,53 @@
 # Active Context — 当前焦点
 
-> 更新时间：2026-11-08 ｜ APP `v0.10.0` / SW `v1.22.0` ｜ 测试题型按卡组语种关系自适应 ＋ 明牌配对长释义截取
+> 更新时间：2026-11-08 ｜ APP `v0.15.0` / SW `v1.27.0` ｜ 世界各国与首都专属题型
 
 ## 当前状态
+**v0.15.0（世界各国与首都专属题型）已实现、相关测试通过**。**没有进行中的功能**。
+
+## 最新完成（v0.15.0）
+- 新增 `js/countries.js`：从卡片 `front` / `back` 解析国家 / 首都中英文，构建 `countryZh` / `countryEn` / `capitalZh` / `capitalEn` 选项池；共 11 种专属题型。
+- **默认 4 种**：`countryZh2capitalZh` / `capitalZh2countryZh` / `countryEn2capitalEn` / `capitalEn2countryEn`（各 25%）。
+- **可选 7 种（默认关闭）**：国家 / 首都中英对照、跨字段配对、`listenCountryEn2capitalEn`（TTS 朗读国家英文名）。配置键 `mycard-countries-test-config`。
+- `js/test.js` 抽出通用专属题型分发：周期表与世界各国共用出题、回退、题干 / TTS、答错信息卡与整卡组配置页；选项池过滤「同一题干对应多张卡」的歧义干扰项。
+- `js/decks.js` 的 `isCountriesDeck` 委托新模块，按 `source='countries'` 或「世界各国」标签 + 字段完整性识别。
+- 版本：`APP_VERSION v0.15.0`，`sw.js v1.27.0`；`test-countries` 65 → **118**，`test-periodic` **158**，`test-a11y` / `test-match` / `test-deck-test` / `smoke-dom` / `verify-assets` 全绿。
+
+## 上一版完成（v0.14.0）
+- 新增 `data/countries-capitals.json`：195 个国家（193 个联合国会员国 ＋ 巴勒斯坦、梵蒂冈），按英文名字母顺序；`front` = `国家中文名 · 英文名`（如 `中国 · China`），`back` = `首都中文名 · 英文名`（如 `北京 · Beijing`），每条带「世界各国」标签，`levelSize: 20`。
+- `js/decks.js`：`importCountriesDeck()`（`source='countries'`、`arrange:false`、保持字母顺序、每关 20 张 → 10 关）；`ensureCountriesDeck()` 首次启动自动导入；`isCountriesDeck()` 先看 source，JSON 备份回导丢失 source 时按标签「世界各国」兜底。
+- 首页新增「导入世界各国与首都」横幅 / `import-countries` 动作；新增 `globe` 图标；删除后不自动重建，可手动再导入。
+- `js/store.js` 新增持久化标记 `seededCountries`（defaultDb / normalize / persistMeta / IndexedDB 水合 / 播种时置位）；`js/app.js` 启动时自动导入；`sw.js` 预缓存数据文件。
+- 版本：`APP_VERSION v0.14.0`，`sw.js v1.26.0`。
+- 测试：新增 `scripts/test-countries.mjs`（65 项）；`test-periodic` / `test-match` / `test-a11y` / `verify-assets` 版本与缓存断言同步；全量 37 个脚本 0 失败。README 已补「内置世界各国与首都」章节。
+
+## 上一版完成（v0.13.0）
+- 新增 `js/periodic.js`：周期表卡片解析（`H · Hydrogen` → 缩写 / 英文全名；`原子序号：1` → 序号；`back3` → 一句话描述）、9 种题型定义与实际可用性判定、选项池构建、原子序号范围规范化 / 拆分、周期表专属测试配置（`mycard-periodic-test-config`）。
+- 9 种题型：**默认开启 4 种** `zh2symbol` / `zh2number` / `symbol2zh` / `number2zh`；**可选默认关闭 5 种** `zh2desc` / `desc2zh` / `listenDesc2zh` / `zh2enName` / `enName2zh`。默认权重 4×25%，可选开启后与其余已启用题型等比平分。
+- `js/test.js`：周期表卡组自动走专属题型（关卡测试 + 整卡组测试）；`buildQuestions` / `buildQuestionsFromPlan` / `canBuildType` / `pickQuestionType` / 题干 / 类型标签 / 听描述 TTS / 答错完整信息卡全部适配；题数少于 20 的周期表卡组也可做整卡组测试。
+- `js/test-engine.js`：`samplePlan` 支持显式 `types`（周期表 9 种题型）；专属题型卡组没有通用基础题型时，用本次题型集合兜底。
+- `js/decks.js` + `js/store.js`：`importPeriodicDecks({start,end,size})` 可按范围拆成多个 `source='periodic'` 卡组（`allowMultiple` 跳过 source 去重）；导入弹窗含起止序号、每 10/20/30 个一组或不拆分；周期表卡组菜单可继续按范围导入；多个周期表卡组的 `back3` 升级补齐逐组处理。
+- 版本：`APP_VERSION v0.13.0`，`sw.js v1.25.0`（预缓存 `js/periodic.js`）。
+- 测试：`test-periodic` 77 → **158**（9 种题型出题 / 配置默认值与归一化 / 范围拆分 / 实际创建多个卡组 / 多卡组补简介 / 配置页）；全量 34 个脚本 0 失败（v0.14.0 时已扩到 37 个脚本）。
+
+## 上一版完成（v0.12.0）
+- `data/periodic-table.json`：118 种元素全部新增 `back3` 一句中文简介（互不重复、单个句号结尾）。
+- 卡片模型新增通用可选字段 **`back3`（背面 3 / 一句话简介）**：存储 / 编辑 / 翻转背面 / 卡片列表 / 答题完整信息卡 / 同步 / JSON 导出 / Anki 背面 / 文件导入全链路；通用出题与选项池不读取 `back3`。
+- `store.backfillBack3()` + `decks.ensurePeriodicBack3()`：老周期表卡组升级后自动补简介（全组为空才执行，幂等，不覆盖编辑）；删除卡组后仍不自动重建。
+- 版本：`APP_VERSION v0.12.0`，`sw.js v1.24.0`。
+
+## 上一版完成（v0.11.0）
+- 新增 `data/periodic-table.json`：118 种元素，`front` = 中文名（氢…鿫），`back` = `缩写 · 英文全名`（`H · Hydrogen`），`back2` = `原子序号：N`；每条带「元素周期表」标签。
+- 卡片模型新增通用可选字段 **`back2`（背面 2 / 补充信息）**：`store.normalizeCard` / `addCard` / `addManyCards` / `addWords` / `seedBuiltinDeck` / `applyCardFields` / `CARD_CONTENT_KEYS`、`sync.cardPayload`、`export.deckToJson` / `cardToAnkiFields`、`import-file`（JSON + 表头 `背面2` / `back2` / `back_2` + 字段映射下拉）全部打通；翻转卡片背面、卡片列表、编辑表单展示（`face-back2` / `card-row-back2`）。**`back2` 不参与出题，也不进入选项池**。
+- `js/decks.js`：`importPeriodicDeck()` 从 `data/periodic-table.json` 播种（`demo:false`、`source:'periodic'`、`arrange:false` 保持 1→118 顺序，每关 20 张 → 6 关）；`ensurePeriodicDeck()` + 首页「导入元素周期表」横幅 / `import-periodic` 动作。
+- `js/store.js` 新增持久化标记 `seededPeriodic`（defaultDb / normalize / persistMeta / IndexedDB 水合 / 播种时置位）：首次启动自动导入，**手动删除后不会自动重建**，可再从首页横幅导入。
+- `js/app.js` 启动时按 `seededPeriodic` 自动导入；`APP_VERSION v0.11.0`，`sw.js v1.23.0` 并预缓存 `data/periodic-table.json`。
+- 新增 `scripts/test-periodic.mjs`（55 项）；`test-import-file` 336→340、`test-export` 155→157；`verify-assets` / `test-match` / `test-a11y` 版本断言同步。
+
+## 上一版完成（v0.10.0）
 **v0.10.0（测试题型按卡组语种关系自适应）已实现、校验通过**。**没有进行中的功能**。
 
-## 最新完成（v0.10.0）
+## 最新完成（v0.10.0 细节）
 - 新增 `js/lang.js`：`detectLang`（英/中/日/韩/德/法/西/俄/希腊；含假名→日、纯汉字→中）、`isLatin`、`langTag`、`deckLang`（整组投票）、`deckMode`（`same`/`cross`）。
 - `js/test.js`：题型按 `deckMode` 自适应 —— 同语种卡组去掉 `sentence2word`；`listen` 变「听背面→填正面」的听写（复用填空判分/提示）；`fill` 支持正面/背面双向挖空；非拉丁答案 `wordForms`/`blankWord` 走精确匹配；`speakWord`/`speakTargetWord` 用 `langTag`；非拉丁填空不弹自绘英文键盘。
 - `js/test-engine.js`：`samplePlan` 支持 `omitTypes`，`assignTypesByCard` 支持 `basics`（兜底题型集合）。

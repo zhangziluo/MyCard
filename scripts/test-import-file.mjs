@@ -192,6 +192,13 @@ console.log('\n[表头识别与列映射]');
   const w3 = imp.rowsToWords(reorder);
   ok(w3[0].front === 'book' && w3[0].back === 'a book', '列顺序不限（按表头定位）');
 
+  const withBack2 = imp.parseCsv('单词,释义,背面2\n氢,H · Hydrogen,原子序号：1\n');
+  const wb2 = imp.rowsToWords(withBack2);
+  ok(wb2[0].back2 === '原子序号：1', '表头「背面2」→ back2 字段', wb2[0]);
+  const withBack3 = imp.parseCsv('单词,释义,背面3\n氢,H · Hydrogen,宇宙中最丰富的元素。\n');
+  const wb3 = imp.rowsToWords(withBack3);
+  ok(wb3[0].back3 === '宇宙中最丰富的元素。', '表头「背面3」→ back3 字段', wb3[0]);
+
   const noHeader = imp.parseCsv('apple,苹果,An apple.\nbook,书,\n');
   ok(imp.isHeaderRow(noHeader[0]) === false, '无表头数据行不会被误判为表头');
   const w4 = imp.rowsToWords(noHeader);
@@ -225,6 +232,11 @@ console.log('\n[JSON 解析]');
 
   const cards = imp.parseImportJson('{"cards":[{"front":"a","back":"b"}]}');
   ok(cards.words.length === 1 && cards.words[0].front === 'a', '兼容 cards 数组');
+
+  const b2 = imp.parseImportJson('{"words":[{"front":"氢","back":"H · Hydrogen","back2":"原子序号：1"}]}');
+  ok(b2.words[0].back2 === '原子序号：1', 'JSON 词条保留 back2', b2.words[0]);
+  const b3 = imp.parseImportJson('{"words":[{"front":"氢","back":"H · Hydrogen","back_3":"宇宙中最丰富的元素。"}]}');
+  ok(b3.words[0].back3 === '宇宙中最丰富的元素。', 'JSON 词条保留 back3（兼容 back_3）', b3.words[0]);
 
   const messy = imp.parseImportJson('{"words":[{"front":"x","back":"y","tags":"a, b"},null,{"back":"无front"}]}');
   ok(messy.words.length === 1, '过滤 null 与缺少 front 的条目', messy.words.length);
@@ -427,7 +439,7 @@ console.log('\n[首页入口 / 文件选择器]');
 
 console.log('\n[字段映射]');
 {
-  ok(imp.COLUMN_FIELDS.map((f) => f.value).join(',') === 'ignore,front,back,example,exampleZh,phonetic,tags', '下拉选项：忽略/正面/背面/例句/例句翻译/音标/标签');
+  ok(imp.COLUMN_FIELDS.map((f) => f.value).join(',') === 'ignore,front,back,back2,back3,example,exampleZh,phonetic,tags', '下拉选项：忽略/正面/背面/背面2/背面3/例句/例句翻译/音标/标签');
   ok(imp.COLUMN_FIELDS.some((f) => f.label.includes('正面（单词）') && f.label.includes('必选')), '正面标注「必选」');
   ok(imp.COLUMN_FIELDS.some((f) => f.label.includes('标签（逗号分隔）')), '标签标注逗号分隔');
 
@@ -451,6 +463,14 @@ console.log('\n[字段映射]');
   ok(words[0].tags.join(',') === 'fruit,red', '标签按逗号切分并 trim', words[0].tags);
   ok(!('example' in words[1]) && !('tags' in words[1]), '空列不产生多余字段');
   ok(imp.applyMapping(rows, ['front', 'back', 'ignore', 'ignore', 'ignore', 'ignore', 'ignore'])[0].tags === undefined, '忽略列不写入');
+  const b2words = imp.applyMapping(imp.parseCsv('氢,H · Hydrogen,原子序号：1\n'), ['front', 'back', 'back2']);
+  ok(b2words[0].back2 === '原子序号：1', '可把某列映射为背面 2', b2words[0]);
+  const withBack2Header = imp.csvPreview('单词,释义,背面2\n氢,H · Hydrogen,原子序号：1\n');
+  ok(JSON.stringify(imp.defaultMapping(withBack2Header)) === '["front","back","back2"]', '表头「背面2」自动映射到 back2');
+  const b3words = imp.applyMapping(imp.parseCsv('氢,H · Hydrogen,宇宙中最丰富的元素。\n'), ['front', 'back', 'back3']);
+  ok(b3words[0].back3 === '宇宙中最丰富的元素。', '可把某列映射为背面 3', b3words[0]);
+  const withBack3Header = imp.csvPreview('单词,释义,背面-3\n氢,H · Hydrogen,宇宙中最丰富的元素。\n');
+  ok(JSON.stringify(imp.defaultMapping(withBack3Header)) === '["front","back","back3"]', '表头「背面-3」自动映射到 back3');
 
   const html = imp.fieldMapHtml(imp.csvPreview('word,meaning,note\na,甲,备注\n'));
   ok((html.match(/<select/g) || []).length === 3, '每列一个下拉（3 列 3 个）', (html.match(/<select/g) || []).length);

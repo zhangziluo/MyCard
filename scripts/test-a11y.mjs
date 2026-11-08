@@ -303,8 +303,8 @@ console.log('\n[app.js / sw.js：播报接线与版本]');
 ok(/import \{[^}]*\bannounce\b[^}]*\} from '\.\/ui\.js'/.test(appSrc), 'app.js 从 ui.js 引入 announce');
 ok(/routeKey !== lastRouteKey/.test(appSrc), '仅路由变化时播报（同一路由重渲染不打扰读屏）');
 ok(/const pageTitle = renderAppbar\(route\)/.test(appSrc) && /announce\(pageTitle\)/.test(appSrc), 'render() 用顶栏标题播报当前页面');
-ok(/APP_VERSION = 'v0\.10\.0'/.test(appSrc), 'app.js 版本号 v0.10.0');
-ok(/const VERSION = 'v1\.22\.0'/.test(swSrc), 'sw.js VERSION v1.22.0');
+ok(/APP_VERSION = 'v0\.15\.0'/.test(appSrc), 'app.js 版本号 v0.15.0');
+ok(/const VERSION = 'v1\.27\.0'/.test(swSrc), 'sw.js VERSION v1.27.0');
 
 console.log('\n[明牌配对（#/match）的键盘可达性与标注]');
 {

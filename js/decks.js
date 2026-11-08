@@ -15,6 +15,8 @@ import { importHistoryButtonHtml } from './import-history.js'; // 注册「导�
 import './export.js'; // 注册卡组菜单的「导出 txt / apkg」动作
 import * as match from './match.js'; // 明牌配对：解锁判定 + 入口横幅（#/match/{deck}）
 import * as crossword from './crossword.js'; // 填字游戏：解锁判定 + 入口横幅（#/crossword/{deck}）
+import * as periodic from './periodic.js'; // 元素周期表：专属题型 / 原子序号范围拆分
+import * as countries from './countries.js'; // 世界各国与首都：专属题型 / 标签识别
 import { esc, on, icon, navigate, openModal, closeModal, readForm, toast, confirmDialog, parseTags } from './ui.js';
 
 const ACTIVE_TAG_KEY = 'mycard-active-tag';
@@ -105,6 +107,24 @@ export function renderHome(root) {
        </div>`
     : '';
 
+  const hasPeriodicDeck = store.getDb().decks.some((d) => periodic.isPeriodicDeck(d));
+  const periodicBanner = !hasPeriodicDeck
+    ? `<div class="banner glass" data-action="import-periodic" role="button" tabindex="0" aria-label="导入内置元素周期表：可选原子序号范围并拆成多个卡组">
+         <span class="banner-icon">${icon('grid', 22)}</span>
+         <div><b>导入元素周期表</b><p>内置「中文元素周期表」118 种元素：可选择原子序号范围，拆成多个卡组</p></div>
+         <span class="banner-go">${icon('back', 18)}</span>
+       </div>`
+    : '';
+
+  const hasCountriesDeck = store.getDb().decks.some((d) => isCountriesDeck(d));
+  const countriesBanner = !hasCountriesDeck
+    ? `<div class="banner glass" data-action="import-countries" role="button" tabindex="0" aria-label="导入内置世界各国与首都对照表：195 个国家，中英对照">
+         <span class="banner-icon">${icon('globe', 22)}</span>
+         <div><b>导入世界各国与首都</b><p>内置 195 个国家：正面国家名称与英文名，背面首都与英文名</p></div>
+         <span class="banner-go">${icon('back', 18)}</span>
+       </div>`
+    : '';
+
   const userDeck = store.getUserDeck();
   const wordsEntry = userDeck && userDeck.cards.length
     ? `<button class="icon-btn glass" data-action="nav-words" aria-label="整理生词本" title="整理生词本（去重 / 标签 / 补查）">${icon('layers', 20)}</button>`
@@ -122,6 +142,8 @@ export function renderHome(root) {
   root.innerHTML = `
     <div class="view">
       ${demoBanner}
+      ${periodicBanner}
+      ${countriesBanner}
       ${addWordsPanelHtml()}
       <div class="section-head">
         <h2 class="screen-title">我的卡组</h2>
@@ -354,6 +376,8 @@ function cardRowHtml(deck, card) {
     <div class="card-row-main">
       <div class="card-row-q">${esc(front)}</div>
       <div class="card-row-a">${esc(back)}</div>
+      ${card.back2 ? `<div class="card-row-back2">${esc(card.back2)}</div>` : ''}
+      ${card.back3 ? `<div class="card-row-back3">${esc(card.back3)}</div>` : ''}
       ${card.example ? `<div class="card-row-ex">${esc(card.example)}</div>` : ''}
       <div class="card-row-tags">
         ${stateChip(card)}
@@ -426,6 +450,12 @@ const CARD_FORM_TMPL = (c) => `
     <label class="field"><span>背面 · 答案/释义 *</span>
       <textarea name="back" rows="2" maxlength="500" placeholder="如：v. 放弃；抛弃">${esc(c ? c.back : '')}</textarea>
     </label>
+    <label class="field"><span>背面 2 · 补充（可选，如原子序号）</span>
+      <textarea name="back2" rows="2" maxlength="300" placeholder="如：原子序号：1">${esc(c ? c.back2 : '')}</textarea>
+    </label>
+    <label class="field"><span>背面 3 · 简介（可选，如一句话描述）</span>
+      <textarea name="back3" rows="2" maxlength="500" placeholder="如：宇宙中最丰富的元素，也是恒星聚变的主要燃料。">${esc(c ? c.back3 : '')}</textarea>
+    </label>
     <label class="field"><span>例句（可选）</span>
       <textarea name="example" rows="2" maxlength="300" placeholder="英文例句">${esc(c ? c.example : '')}</textarea>
     </label>
@@ -495,6 +525,8 @@ export function cardFormModal(deck, card) {
           const patch = {
             front: v.front,
             back: v.back,
+            back2: v.back2 || '',
+            back3: v.back3 || '',
             example: v.example,
             exampleZh: v.exampleZh,
             tags: parseTags(v.tags)
@@ -545,6 +577,142 @@ export async function importDemoDeck() {
 }
 
 /**
+ * 导入内置「中文元素周期表」（v0.11.0；v0.13.0 支持按原子序号范围拆成多个卡组）。
+ * 卡片字段：正面 = 中文名称，背面 = 英文缩写与全名，背面 2 = 原子序号，背面 3 = 一句话简介。
+ * 按原子序号顺序拆关（不做难度重排）。
+ *
+ * @param {{ start?: number, end?: number, size?: number }} [range]
+ *        `size` = 每个卡组最多包含多少个原子序号；0 / 不传 = 整个范围一个卡组。
+ * @returns {Promise<number>} 实际创建的卡组数量
+ */
+export async function importPeriodicDecks({ start = 1, end = periodic.MAX_ATOMIC_NUMBER, size = 0 } = {}) {
+  const resp = await fetch('./data/periodic-table.json', { cache: 'no-cache' });
+  if (!resp.ok) throw new Error('元素周期表数据加载失败 HTTP ' + resp.status);
+  const payload = await resp.json();
+  const allWords = Array.isArray(payload && payload.words) ? payload.words : [];
+  const range = periodic.normalizeRange(start, end);
+  const groups = periodic.splitRange(range.start, range.end, size);
+  const baseTags = Array.isArray(payload.tags) ? payload.tags : ['元素周期表', '化学'];
+  let created = 0;
+
+  for (const group of groups) {
+    const words = periodic.wordsInRange(allWords, group.start, group.end);
+    if (!words.length) continue;
+    const isFull = group.start === 1 && group.end === periodic.MAX_ATOMIC_NUMBER;
+    const label = periodic.rangeLabel(group);
+    const name = isFull ? payload.name || '元素周期表（中文）' : `元素周期表 ${label}（中文）`;
+    const description = isFull
+      ? payload.description || ''
+      : `原子序号 ${label}，共 ${words.length} 种元素：正面中文名，背面英文缩写与全名，背面 2 为原子序号，背面 3 为中文简介。`;
+    const deck = store.seedBuiltinDeck(
+      { ...payload, name, description, words },
+      {
+        demo: false,
+        source: 'periodic',
+        arrange: false, // 保持原子序号顺序
+        allowMultiple: true, // 同一来源可拆成多个卡组（按范围导入）
+        meta: { name, description, tags: baseTags, lang: 'zh', levelSize: payload.levelSize }
+      }
+    );
+    if (deck) created++;
+  }
+  return created;
+}
+
+/** 兼容旧调用：仅在尚无周期表卡组时导入一个范围（默认 1–118），返回首个卡组 */
+export async function importPeriodicDeck(range = {}) {
+  if (store.getDb().decks.some((d) => periodic.isPeriodicDeck(d))) return null;
+  await importPeriodicDecks(range);
+  return store.getDb().decks.find((d) => d.source === 'periodic') || null;
+}
+
+/** 是否内置「世界各国与首都」卡组（识别规则见 countries.isCountriesDeck） */
+export function isCountriesDeck(deck) {
+  return countries.isCountriesDeck(deck);
+}
+
+/**
+ * 导入内置「世界各国与首都（中英对照）」（v0.14.0）。
+ * 卡片字段：正面 = 国家中文名 · 英文名，背面 = 首都中文名 · 英文名。
+ * 保持国家英文名字母顺序（arrange:false），每关 20 张 → 10 关。
+ */
+export async function importCountriesDeck() {
+  if (store.getDb().decks.some((d) => isCountriesDeck(d))) return null;
+  const resp = await fetch('./data/countries-capitals.json', { cache: 'no-cache' });
+  if (!resp.ok) throw new Error('世界各国与首都数据加载失败 HTTP ' + resp.status);
+  const payload = await resp.json();
+  const words = Array.isArray(payload && payload.words) ? payload.words : [];
+  if (!words.length) return null;
+  const meta = {
+    name: payload.name || '世界各国与首都（中英对照）',
+    description: payload.description || '',
+    tags: Array.isArray(payload.tags) ? payload.tags : ['世界各国', '地理', '首都'],
+    levelSize: payload.levelSize || 20
+  };
+  return store.seedBuiltinDeck(payload, {
+    demo: false,
+    source: 'countries',
+    arrange: false, // 保持国家英文名字母顺序
+    meta
+  });
+}
+
+/** 首次启动自动导入世界各国与首都；已存在则直接返回（删掉后由首页横幅手动再导入） */
+export async function ensureCountriesDeck() {
+  const existing = store.getDb().decks.find((d) => isCountriesDeck(d));
+  if (existing) return existing;
+  await importCountriesDeck();
+  return store.getDb().decks.find((d) => isCountriesDeck(d)) || null;
+}
+
+/** 首次启动自动导入元素周期表；已存在则尝试补齐背面 3（v0.12.0 升级） */
+export async function ensurePeriodicDeck() {
+  const existing = store.getDb().decks.find((d) => periodic.isPeriodicDeck(d));
+  if (existing) {
+    await ensurePeriodicBack3();
+    return existing;
+  }
+  await importPeriodicDeck();
+  return store.getDb().decks.find((d) => d.source === 'periodic') || null;
+}
+
+/**
+ * v0.12.0：为 v0.11.0 已导入的周期表补齐「背面 3」中文简介。
+ * v0.13.0：范围导入可能生成多个周期表卡组，逐组补齐。
+ * - 仅当整组卡片都没有 back3 时执行（老数据），不覆盖用户后来编辑的内容
+ * - 按正面（中文名）匹配，离线失败时静默跳过，下次联网再补
+ * - 用户删除卡组后不会被调用重建（app.js 仅在 seededPeriodic 时走这里）
+ */
+export async function ensurePeriodicBack3() {
+  const decks = store.getDb().decks.filter((d) => periodic.isPeriodicDeck(d));
+  if (!decks.length) return null;
+  const need = decks.filter(
+    (d) => Array.isArray(d.cards) && d.cards.length && d.cards.every((c) => !String(c.back3 || '').trim())
+  );
+  if (!need.length) return null;
+  const resp = await fetch('./data/periodic-table.json', { cache: 'no-cache' }).catch(() => null);
+  if (!resp || !resp.ok) return null;
+  const payload = await resp.json().catch(() => null);
+  const words = payload && Array.isArray(payload.words) ? payload.words : [];
+  if (!words.length) return null;
+  let first = null;
+  for (const deck of need) {
+    const updated = backfillPeriodicBack3(deck, words);
+    if (updated && !first) first = updated;
+  }
+  return first;
+}
+
+function backfillPeriodicBack3(deck, words) {
+  if (!deck || !Array.isArray(deck.cards) || !deck.cards.length) return null;
+  if (!deck.cards.every((c) => !String(c.back3 || '').trim())) return null;
+  const list = Array.isArray(words) ? words : [];
+  if (!list.length) return null;
+  const updated = store.backfillBack3(deck.id, list);
+  return updated ? store.getDeck(deck.id) : null;
+}
+
+/**
  * v0.2 升级：为“已存在但缺分组”的示范卡组补标易混组/多释义（保留复习进度）。
  * 离线时若缓存缺失则静默跳过，下次联网自动补齐。
  */
@@ -581,6 +749,11 @@ function deckMenu(deckId) {
         <button class="menu-item" data-action="deck-local" data-id="${esc(deck.id)}">${icon(deck.syncLocal ? 'refresh' : 'lock', 18)} ${deck.syncLocal ? '允许参与多端同步' : '设为本机专用（不同步）'}</button>
         <button class="menu-item" data-action="open-cards-from-menu" data-id="${esc(deck.id)}">${icon('cards', 18)} 管理卡片（${deck.cards.length} 张）</button>
         ${
+          periodic.isPeriodicDeck(deck)
+            ? `<button class="menu-item" data-action="import-periodic-range">${icon('grid', 18)} 按原子序号范围导入新卡组</button>`
+            : ''
+        }
+        ${
           (store.getUserDeck() || {}).id === deck.id
             ? `<button class="menu-item" data-action="nav-words">${icon('layers', 18)} 整理生词本（去重 / 标签）</button>`
             : ''
@@ -593,6 +766,84 @@ function deckMenu(deckId) {
         <button class="menu-item danger-item" data-action="deck-delete" data-id="${esc(deck.id)}">${icon('trash', 18)} 删除卡组</button>
       </div>`
   });
+}
+
+/** 元素周期表范围导入：可自选原子序号范围，并按每卡组数量拆成多个卡组 */
+function periodicImportModal() {
+  const overlay = openModal({
+    title: '导入元素周期表',
+    wide: true,
+    body: `
+      <div class="form">
+        <label class="field"><span>起始原子序号</span>
+          <input id="periodic-start" type="number" min="1" max="118" step="1" value="1" inputmode="numeric">
+        </label>
+        <label class="field"><span>结束原子序号</span>
+          <input id="periodic-end" type="number" min="1" max="118" step="1" value="118" inputmode="numeric">
+        </label>
+        <label class="field"><span>每个卡组最多包含</span>
+          <select id="periodic-size">
+            <option value="0">不拆分（1 个卡组）</option>
+            <option value="20">每 20 个原子序号一组</option>
+            <option value="30">每 30 个原子序号一组</option>
+            <option value="10">每 10 个原子序号一组</option>
+          </select>
+        </label>
+        <p class="hint" id="periodic-preview"></p>
+        <p class="hint">每个卡组都会保留中文名、英文缩写与全名、原子序号和一句话描述；范围可重叠，重复导入会生成新的卡组。</p>
+      </div>`,
+    actions: [
+      {
+        label: '导入',
+        cls: 'btn-primary',
+        onClick: () => {
+          const startEl = document.getElementById('periodic-start');
+          const endEl = document.getElementById('periodic-end');
+          const sizeEl = document.getElementById('periodic-size');
+          const start = Number(startEl && startEl.value);
+          const end = Number(endEl && endEl.value);
+          const size = Number(sizeEl && sizeEl.value) || 0;
+          if (!Number.isFinite(start) || !Number.isFinite(end) || start < 1 || start > 118 || end < 1 || end > 118) {
+            toast('请输入 1–118 之间的原子序号', 'warn');
+            return false;
+          }
+          importPeriodicDecks({ start, end, size })
+            .then((n) => {
+              if (!n) {
+                toast('该范围内没有可导入的元素', 'warn');
+                return;
+              }
+              toast(`已导入 ${n} 个元素周期表卡组`);
+              navigate('#/home');
+            })
+            .catch((e) => {
+              console.error(e);
+              toast('导入失败：请检查网络后再试（需在线获取一次元素周期表）', 'error');
+            });
+          return true; // 关闭弹窗；导入在后台继续
+        }
+      },
+      { label: '取消', cls: 'btn-ghost' }
+    ]
+  });
+
+  // 实时预览：范围会规范化（起止写反自动交换），并列出拆分后的卡组
+  const update = () => {
+    const sEl = document.getElementById('periodic-start');
+    const eEl = document.getElementById('periodic-end');
+    const zEl = document.getElementById('periodic-size');
+    const out = document.getElementById('periodic-preview');
+    if (!out) return;
+    const range = periodic.normalizeRange(Number(sEl && sEl.value), Number(eEl && eEl.value));
+    const groups = periodic.splitRange(range.start, range.end, Number(zEl && zEl.value) || 0);
+    const labels = groups.map((g) => periodic.rangeLabel(g));
+    const shown = labels.slice(0, 6).join('、') + (labels.length > 6 ? ' …' : '');
+    out.textContent = `将导入原子序号 ${periodic.rangeLabel(range)}，共 ${range.end - range.start + 1} 种元素，拆成 ${groups.length} 个卡组：${shown}`;
+  };
+  if (overlay && overlay.querySelectorAll) {
+    overlay.querySelectorAll('input, select').forEach((el) => el.addEventListener('input', update));
+  }
+  update();
 }
 
 /* ------------------------------ Action 注册 ------------------------------ */
@@ -760,6 +1011,32 @@ on('import-demo', async (el) => {
   } catch (e) {
     console.error(e);
     toast('导入失败：请检查网络后再试（需在线获取一次词库）', 'error');
+  }
+  if (el.classList) el.classList.remove('is-loading');
+  navigate('#/home');
+});
+
+/* 元素周期表导入（v0.11.0；v0.13.0 支持范围拆卡组） */
+on('import-periodic', () => periodicImportModal());
+
+on('import-periodic-range', () => {
+  closeModal();
+  periodicImportModal();
+});
+
+/* 世界各国与首都导入（v0.14.0） */
+on('import-countries', async (el) => {
+  if (el.classList) el.classList.add('is-loading');
+  try {
+    const deck = await importCountriesDeck();
+    if (deck) {
+      toast(`已导入「${deck.name}」${deck.cards.length} 个国家`);
+    } else {
+      toast('已经导入过世界各国与首都卡组了', 'warn');
+    }
+  } catch (e) {
+    console.error(e);
+    toast('导入失败：请检查网络后再试（需在线获取一次数据）', 'error');
   }
   if (el.classList) el.classList.remove('is-loading');
   navigate('#/home');

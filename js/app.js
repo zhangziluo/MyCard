@@ -17,7 +17,7 @@ import { renderWordbook } from './wordbook-view.js'; // v0.5.9 生词本批量�
 import { renderMatch, clearMatchSession } from './match.js'; // v0.5.12 明牌配对（#/match/{deck}）
 import { renderCrossword, clearCrosswordSession } from './crossword.js'; // v0.6.0 填字游戏（#/crossword/{deck}）
 
-const APP_VERSION = 'v0.10.0';
+const APP_VERSION = 'v0.15.0';
 
 /* ------------------------------ 路由解析 ------------------------------ */
 
@@ -810,6 +810,35 @@ function boot() {
       }
     } catch (e) {
       console.warn('[mycard] 首次自动导入/升级词库失败（需联网一次）', e);
+    }
+
+    // 内置元素周期表（v0.11.0；v0.12.0 补背面 3）：首次启动自动导入；删掉后 seededPeriodic 仍为 true，不再重建
+    try {
+      if (!store.getDb().seededPeriodic) {
+        const periodicDeck = await decks.ensurePeriodicDeck();
+        if (periodicDeck) {
+          console.log(`[mycard] 已自动导入内置元素周期表：${periodicDeck.name}（${periodicDeck.cards.length} 种元素）`);
+        }
+      } else {
+        const upgradedDeck = await decks.ensurePeriodicBack3();
+        if (upgradedDeck) {
+          console.log(`[mycard] 已为元素周期表补齐中文简介：${upgradedDeck.cards.length} 种元素`);
+        }
+      }
+    } catch (e) {
+      console.warn('[mycard] 元素周期表导入失败（需联网一次）', e);
+    }
+
+    // 内置世界各国与首都（v0.14.0）：首次启动自动导入；删掉后 seededCountries 仍为 true，不再重建
+    try {
+      if (!store.getDb().seededCountries) {
+        const countriesDeck = await decks.ensureCountriesDeck();
+        if (countriesDeck) {
+          console.log(`[mycard] 已自动导入内置世界各国与首都：${countriesDeck.name}（${countriesDeck.cards.length} 个国家）`);
+        }
+      }
+    } catch (e) {
+      console.warn('[mycard] 世界各国与首都导入失败（需联网一次）', e);
     }
 
     // 旧版本内置的考试词库（考研等）已下线：清理浏览器里遗留的历史卡组

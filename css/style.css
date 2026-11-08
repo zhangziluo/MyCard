@@ -725,6 +725,7 @@ body.modal-open { overflow: hidden; }
 .weight-box summary b { color: var(--tx); }
 .weight-row { display: flex; align-items: center; gap: 10px; margin-top: 6px; }
 .weight-name { flex: 0 0 62px; font-size: 12.5px; color: var(--tx2); }
+.weight-name-wide { flex: 0 0 96px; line-height: 1.25; white-space: normal; }
 .weight-range { flex: 1; min-width: 0; }
 .weight-row b { flex: 0 0 44px; text-align: right; font-size: 13px; color: var(--tx); font-variant-numeric: tabular-nums; }
 .weight-foot { text-align: right; margin-top: 2px; }
@@ -1371,6 +1372,8 @@ body.kb-open #view { padding-bottom: calc(var(--safe-b) + 76px + var(--kb-h, 190
 .card-row-q { font-size: 15px; font-weight: 700; overflow-wrap: anywhere; }
 .card-row-a { font-size: 14px; color: var(--tx2); margin-top: 3px; overflow-wrap: anywhere; }
 .card-row-ex { font-size: 12.5px; color: var(--tx3); font-style: italic; margin-top: 4px; }
+.card-row-back2 { font-size: 12.5px; color: var(--tx2); margin-top: 4px; }
+.card-row-back3 { font-size: 12.5px; color: var(--tx2); margin-top: 4px; }
 .card-row-tags { display: flex; gap: 5px; margin-top: 8px; flex-wrap: wrap; }
 .card-row-ops { display: flex; flex-direction: column; gap: 6px; }
 .fab-bar {
@@ -1467,6 +1470,8 @@ body.kb-open #view { padding-bottom: calc(var(--safe-b) + 76px + var(--kb-h, 190
   max-width: 100%;
 }
 .back-main { font-size: clamp(20px, 5vw, 30px); font-weight: 700; }
+.face-back2 { margin-top: 8px; font-size: clamp(14px, 3.4vw, 18px); color: var(--tx2); }
+.face-back3 { margin-top: 8px; font-size: clamp(13px, 3.1vw, 16px); color: var(--tx2); line-height: 1.6; }
 .card-example { width: 100%; margin-top: 4px; }
 .ex-en {
   font-size: 15px;

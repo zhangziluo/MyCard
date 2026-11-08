@@ -213,6 +213,8 @@ export function deckToJson(deck, { pretty = true, revlogs } = {}) {
       const out = {
         front: c.front,
         back: c.back ?? '',
+        back2: c.back2 ?? '',
+        back3: c.back3 ?? '',
         example: c.example ?? '',
         exampleZh: c.exampleZh ?? '',
         phonetic: c.phonetic ?? '',
@@ -411,6 +413,8 @@ export function ankiTag(t) {
 export function cardToAnkiFields(card) {
   const front = ankiHtml(card.front) + (card.phonetic ? `<br><span style="color:#7c8399">${ankiHtml(card.phonetic)}</span>` : '');
   const backParts = [ankiHtml(card.back)];
+  if (card.back2) backParts.push(`<div style="margin-top:6px;color:#666">${ankiHtml(card.back2)}</div>`);
+  if (card.back3) backParts.push(`<div style="margin-top:6px;color:#666">${ankiHtml(card.back3)}</div>`);
   for (const extra of card.extraBacks || []) if (extra) backParts.push(ankiHtml(extra));
   if (card.example || card.exampleZh) {
     backParts.push(

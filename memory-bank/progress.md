@@ -1,8 +1,40 @@
 # Progress — 完成度与遗留
 
-> 更新时间：2026-11-08 ｜ APP `v0.10.0` / SW `v1.22.0` ｜ **语种自适应已交付**
+> 更新时间：2026-11-08 ｜ APP `v0.15.0` / SW `v1.27.0` ｜ **世界各国与首都专属题型已交付**
 
 ## 已交付（按版本）
+
+**v0.15.0（世界各国与首都专属题型）**
+- 新增 `js/countries.js`：解析 `国家中文名 · 英文名` / `首都中文名 · 英文名`，构建 4 类选项池；定义 11 种国家专属题型（4 必选 + 7 可选）、权重归一化 / 开关 / 重刷调整；专属配置 `mycard-countries-test-config`。
+- 默认 4 种必选题型：国家中文选首都中文、首都中文选国家中文、国家英文选首都英文、首都英文选国家英文（各 25%）；可选 7 种默认关闭：国家 / 首都中英对照、跨字段配对、听国家英文选首都英文（TTS）。
+- `js/test.js` 抽出通用「专属题型」分发层（周期表 / 世界各国共用）：`canBuildType` / `pickQuestionType` / 出题 / 回退 / 题型名 / 题干 / TTS / 答错信息卡 / 整卡组配置页全部适配；国家卡组少于 20 国也可做整卡组测试。
+- `js/decks.js` 的 `isCountriesDeck` 改为委托 `countries.isCountriesDeck`，兼容 JSON 备份回导丢失 source 时按「世界各国」标签 + 字段完整性兜底。
+- 版本 `APP_VERSION v0.15.0` / `sw.js v1.27.0`（预缓存 `js/countries.js`）；`test-countries` 65 → **118**，`test-periodic` 158，相关回归全绿。
+
+**v0.14.0（内置世界各国与首都）**
+- 新增 `data/countries-capitals.json`：195 个国家，`front` = 国家中文名 · 英文名，`back` = 首都中文名 · 英文名；按英文名字母顺序，每关 20 张 → 10 关。
+- `decks.importCountriesDeck()` / `ensureCountriesDeck()`：`source='countries'`、`arrange:false`；首页「导入世界各国与首都」横幅 + 启动自动导入；`isCountriesDeck` 支持标签兜底。
+- `store.seededCountries` 五处接线（默认值 / normalize / persistMeta / IndexedDB 水合 / 播种置位）；`sw.js` 预缓存 `data/countries-capitals.json`。
+- 版本 `APP_VERSION v0.14.0` / `sw.js v1.26.0`；新增 `test-countries` 65 项；全量 37 个脚本 0 失败。
+
+**v0.13.0（元素周期表专属题型 + 原子序号范围拆卡组）**
+- 新增 `js/periodic.js`：解析 `缩写 · 英文全名` / `原子序号：N` / `back3`，构建 5 类选项池；定义 9 种周期表题型与可选题开关；范围规范化 / 拆分；专属配置 `mycard-periodic-test-config`。
+- 默认 4 种必选题型：中文名选缩写、中文名选原子序号、缩写选中文名、原子序号选中文名（各 25%）；可选 5 种默认关闭：中文名选一句话描述、一句话描述选中文名、听一句话描述选中文名、中文名选英文全名、英文全名选中文名。
+- 周期表卡组的关卡测试与整卡组测试均走专属题型；整卡组配置页展示 4 个必选题滑块 + 5 个可选开关；听描述题使用 TTS 朗读 `back3`；答错完整信息卡按元素字段展示。
+- `decks.importPeriodicDecks({ start, end, size })` + 范围导入弹窗：可填写起止原子序号，按每 10/20/30 个或不拆分生成多个 `source='periodic'` 卡组；`store.seedBuiltinDeck` 新增 `allowMultiple`；周期表卡组菜单可持续按范围导入；多个卡组的老 `back3` 逐组补齐。
+- 版本 `APP_VERSION v0.13.0` / `sw.js v1.25.0`（预缓存 `js/periodic.js`）；`test-periodic` 77 → **158**；全量 34 个脚本 0 失败。
+
+**v0.12.0（元素周期表中文简介 + 卡片背面 3）**
+- `data/periodic-table.json`：118 种元素全部新增 `back3` 一句中文简介（互不重复、单个句号结尾）；`back2` 继续为原子序号。
+- 卡片新增可选 `back3` 字段：存储 / 编辑 / 翻转背面 / 卡片列表 / 答题完整信息卡 / IndexedDB 水合 / 多端同步快照 / JSON 备份 / Anki 背面 / 文件导入（JSON `back3`·`back_3`，CSV `背面3`·`背面-3`·`简介`·`描述`，字段映射）全链路；通用出题与选项池**不读取** `back3`。
+- `store.backfillBack3()` + `decks.ensurePeriodicBack3()`：v0.11.0 已导入的周期表在升级后自动补简介（全组为空才执行，幂等，不覆盖编辑）；删除卡组后仍不自动重建。
+- `test-periodic` 55→77，`test-import-file` 340→344，`verify-assets` 671；全量 34 个脚本 0 失败。
+
+**v0.11.0（内置中文元素周期表 + 卡片背面 2）**
+- `data/periodic-table.json`：118 种元素（中文名 / `缩写 · 英文全名` / `原子序号：N`），按原子序号排列。
+- 卡片新增可选 `back2` 字段：存储 / 编辑 / 翻转背面 / 卡片列表 / IndexedDB 水合 / 多端同步快照 / JSON 备份 / Anki 背面 / 文件导入（`背面2` 表头与字段映射）全链路；出题与选项池**不读取** `back2`。
+- `decks.importPeriodicDeck()` + `ensurePeriodicDeck()`：`source:'periodic'`、`arrange:false`、每关 20 张 → 6 关；首次启动自动导入，`seededPeriodic` 防止删除后自动重建；首页保留导入横幅。
+- 新增 `scripts/test-periodic.mjs`（55 项）；`test-import-file` 336→340、`test-export` 155→157；`smoke-dom` / `verify-assets` / `test-match` / `test-a11y` 同步版本与预缓存断言。
 
 **v0.10.0（测试题型按卡组语种关系自适应）**
 - 新增 `js/lang.js`：`detectLang` / `isLatin` / `langTag` / `deckLang` / `deckMode`（纯函数，无 DOM）。

@@ -53,6 +53,36 @@ must(Array.isArray(words.words) && words.words.length >= 50, '词库 ≥ 50 词�
 const bad = words.words.find((w) => !w.front || !w.back || !w.example || !w.exampleZh);
 must(!bad, '每条均含 front/back/example/exampleZh');
 
+// 4.1) 内置中文元素周期表（v0.11.0 起）
+console.log('\n[data/periodic-table.json]');
+const periodic = JSON.parse(readFileSync(rel('data/periodic-table.json'), 'utf8'));
+must(Array.isArray(periodic.words) && periodic.words.length === 118, '118 种元素（当前 ' + (periodic.words || []).length + '）');
+must(
+  periodic.words.every((w, i) => w.front && /^[A-Z][a-z]? · [A-Z][a-z]+$/.test(w.back) && w.back2 === '原子序号：' + (i + 1)),
+  '每条含 中文名 / 「缩写 · 英文全名」/ 原子序号（按 1–118 顺序）'
+);
+must(
+  periodic.words.every((w) => typeof w.back3 === 'string' && w.back3.length >= 8 && /[。]$/.test(w.back3)),
+  '每条背面 3 为一句中文简介'
+);
+must(sw.includes("'./data/periodic-table.json'"), 'sw.js 预缓存 periodic-table.json');
+
+// 4.2) 内置世界各国与首都（v0.14.0 起，v0.15.0 起专属题型）
+console.log('\n[data/countries-capitals.json]');
+const countries = JSON.parse(readFileSync(rel('data/countries-capitals.json'), 'utf8'));
+must(Array.isArray(countries.words) && countries.words.length === 195, '195 个国家（当前 ' + (countries.words || []).length + '）');
+must(
+  countries.words.every((w) => /^.+ · .+$/.test(w.front || '') && /^.+ · .+$/.test(w.back || '')),
+  '每条正面为「国家中文名 · 英文名」、背面为「首都中文名 · 英文名」'
+);
+must(new Set(countries.words.map((w) => w.front)).size === 195, '195 条国家记录无重复');
+must(
+  countries.words.every((w) => Array.isArray(w.tags) && w.tags.includes('世界各国')),
+  '每条都带「世界各国」标签'
+);
+must(sw.includes("'./data/countries-capitals.json'"), 'sw.js 预缓存 countries-capitals.json');
+must(sw.includes("'./js/countries.js'"), 'sw.js 预缓存 countries.js（国家专属题型）');
+
 // 5) v0.2 易混分组与多释义
 console.log('\n[data/confusables.json]');
 const conf = JSON.parse(readFileSync(rel('data/confusables.json'), 'utf8'));
@@ -612,7 +642,7 @@ console.log('\n[我的生词批量整理（js/wordbook.js + js/wordbook-view.js�
   must(existsSync(rel('js/wordbook-view.js')), 'js/wordbook-view.js 存在（整理页）');
   must(sw.includes("'./js/wordbook.js'"), 'sw.js PRECACHE 含 ./js/wordbook.js');
   must(sw.includes("'./js/wordbook-view.js'"), 'sw.js PRECACHE 含 ./js/wordbook-view.js');
-  must(/const VERSION = 'v1\.22\.0'/.test(sw), 'sw.js VERSION 已递增（v1.22.0）');
+  must(/const VERSION = 'v1\.27\.0'/.test(sw), 'sw.js VERSION 已递增（v1.27.0）');
 
   // 内核：去重合并 / 标签 / 筛选排序 / 选中集 / 补查目标
   must(/export function normKey/.test(wbSrc), 'wordbook.js：normKey（大小写 / 空格归一为同一个词）');
@@ -630,7 +660,7 @@ console.log('\n[我的生词批量整理（js/wordbook.js + js/wordbook-view.js�
   must(/merge: true/.test(storeSrc2) && /extraBacks/.test(storeSrc2), 'store.js：addWords 支持 { merge: true } 合并释义');
 
   // 路由与入口
-  must(/APP_VERSION = 'v0\.10\.0'/.test(appSrc), 'app.js 版本号更新为 v0.10.0');
+  must(/APP_VERSION = 'v0\.15\.0'/.test(appSrc), 'app.js 版本号更新为 v0.15.0');
   must(/from '\.\/wordbook-view\.js'/.test(appSrc) && /renderWordbook\(root\)/.test(appSrc), 'app.js 挂载 renderWordbook');
   must(/seg\[0\] === 'words'/.test(appSrc) && /#\/words/.test(appSrc), 'app.js 解析 #/words 路由（含 ?page=N 分页）');
   must(/on\('nav-words'/.test(decksSrc3), 'decks.js 提供 nav-words 入口动作');

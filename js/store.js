@@ -38,7 +38,14 @@ export function uid() {
 }
 
 function defaultDb() {
-  return { version: 1, seededDemo: false, settings: { cardsPerLevel: DEFAULT_PER_LEVEL, updatedAt: 0 }, decks: [] };
+  return {
+    version: 1,
+    seededDemo: false,
+    seededPeriodic: false, // v0.11.0：内置元素周期表是否已尝试导入（删掉后不再自动重建）
+    seededCountries: false, // v0.14.0：内置世界各国与首都是否已尝试导入（删掉后不再自动重建）
+    settings: { cardsPerLevel: DEFAULT_PER_LEVEL, updatedAt: 0 },
+    decks: []
+  };
 }
 
 /* ------------------------------ 数据规范化 ------------------------------ */
@@ -72,6 +79,8 @@ function normalizeCard(c) {
     id: c.id || uid(),
     front: String(c.front ?? ''),
     back: String(c.back ?? ''),
+    back2: String(c.back2 ?? ''), // v0.11.0：背面 2（补充信息，如元素原子序号）
+    back3: String(c.back3 ?? ''), // v0.12.0：背面 3（一句话简介，如元素的中文描述）
     example: c.example ?? '',
     exampleZh: c.exampleZh ?? '',
     phonetic: String(c.phonetic ?? ''),
@@ -111,6 +120,8 @@ function normalize(raw) {
   const d = defaultDb();
   if (raw && typeof raw === 'object') {
     d.seededDemo = !!raw.seededDemo;
+    d.seededPeriodic = !!raw.seededPeriodic;
+    d.seededCountries = !!raw.seededCountries;
     if (raw.settings && typeof raw.settings === 'object') {
       d.settings.cardsPerLevel = clampPerLevel(raw.settings.cardsPerLevel);
       d.settings.updatedAt = Number(raw.settings.updatedAt) || 0; // 最后改动时间（v0.9.0 同步合并「每关词数」时用）
@@ -209,6 +220,8 @@ function persistMeta() {
   writeJson(META_KEY, {
     version: d.version,
     seededDemo: d.seededDemo,
+    seededPeriodic: d.seededPeriodic,
+    seededCountries: d.seededCountries,
     settings: { ...d.settings },
     idb: idbReady,
     decks: d.decks.map(deckMetaOf)
@@ -419,6 +432,8 @@ export async function init() {
   db = {
     version: 1,
     seededDemo: !!(meta && meta.seededDemo),
+    seededPeriodic: !!(meta && meta.seededPeriodic),
+    seededCountries: !!(meta && meta.seededCountries),
     settings: settings || { cardsPerLevel: DEFAULT_PER_LEVEL, updatedAt: 0 },
     decks: metaDecks.map((m) => ({
       ...normalizeDeck({ ...m, cards: [] }),
@@ -641,6 +656,8 @@ export function addWords(items, { src = 'online_lookup', merge = false } = {}) {
     const card = {
       front,
       back: String(it.back ?? ''),
+      back2: String(it.back2 ?? ''),
+      back3: String(it.back3 ?? ''),
       example: it.example ?? '',
       exampleZh: it.exampleZh ?? '',
       phonetic: String(it.phonetic ?? it.ipa ?? ''),
@@ -679,6 +696,8 @@ export function addCard(deckId, fields = {}) {
     id: uid(),
     front: String(fields.front ?? ''),
     back: String(fields.back ?? ''),
+    back2: String(fields.back2 ?? ''),
+    back3: String(fields.back3 ?? ''),
     example: fields.example ?? '',
     exampleZh: fields.exampleZh ?? '',
     phonetic: String(fields.phonetic ?? ''),
@@ -715,6 +734,8 @@ export function addManyCards(deckId, items) {
     id: uid(),
     front: String(f.front ?? ''),
     back: String(f.back ?? ''),
+    back2: String(f.back2 ?? ''),
+    back3: String(f.back3 ?? ''),
     example: f.example ?? '',
     exampleZh: f.exampleZh ?? '',
     phonetic: String(f.phonetic ?? ''),
@@ -753,7 +774,7 @@ export function updateCard(deckId, cardId, patch) {
  * 纯调度字段（state / repetitions / interval / easeFactor / due / lastReview）不算，
  * 它们按 lastReview 走「进度合并」（保证多端学习进度只进不退）。
  */
-const CARD_CONTENT_KEYS = ['front', 'back', 'example', 'exampleZh', 'phonetic', 'tags', 'groups', 'extraBacks', 'level', 'src', 'addedAt'];
+const CARD_CONTENT_KEYS = ['front', 'back', 'back2', 'back3', 'example', 'exampleZh', 'phonetic', 'tags', 'groups', 'extraBacks', 'level', 'src', 'addedAt'];
 
 /**
  * 把卡片字段补丁写进卡片对象（不改内存库以外的东西）。
@@ -762,6 +783,8 @@ const CARD_CONTENT_KEYS = ['front', 'back', 'example', 'exampleZh', 'phonetic', 
 function applyCardFields(card, patch = {}) {
   if ('front' in patch) card.front = String(patch.front);
   if ('back' in patch) card.back = String(patch.back);
+  if ('back2' in patch) card.back2 = String(patch.back2 ?? '');
+  if ('back3' in patch) card.back3 = String(patch.back3 ?? '');
   if ('example' in patch) card.example = patch.example ?? '';
   if ('exampleZh' in patch) card.exampleZh = patch.exampleZh ?? '';
   if ('phonetic' in patch) card.phonetic = String(patch.phonetic ?? '');
@@ -802,6 +825,26 @@ export function updateCards(deckId, entries) {
   persist();
   queueCards(deckId, changed);
   return { updated: changed.length };
+}
+
+/**
+ * v0.12.0：按正面为整组都缺 `back3` 的卡片补简介（兼容 v0.11.0 已导入的周期表）。
+ * 只在「全部卡片都为空」时执行，避免覆盖用户后来编辑 / 清空的内容。
+ * @param {string} deckId
+ * @param {Array<{front:string, back3?:string}>} words
+ * @returns {number} 实际更新卡片数
+ */
+export function backfillBack3(deckId, words) {
+  const deck = getDeck(deckId);
+  if (!deck || !deck.cards.length || !Array.isArray(words) || !words.length) return 0;
+  if (!deck.cards.every((c) => !String(c.back3 || '').trim())) return 0;
+  const byFront = new Map(words.map((w) => [String(w.front ?? ''), String(w.back3 ?? '')]));
+  const entries = [];
+  for (const card of deck.cards) {
+    const back3 = byFront.get(String(card.front ?? ''));
+    if (back3) entries.push({ id: card.id, patch: { back3 } });
+  }
+  return entries.length ? updateCards(deckId, entries).updated : 0;
 }
 
 /**
@@ -1032,7 +1075,7 @@ export function allTags() {
  *  - meta={name,tags,description,lang} → 用清单里的正确元数据覆盖 payload 自带的
  * 自动完成「难度分层 + 错峰排列 + 动态调序」的关卡编排。
  */
-export function seedBuiltinDeck(payload, { demo = true, source = null, meta = null, groupsMap = {}, arrange = true } = {}) {
+export function seedBuiltinDeck(payload, { demo = true, source = null, meta = null, groupsMap = {}, arrange = true, allowMultiple = false } = {}) {
   const d = getDb();
   // 去重：示范词库按 demo 标记，其余按 source（旧版数据可能没有 source，故 demo 单独判）
   const already = demo
@@ -1040,7 +1083,7 @@ export function seedBuiltinDeck(payload, { demo = true, source = null, meta = nu
     : source
       ? d.decks.some((x) => x.source === source)
       : false;
-  if (already) return null;
+  if (already && !allowMultiple) return null;
   const words = Array.isArray(payload && payload.words) ? payload.words : [];
   if (!words.length) return null;
 
@@ -1074,6 +1117,8 @@ export function seedBuiltinDeck(payload, { demo = true, source = null, meta = nu
       id: uid(),
       front: wordKey,
       back: String(w.back ?? w.meaningZh ?? ''),
+      back2: String(w.back2 ?? ''),
+      back3: String(w.back3 ?? ''),
       example: w.example ?? '',
       exampleZh: w.exampleZh ?? '',
       phonetic: String(w.phonetic ?? ''),
@@ -1094,6 +1139,8 @@ export function seedBuiltinDeck(payload, { demo = true, source = null, meta = nu
 
   d.decks.unshift(deck);
   if (demo) d.seededDemo = true;
+  if (source === 'periodic') d.seededPeriodic = true;
+  if (source === 'countries') d.seededCountries = true;
   persist();
   queueDeck(deck);
   queueCards(deck.id, deck.cards);

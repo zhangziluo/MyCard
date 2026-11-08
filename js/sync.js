@@ -184,6 +184,8 @@ export function cardPayload(card) {
     id: String(c.id || ''),
     front: String(c.front ?? ''),
     back: String(c.back ?? ''),
+    back2: String(c.back2 ?? ''),
+    back3: String(c.back3 ?? ''),
     example: c.example ?? '',
     exampleZh: c.exampleZh ?? '',
     phonetic: String(c.phonetic ?? ''),

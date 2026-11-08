@@ -174,6 +174,8 @@ function cardHtml(flipped) {
         <div class="face face-back">
           <span class="face-tag">背面 · 答案</span>
           <p class="face-main back-main">${esc(card.back)}</p>
+          ${card.back2 ? `<p class="face-back2">${esc(card.back2)}</p>` : ''}
+          ${card.back3 ? `<p class="face-back3">${esc(card.back3)}</p>` : ''}
           ${exampleHtml(card)}
         </div>
       </div>

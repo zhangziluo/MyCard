@@ -1,9 +1,9 @@
 // ============================================================================
 // test.js — 测试题模式（关卡通关判定）
-// 规则：以本关全部卡片为题目，三种题型随机混合，每题均为 4 选 1：
-//   word2def        单词选释义（题干 front → 选项 back）
-//   def2word        释义选单词（题干 back → 选项 front）
-//   sentence2word   句子选单词（题干 example 挖空 → 选项 front）
+// 规则：以本关全部卡片为题目，每题均为 4 选 1（可选题型按配置启用）。
+// 通用卡组：word2def / def2word / sentence2word / fill / listen…
+// 元素周期表：9 种专属题型（见 js/periodic.js），随卡组 source / 标签自动切换。
+// 世界各国与首都：11 种专属题型（见 js/countries.js），随 source / 标签自动切换。
 // 答错（机会用尽）时展示完整信息（front + back + example）。
 // 通关条件：整关翻转记忆完成 + 测试正确率 ≥ 80% → deck.passedLevels 置位。
 // ============================================================================
@@ -15,6 +15,8 @@ import * as hw from './hardwords.js';
 import * as cfg from './test-config.js';
 import * as engine from './test-engine.js';
 import * as engdefs from './engdefs.js';
+import * as periodic from './periodic.js'; // 元素周期表专属题型（9 种）
+import * as countries from './countries.js'; // 世界各国与首都专属题型（11 种）
 import * as kb from './keyboard.js'; // v0.7.0 移动端英文字母键盘
 import * as lang from './lang.js'; // 语种检测 / 卡组同语种判定
 import { esc, on, navigate, toast, openModal } from './ui.js';
@@ -109,11 +111,16 @@ function isFillLike(q) {
   return !!q && (q.type === 'fill' || (q.type === 'listen' && q.sub === 'back2front'));
 }
 
-/** 听音辨意 / 听写：进入题目时自动播放一次（听写题朗读背面） */
+/** 听音辨意 / 听写 / 专属听力题：进入题目时自动播放一次 */
 function attachListenAudio() {
   if (!T) return;
   const q = T.questions[T.pos];
-  if (!q || q.type !== 'listen' || q.answered) return;
+  if (!q || q.answered) return;
+  if (q.speakText) {
+    speakWord(q.speakText); // 周期表听描述 / 世界各国听国家英文名
+    return;
+  }
+  if (q.type !== 'listen') return;
   const deck = store.getDeck(T.deckId);
   const card = deck ? deck.cards.find((c) => c.id === q.cardId) : null;
   if (card) speakWord(q.sub === 'back2front' ? card.back : card.front);
@@ -180,6 +187,41 @@ export function deckMode(deck) {
 
 // 语种工具：便于 UI / 单测直接复用
 export { detectLang, langTag, isLatin } from './lang.js';
+
+/* ------------------------ 专属题型（周期表 / 世界各国） ------------------------ */
+
+/** 按题型 id 找到对应的专属模块；通用题型返回 null */
+function specialModuleForType(type) {
+  if (periodic.isPeriodicType(type)) return periodic;
+  if (countries.isCountriesType(type)) return countries;
+  return null;
+}
+
+/** 按卡组识别专属模块：周期表优先，其次世界各国 */
+function specialModuleForDeck(deck) {
+  if (periodic.isPeriodicDeck(deck)) return periodic;
+  if (countries.isCountriesDeck(deck)) return countries;
+  return null;
+}
+
+/** 题型集合对应的专属模块（同一次测试只会属于一种专属卡组） */
+function specialModuleForTypes(types) {
+  for (const type of types || []) {
+    const mod = specialModuleForType(type);
+    if (mod) return mod;
+  }
+  return null;
+}
+
+function isSpecialType(type) {
+  return !!specialModuleForType(type);
+}
+
+function specialCanBuild(card, type) {
+  const mod = specialModuleForType(type);
+  return mod ? mod.canBuild(card, type) : false;
+}
+
 
 /** 当前环境是否支持语音合成（TTS） */
 export function canSpeak() {
@@ -353,6 +395,7 @@ export function multiSenseSet(card, max = 4, { allowEnglish = true } = {}) {
  */
 export function canBuildType(card, type, { allowEnSenses = true, mode = 'cross' } = {}) {
   if (!card) return false;
+  if (isSpecialType(type)) return specialCanBuild(card, type); // 周期表 / 世界各国专属题型
   if (type === 'sentence2word') return mode !== 'same';
   if (type === 'eng_eng') return !!allowEnSenses && engSenses(card, 1).length > 0;
   if (type === 'multi_sense') return !!multiSenseSet(card, 4, { allowEnglish: !!allowEnSenses });
@@ -623,16 +666,62 @@ function buildOptions(correctText, distractorTexts) {
 /** 为某张卡决定题型（按卡片的可用性过滤：句子题需可挖空，英英/多义题需有释义） */
 function pickQuestionType(card, types, random, canSentence, { allowEnSenses = true, mode = 'cross' } = {}) {
   const eligible = (types || []).filter((t) => {
+    if (isSpecialType(t)) return specialCanBuild(card, t);
     if (t === 'sentence2word') return mode !== 'same' && canSentence;
     if (t === 'eng_eng' || t === 'multi_sense') return canBuildType(card, t, { allowEnSenses, mode });
     return true;
   });
-  const poolTypes = eligible.length ? eligible : ['word2def'];
+  const special = specialModuleForTypes(types);
+  const poolTypes = eligible.length
+    ? eligible
+    : special
+      ? special.MANDATORY_IDS.filter((t) => specialCanBuild(card, t))
+      : ['word2def'];
+  if (!poolTypes.length) return 'word2def';
   return poolTypes[Math.floor(random() * poolTypes.length)];
 }
 
+/** 专属题型（周期表 / 世界各国）：题干 / 答案 / 干扰项都来自解析后的字段 */
+function buildSpecialQuestion(card, type, { specialPools, random }) {
+  const special = specialModuleForType(type);
+  if (!special || !specialPools || !special.canBuild(card, type)) return null;
+  const fields = special.FIELDS[type];
+  if (!fields) return null;
+  const p = specialPools.byId.get(card.id) || special.parse(card);
+  const prompt = String(p[fields.prompt] || '').trim();
+  const answer = String(p[fields.answer] || '').trim();
+  if (!prompt || !answer) return null;
+  const pool = specialPools[fields.pool] || [];
+  const distractors = shuffle(
+    pool.filter(
+      (e) =>
+        e.id !== card.id &&
+        e.text !== answer &&
+        e[fields.prompt] !== prompt // 避免「同一题干对应多张卡」时把另一个正确答案当干扰项
+    )
+  )
+    .slice(0, 3)
+    .map((e) => e.text);
+  const q = {
+    cardId: card.id,
+    type,
+    prompt,
+    promptKind: type,
+    options: buildOptions(answer, distractors),
+    answered: false,
+    correct: false,
+    attempts: 0,
+    wrongPicks: [],
+    lastPicked: null
+  };
+  if (fields.listen) q.speakText = prompt; // 听力题：进入题目时朗读题干
+  return q;
+}
+
 /** 依据卡片与题型构建单道题目；不可用（如缺少英文释义）时返回 null 由调用方回退 */
-function buildOneQuestion(card, type, { defPool, wordPool, hard, random, engPool = [], zhPool = [], allowEnSenses = true, mode = 'cross' }) {
+function buildOneQuestion(card, type, ctx) {
+  if (isSpecialType(type)) return buildSpecialQuestion(card, type, ctx);
+  const { defPool, wordPool, hard, random, engPool = [], zhPool = [], allowEnSenses = true, mode = 'cross' } = ctx || {};
   const canSentence = !!(card.example && blankWord(card.example, card.front).includes('____'));
   const kind = (type === 'sentence2word' && (mode === 'same' || !canSentence)) ? 'word2def' : type;
 
@@ -792,9 +881,13 @@ function buildOneQuestion(card, type, { defPool, wordPool, hard, random, engPool
   };
 }
 
-/** 构建单题并按需回退（英英/多义题数据不足时退回 word2def），保证每题一定有题 */
+/** 构建单题并按需回退（专属题退回该卡组的必选专属题型；其它退回 word2def） */
 function buildQuestionSafe(card, type, ctx) {
-  return buildOneQuestion(card, type, ctx) || buildOneQuestion(card, 'word2def', ctx);
+  const fallback = ctx && ctx.special
+    ? ctx.special.MANDATORY_IDS.find((t) => ctx.special.canBuild(card, t))
+    : 'word2def';
+  if (!fallback) return null;
+  return buildOneQuestion(card, type, ctx) || buildOneQuestion(card, fallback, ctx);
 }
 
 /**
@@ -807,13 +900,15 @@ function buildQuestionSafe(card, type, ctx) {
  */
 export function buildQuestions(deck, levelIndex, { types = null, random = Math.random, hardIds = null, allowEnSenses = true, mode = null } = {}) {
   const learnMode = mode || lang.deckMode(deck);
-  const list = types && types.length ? types : enabledTypes();
+  const special = specialModuleForDeck(deck);
+  const list = types && types.length ? types : special ? special.enabledTypeIds(special.loadConfig().enabled) : enabledTypes();
   const levelCards = lv.cardsInLevel(deck, levelIndex);
   const hard = hardIds instanceof Set ? hardIds : new Set(hardIds || []);
   const defPool = buildOptionPool(deck); // 释义池（back + extraBacks）
   const wordPool = buildWordPool(deck); // 单词池（front）
   const engPool = buildEngPool(deck); // 英文释义池（GCIDE）
   const zhPool = buildZhPool(deck); // 中文释义池
+  const specialPools = special ? special.buildPools(deck) : null;
 
   // 困难词：前置到序列前部，并额外多出一道题（提高其在测试中的出现概率）
   const ordered = [...levelCards].sort((a, b) => Number(hard.has(b.id)) - Number(hard.has(a.id)));
@@ -826,7 +921,7 @@ export function buildQuestions(deck, levelIndex, { types = null, random = Math.r
   return quizCards.map((card) => {
     const canSentence = !!(card.example && blankWord(card.example, card.front).includes('____'));
     const type = pickQuestionType(card, list, random, canSentence, { allowEnSenses, mode: learnMode });
-    return buildQuestionSafe(card, type, { defPool, wordPool, hard, random, engPool, zhPool, allowEnSenses, mode: learnMode });
+    return buildQuestionSafe(card, type, { defPool, wordPool, hard, random, engPool, zhPool, allowEnSenses, mode: learnMode, special, specialPools });
   });
 }
 
@@ -838,17 +933,20 @@ export function buildQuestions(deck, levelIndex, { types = null, random = Math.r
  */
 export function buildQuestionsFromPlan(deck, plan, hardIds = null, random = Math.random, { allowEnSenses = true, mode = null } = {}) {
   const learnMode = mode || lang.deckMode(deck);
+  const special = specialModuleForDeck(deck);
   const hard = hardIds instanceof Set ? hardIds : new Set(hardIds || []);
   const defPool = buildOptionPool(deck);
   const wordPool = buildWordPool(deck);
   const engPool = buildEngPool(deck);
   const zhPool = buildZhPool(deck);
+  const specialPools = special ? special.buildPools(deck) : null;
   const byId = new Map((deck.cards || []).map((c) => [c.id, c]));
   const out = [];
   for (const item of plan || []) {
     const card = byId.get(item && item.cardId);
     if (!card) continue;
-    out.push(buildQuestionSafe(card, item.type, { defPool, wordPool, hard, random, engPool, zhPool, allowEnSenses, mode: learnMode }));
+    const q = buildQuestionSafe(card, item.type, { defPool, wordPool, hard, random, engPool, zhPool, allowEnSenses, mode: learnMode, special, specialPools });
+    if (q) out.push(q);
   }
   return out;
 }
@@ -861,10 +959,12 @@ function ensureSession(deckId, levelIndex) {
   if (!cards.length) return null;
   // 依据该关重刷次数微调题型比例（每次重新构建题目池 → 选项/干扰项重新随机）
   const retries = ls.getLevelStats(deckId, level).retries;
+  const special = specialModuleForDeck(deck);
+  const types = special ? special.typesForRetry(retries) : typesForRetry(retries);
   return {
     deckId,
     level,
-    questions: buildQuestions(deck, level, { types: typesForRetry(retries), hardIds: hw.hardSet(deckId) }),
+    questions: buildQuestions(deck, level, { types, hardIds: hw.hardSet(deckId) }),
     pos: 0,
     correct: 0
   };
@@ -942,6 +1042,8 @@ function feedbackHtml(q) {
 
 /** 题型名（进度行「第 N 题」后的小标签）；听写题（listen+back2front）单列 */
 function typeName(type, q = null) {
+  const special = specialModuleForType(type);
+  if (special) return special.TYPE_LABELS[type] || '专属题型';
   if (type === 'listen' && q && q.sub === 'back2front') return '听写';
   return {
     word2def: '选释义',
@@ -956,6 +1058,20 @@ function typeName(type, q = null) {
 
 /** 题干顶部小字提示 */
 function questionTag(type, card, q) {
+  if (countries.isCountriesType(type)) return countries.COUNTRIES_TYPE_HINTS[type] || '选择正确答案';
+  if (periodic.isPeriodicType(type)) {
+    return {
+      zh2symbol: '看中文名，选择对应的元素缩写',
+      zh2number: '看中文名，选择对应的原子序号',
+      zh2desc: '看中文名，选择最符合的一句话描述',
+      symbol2zh: '看元素缩写，选择对应的中文名',
+      number2zh: '看原子序号，选择对应的中文名',
+      desc2zh: '看一句话描述，选择对应的元素',
+      listenDesc2zh: '听一句话描述，选择对应的中文名',
+      zh2enName: '看中文名，选择对应的英文全名',
+      enName2zh: '看英文全名，选择对应的中文名'
+    }[type] || '选择正确答案';
+  }
   switch (type) {
     case 'def2word':
       return '看释义，选择对应的单词';
@@ -976,14 +1092,26 @@ function questionTag(type, card, q) {
   }
 }
 
-/** 听音辨意 / 听写题干：播放按钮（环境不支持 TTS 时降级显示文字） */
+/** 听音辨意 / 听写 / 听描述 / 听国家英文名题干：播放按钮（环境不支持 TTS 时降级显示文字） */
 function listenHtml(card, q = null) {
   const isBack = q && q.sub === 'back2front';
-  const word = String((isBack ? card.back : card.front) || '');
+  const isDesc = q && q.type === 'listenDesc2zh';
+  const isCountry = q && countries.isCountriesType(q.type);
+  const word = String((q && q.speakText) || (isBack ? card.back : card.front) || '');
   if (!canSpeak()) {
-    return `<p class="q-prompt">${esc(word)}</p><p class="listen-note">${isBack ? '当前环境不支持发音，已显示背面' : '当前环境不支持发音，已显示单词'}</p>`;
+    return `<p class="q-prompt">${esc(word)}</p><p class="listen-note">${
+      isDesc
+        ? '当前环境不支持发音，已显示一句话描述'
+        : isCountry
+          ? '当前环境不支持发音，已显示国家英文名'
+          : isBack
+            ? '当前环境不支持发音，已显示背面'
+            : '当前环境不支持发音，已显示单词'
+    }</p>`;
   }
-  return `<button class="listen-play" type="button" data-action="listen-play">${isBack ? '🔊 播放背面' : '🔊 播放发音'}</button>`;
+  return `<button class="listen-play" type="button" data-action="listen-play">🔊 ${
+    isDesc ? '播放描述' : isCountry ? '播放国家英文名' : isBack ? '播放背面' : '播放发音'
+  }</button>`;
 }
 
 /** 挖空例句的 HTML（____ 高亮） */
@@ -992,8 +1120,17 @@ function blankSentenceHtml(sentence, word) {
   return `<p class="q-prompt q-prompt-sent">${esc(prompt).split('____').join('<span class="q-blank">____</span>')}</p>`;
 }
 
-/** 题干主体：front 单词 / back 释义 / 挖空后的例句 / 填空题干 / 英英题 / 多义多选 */
+/** 题干主体：front 单词 / back 释义 / 挖空后的例句 / 填空题干 / 英英题 / 多义多选 / 周期表题 */
 function questionPromptHtml(type, card, q) {
+  if (isSpecialType(type)) {
+    if (q && q.speakText) return listenHtml(card, q);
+    const longText =
+      type === 'zh2desc' ||
+      type === 'desc2zh' ||
+      type === 'enName2zh' ||
+      countries.isCountriesType(type);
+    return `<p class="q-prompt${longText ? ' q-prompt-def' : ''}">${esc(q.prompt)}</p>`;
+  }
   if (type === 'def2word') {
     return `<p class="q-prompt q-prompt-def">${esc(card.back)}</p>`;
   }
@@ -1017,12 +1154,35 @@ function questionPromptHtml(type, card, q) {
   return `<p class="q-prompt">${esc(card.front)}</p>`;
 }
 
-/** 答错（机会用尽）后展示的完整信息卡：front + back + example（+ 例句翻译） */
-function fullInfoHtml(card) {
+/** 答错（机会用尽）后展示的完整信息卡：专属卡组显示各自字段，普通卡显示 front / back / back2 / back3 / example */
+function fullInfoHtml(card, deck) {
+  if (countries.isCountriesDeck(deck)) {
+    const c = countries.parseCountry(card);
+    return `
+    <div class="quiz-full-info">
+      <div class="fi-row"><span class="fi-label">国家</span><span class="fi-val">${esc(c.countryZh)}</span></div>
+      <div class="fi-row"><span class="fi-label">国家英文</span><span class="fi-val">${esc(c.countryEn)}</span></div>
+      <div class="fi-row"><span class="fi-label">首都</span><span class="fi-val">${esc(c.capitalZh)}</span></div>
+      <div class="fi-row"><span class="fi-label">首都英文</span><span class="fi-val">${esc(c.capitalEn)}</span></div>
+    </div>`;
+  }
+  if (periodic.isPeriodicDeck(deck)) {
+    const p = periodic.parseElement(card);
+    return `
+    <div class="quiz-full-info">
+      <div class="fi-row"><span class="fi-label">元素</span><span class="fi-val">${esc(p.zh)}</span></div>
+      <div class="fi-row"><span class="fi-label">缩写</span><span class="fi-val">${esc(p.symbol)}</span></div>
+      <div class="fi-row"><span class="fi-label">英文全名</span><span class="fi-val">${esc(p.enName)}</span></div>
+      <div class="fi-row"><span class="fi-label">原子序号</span><span class="fi-val">${esc(p.atomicNumber)}</span></div>
+      <div class="fi-row"><span class="fi-label">简介</span><span class="fi-val">${esc(p.description)}</span></div>
+    </div>`;
+  }
   return `
   <div class="quiz-full-info">
     <div class="fi-row"><span class="fi-label">单词</span><span class="fi-val">${esc(card.front)}</span></div>
     <div class="fi-row"><span class="fi-label">释义</span><span class="fi-val">${esc(card.back)}</span></div>
+    ${card.back2 ? `<div class="fi-row"><span class="fi-label">补充</span><span class="fi-val">${esc(card.back2)}</span></div>` : ''}
+    ${card.back3 ? `<div class="fi-row"><span class="fi-label">简介</span><span class="fi-val">${esc(card.back3)}</span></div>` : ''}
     ${card.example ? `<div class="fi-row"><span class="fi-label">例句</span><span class="fi-val fi-ex">${esc(card.example)}</span></div>` : ''}
     ${card.exampleZh ? `<div class="fi-row"><span class="fi-label">翻译</span><span class="fi-val fi-ex">${esc(card.exampleZh)}</span></div>` : ''}
   </div>`;
@@ -1145,7 +1305,7 @@ function questionHtml() {
         ${type === 'word2def' && card.example ? `<p class="q-ex">${esc(card.example)}</p>` : ''}
       </div>
       ${feedbackHtml(q)}
-      ${q.answered && !q.correct ? fullInfoHtml(card) : ''}
+      ${q.answered && !q.correct ? fullInfoHtml(card, deck) : ''}
       ${isFillLike(q) ? fillInputHtml(q, card) : optionsHtml(q)}
     </div>`;
 }
@@ -1283,37 +1443,52 @@ export function renderDeckTestConfig(root, deckId) {
     return;
   }
   const words = deckWordCount(deck);
-  const enabled = words >= cfg.MIN_QUESTIONS;
+  const isPeriodic = periodic.isPeriodicDeck(deck);
+  const isCountries = countries.isCountriesDeck(deck);
+  const special = isPeriodic ? periodic : isCountries ? countries : null;
+  const isSpecial = !!special;
+  const minWords = isSpecial ? 2 : cfg.MIN_QUESTIONS;
+  const enabled = words >= minWords;
   const conf = cfg.loadConfig();
+  const sconf = special ? special.loadConfig() : null;
+  const activeConf = special ? sconf : conf;
   const count = enabled ? conf.count : cfg.DEFAULT_QUESTIONS;
   const prio = engine.priorityCount(deckId);
   const prog = engine.loadProgress(deckId);
   const gap = Math.max(1, Math.floor(count / Math.max(1, words)));
   const learnMode = lang.deckMode(deck); // 同语种卡组：题型名称改为中性表述
+  const unit = isPeriodic ? '种元素' : isCountries ? '个国家' : '词';
+  const minUnit = isPeriodic ? '种元素' : isCountries ? '个国家' : '个词';
+  const countNoun = isPeriodic ? '元素数' : isCountries ? '国家数' : '词数';
 
   const presetBtns = cfg.PRESETS.map((p) => {
     const on = p.count === count;
     return `<button class="btn ${on ? 'btn-primary' : 'btn-ghost'}" data-action="deck-test-preset" data-id="${esc(deckId)}" data-count="${p.count}" ${enabled ? '' : 'disabled'}>${p.label} · ${p.count} 题</button>`;
   }).join('');
 
-  const weightRows = cfg.QUESTION_TYPES.map((t) => {
-    const label = cfg.typeLabel(t, learnMode);
+  const weightTypes = special
+    ? special.MANDATORY_TYPES
+    : cfg.QUESTION_TYPES.map((t) => ({ id: t, label: cfg.typeLabel(t, learnMode) }));
+  const weightRows = weightTypes.map((o) => {
+    const t = o.id;
+    const label = o.label;
     return `
     <div class="weight-row">
-      <span class="weight-name">${esc(label)}</span>
-      <input id="wt-input-${t}" class="test-range weight-range" type="range" min="0" max="100" step="5" value="${conf.weights[t]}" data-action="deck-test-weight" data-type="${t}" data-id="${esc(deckId)}" aria-label="${esc(label)} 比例">
-      <b id="wt-val-${t}">${conf.weights[t]}%</b>
+      <span class="weight-name${special ? ' weight-name-wide' : ''}">${esc(label)}</span>
+      <input id="wt-input-${t}" class="test-range weight-range" type="range" min="0" max="100" step="5" value="${activeConf.weights[t]}" data-action="deck-test-weight" data-type="${t}" data-id="${esc(deckId)}" aria-label="${esc(label)} 比例">
+      <b id="wt-val-${t}">${activeConf.weights[t]}%</b>
     </div>`;
   }).join('');
 
-  // 可选题型（默认关闭）：开关 + 说明 + 启用后的第 6/7 个滑块
-  const optionalRows = cfg.OPTIONAL_TYPES.map((o) => {
-    const on = !!conf.enabled[o.id];
-    const w = conf.weights[o.id] || 0;
+  // 可选题型（默认关闭）：开关 + 说明 + 启用后的滑块
+  const optionalDefs = special ? special.OPTIONAL_TYPES : cfg.OPTIONAL_TYPES;
+  const optionalRows = optionalDefs.map((o) => {
+    const on = !!activeConf.enabled[o.id];
+    const w = activeConf.weights[o.id] || 0;
     return `
     <div class="weight-item${on ? ' is-on' : ''}">
       <div class="weight-row">
-        <span class="weight-name">${esc(o.label)}</span>
+        <span class="weight-name${special ? ' weight-name-wide' : ''}">${esc(o.label)}</span>
         <label class="weight-toggle">
           <input type="checkbox" data-action="deck-test-type-toggle" data-type="${o.id}" data-id="${esc(deckId)}" ${on ? 'checked' : ''}>
           <span>${on ? '已启用' : '启用'}</span>
@@ -1325,7 +1500,8 @@ export function renderDeckTestConfig(root, deckId) {
     </div>`;
   }).join('');
 
-  const weightTotal = cfg.ALL_TYPES.reduce((s, t) => s + (conf.weights[t] || 0), 0);
+  const allWeightTypes = special ? special.TYPE_IDS : cfg.ALL_TYPES;
+  const weightTotal = allWeightTypes.reduce((s, t) => s + (activeConf.weights[t] || 0), 0);
   const weightEditor = `
     <details class="weight-box" open>
       <summary>题型比例（合计 <b id="wt-total">${weightTotal}%</b>）</summary>
@@ -1335,14 +1511,20 @@ export function renderDeckTestConfig(root, deckId) {
         ${optionalRows}
       </div>
       <div class="weight-foot"><button class="btn-link" data-action="deck-test-weight-reset" data-id="${esc(deckId)}">恢复默认（已启用题型等比平分）</button></div>
-      <p class="hint">拖动任一题型，其余已启用题型按当前比例自动分摊，合计始终保持 100%；启用可选题型后会与其余题型等比平分（如 6 种各约 1/6 ≈ 16.7%）。</p>
+      <p class="hint">${
+        isPeriodic
+          ? '周期表卡组默认启用 4 种必选题型（各 25%）；开启可选题型后会与其余已启用题型等比平分，拖动滑块可调整比例，合计始终 100%。'
+          : isCountries
+            ? '世界各国卡组默认启用 4 种「国家 ↔ 首都」必选题型（各 25%）；开启中英对照 / 听力等可选题型后会与其余已启用题型等比平分，拖动滑块可调整比例，合计始终 100%。'
+            : '拖动任一题型，其余已启用题型按当前比例自动分摊，合计始终保持 100%；启用可选题型后会与其余题型等比平分（如 6 种各约 1/6 ≈ 16.7%）。'
+      }</p>
     </details>`;
 
   root.innerHTML = `
     <div class="view">
       <div class="section-head">
         <h2 class="screen-title">整卡组测试</h2>
-        <span class="sub-note">${esc(deck.name)} · ${words} 词</span>
+        <span class="sub-note">${esc(deck.name)} · ${words} ${unit}</span>
       </div>
       ${
         enabled
@@ -1353,7 +1535,7 @@ export function renderDeckTestConfig(root, deckId) {
                 <input id="deck-test-range" class="test-range" type="range" min="${cfg.MIN_QUESTIONS}" max="${cfg.MAX_QUESTIONS}" step="${cfg.STEP_QUESTIONS}" value="${count}" data-action="deck-test-count" data-id="${esc(deckId)}" aria-label="题数">
                 <b id="deck-test-count-val">${count}</b>
               </div>
-              <p class="hint">范围 ${cfg.MIN_QUESTIONS}~${cfg.MAX_QUESTIONS} 题（步长 ${cfg.STEP_QUESTIONS}）。题数超过卡组词数时自动循环出题：每个词至少出现一次、同词间隔 ≥ ${gap} 题、且优先换题型。</p>
+              <p class="hint">范围 ${cfg.MIN_QUESTIONS}~${cfg.MAX_QUESTIONS} 题（步长 ${cfg.STEP_QUESTIONS}）。题数超过卡组${countNoun}时自动循环出题：每张卡至少出现一次、同卡间隔 ≥ ${gap} 题、且优先换题型。</p>
               <div class="tag-row">${weightEditor}</div>
               ${prio ? `<p class="hint">优先池：${prio} 道错题将优先占用约 50% 配额</p>` : ''}
               <button class="btn btn-test btn-lg btn-block" data-action="deck-test-start" data-id="${esc(deckId)}" data-count="${count}">开始测试 · ${count} 题</button>
@@ -1361,13 +1543,13 @@ export function renderDeckTestConfig(root, deckId) {
             </section>`
           : `<section class="panel glass">
               <h3 class="panel-title">暂不可用</h3>
-              <p class="panel-desc">至少需要 ${cfg.MIN_QUESTIONS} 个词才能开始测试（当前 ${words} 个）。</p>
+              <p class="panel-desc">至少需要 ${minWords} ${minUnit}才能开始测试（当前 ${words} ${unit}）。</p>
               <div class="preset-row">${presetBtns}</div>
               <div class="test-count-row">
                 <input class="test-range" type="range" min="${cfg.MIN_QUESTIONS}" max="${cfg.MAX_QUESTIONS}" step="${cfg.STEP_QUESTIONS}" value="${count}" disabled aria-label="题数（不可用）">
                 <b>${count}</b>
               </div>
-              <button class="btn btn-disabled btn-block" disabled>至少需要 ${cfg.MIN_QUESTIONS} 个词才能开始测试</button>
+              <button class="btn btn-disabled btn-block" disabled>至少需要 ${minWords} ${minUnit}才能开始测试</button>
             </section>`
       }
     </div>`;
@@ -1423,6 +1605,8 @@ export function startDeckTest(deckId, count, { onlyWrong = false } = {}) {
   const deck = store.getDeck(deckId);
   if (!deck) return;
   const conf = cfg.loadConfig();
+  const special = specialModuleForDeck(deck);
+  const sconf = special ? special.loadConfig() : null;
   let pool = deck;
   let n;
   if (onlyWrong) {
@@ -1445,9 +1629,10 @@ export function startDeckTest(deckId, count, { onlyWrong = false } = {}) {
   const learnMode = lang.deckMode(deck);
   const plan = engine.samplePlan(pool, {
     count: n,
-    weights: conf.weights,
-    enabled: conf.enabled, // 可选题型（英英选择 / 多义多选）启用后才参与抽题
-    omitTypes: learnMode === 'same' ? ['sentence2word'] : [],
+    weights: special ? sconf.weights : conf.weights,
+    enabled: special ? null : conf.enabled, // 可选题型（英英选择 / 多义多选）启用后才参与抽题
+    types: special ? special.enabledTypeIds(sconf.enabled) : null, // 周期表 / 世界各国专属题型
+    omitTypes: special ? [] : learnMode === 'same' ? ['sentence2word'] : [],
     priorityIds: onlyWrong ? new Set() : engine.getPriorityIds(deckId),
     canType: (card, type) => canBuildType(card, type, { allowEnSenses, mode: learnMode })
   });
@@ -1674,7 +1859,8 @@ on('listen-play', () => {
   if (!q) return;
   const deck = store.getDeck(T.deckId);
   const card = deck ? deck.cards.find((c) => c.id === q.cardId) : null;
-  if (card) speakWord(q.sub === 'back2front' ? card.back : card.front);
+  const text = q.speakText || (card ? (q.sub === 'back2front' ? card.back : card.front) : '');
+  if (text) speakWord(text);
 });
 
 /** 填空「提示」按钮：多揭示一个字母（不消耗作答机会，并保留已输入内容） */
@@ -1814,19 +2000,35 @@ on('deck-test-again', (el) => startDeckTest(el.dataset.id, Number(el.dataset.cou
 /* 错题专项再练：只抽优先池里的错题 */
 on('deck-test-wrong', (el) => startDeckTest(el.dataset.id, null, { onlyWrong: true }));
 
-/* 题型比例：恢复默认（已启用题型等比平分；默认 5 种 → 各 20%） */
+/* 题型比例：恢复默认（已启用题型等比平分；专属卡组默认 4 种各 25%） */
 on('deck-test-weight-reset', (el) => {
-  const conf = cfg.loadConfig();
-  const next = cfg.resetDefaults(conf.enabled);
-  cfg.saveConfig({ weights: next.weights, enabled: next.enabled });
+  const deck = store.getDeck(el.dataset.id);
+  const special = specialModuleForDeck(deck);
+  if (special) {
+    const cur = special.loadConfig();
+    const next = special.resetDefaults(cur.enabled);
+    special.saveConfig({ weights: next.weights, enabled: next.enabled });
+  } else {
+    const conf = cfg.loadConfig();
+    const next = cfg.resetDefaults(conf.enabled);
+    cfg.saveConfig({ weights: next.weights, enabled: next.enabled });
+  }
   rerenderConfig(el.dataset.id);
 });
 
-/* 启用 / 停用可选题型（英英选择 / 多义多选）：启用后与其余题型等比平分 */
+/* 启用 / 停用可选题型：启用后与其余题型等比平分 */
 on('deck-test-type-toggle', (el) => {
-  const conf = cfg.loadConfig();
-  const next = cfg.setTypeEnabled(conf.weights, conf.enabled, el.dataset.type, !!el.checked);
-  cfg.saveConfig({ weights: next.weights, enabled: next.enabled });
+  const deck = store.getDeck(el.dataset.id);
+  const special = specialModuleForDeck(deck);
+  if (special) {
+    const conf = special.loadConfig();
+    const next = special.setTypeEnabled(conf.weights, conf.enabled, el.dataset.type, !!el.checked);
+    special.saveConfig({ weights: next.weights, enabled: next.enabled });
+  } else {
+    const conf = cfg.loadConfig();
+    const next = cfg.setTypeEnabled(conf.weights, conf.enabled, el.dataset.type, !!el.checked);
+    cfg.saveConfig({ weights: next.weights, enabled: next.enabled });
+  }
   rerenderConfig(el.dataset.id);
 });
 
@@ -1834,6 +2036,24 @@ on('deck-test-type-toggle', (el) => {
 on(
   'deck-test-weight',
   (el) => {
+    const deck = store.getDeck(el.dataset.id);
+    const special = specialModuleForDeck(deck);
+    if (special) {
+      const conf = special.loadConfig();
+      const weights = special.adjustWeights(conf.weights, el.dataset.type, Number(el.value), conf.enabled);
+      special.saveConfig({ weights });
+      special.enabledTypeIds(conf.enabled).forEach((t) => {
+        const lab = document.getElementById('wt-val-' + t);
+        if (lab) lab.textContent = weights[t] + '%';
+        if (t !== el.dataset.type) {
+          const inp = document.getElementById('wt-input-' + t);
+          if (inp) inp.value = String(weights[t]);
+        }
+      });
+      const tot = document.getElementById('wt-total');
+      if (tot) tot.textContent = special.TYPE_IDS.reduce((s, t) => s + (weights[t] || 0), 0) + '%';
+      return;
+    }
     const conf = cfg.loadConfig();
     const weights = cfg.adjustWeights(conf.weights, el.dataset.type, Number(el.value), conf.enabled);
     cfg.saveConfig({ weights });
