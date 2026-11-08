@@ -1,8 +1,19 @@
 # Progress — 完成度与遗留
 
-> 更新时间：2026-10-10 ｜ APP `v0.9.7` / SW `v1.21.0` ｜ **4095 条校验全绿**
+> 更新时间：2026-11-08 ｜ APP `v0.10.0` / SW `v1.22.0` ｜ **语种自适应已交付**
 
 ## 已交付（按版本）
+
+**v0.10.0（测试题型按卡组语种关系自适应）**
+- 新增 `js/lang.js`：`detectLang` / `isLatin` / `langTag` / `deckLang` / `deckMode`（纯函数，无 DOM）。
+- 跨语种卡组（英-中 / 日-中 / 德-中…）保留 5 种基础题型；同语种卡组（中文-中文…）只保留 4 种：无 `sentence2word`，`listen` 变听写（听背面填正面），`fill` 正面/背面双向挖空。
+- `js/test-engine.js` 新增 `omitTypes` / `basics`；`js/test-config.js` 新增 `typeLabel(id, mode)`；`js/add-words.js` 的 `detectLang` 复用 `lang.js`（`hanAs:'ja'` 保持查词路由）。
+- 新增 `scripts/test-lang.mjs`（77 项断言）；`smoke-dom` / `verify-assets` / `test-fill` / `test-listen` 等既有回归全绿（`verify-assets` 已同步版本断言与 README DAV 方案说明）。
+- **明牌配对长释义截取**：`js/match.js` 新增 `DEF_MAX_CHARS = 24` / `shortText`（按码点计数，优先截到逗号 / 句号，前端找不到自然停顿才往后看 8 字，最后才硬截 + `…`）；`buildTiles` 的释义牌改用截取文案，并把全文存进 `fullText`；牌面渲染 `title` + `aria-label` 用全文（悬停 / 读屏不丢信息）。中 / 英 / 日 / emoji 同一套规则，**同语种与跨语种卡组都适用**。`test-match` 292 → **312**（新增：中 / 英 / 日长释义、无标点硬截、emoji 码点、DOM 截取与全文属性）。
+- 已知限制：拉丁字母语种无重音字符时统一归 `en`，「法-英 / 德-英」可能被判同语种。
+
+**v0.9.x（题型联动修复）**
+- v0.9.1：没开「英英选择」时不出英文题（多义多选不再回退 GCIDE）。
 
 **v0.2 / v0.3（早期）**
 - 卡片模型、翻转记忆（键盘/鼠标/触摸三端一致）、艾宾浩斯调度（10 分钟 → 60 天）
@@ -229,7 +240,6 @@
 - **存储层配套**：卡片 / 卡组新增 `updatedAt`（`CARD_CONTENT_KEYS` 判定 → 只有内容编辑才推进，纯学习动作不推进）；`deckMetaOf` 带上 `updatedAt`；`createDeck/addCard/addManyCards/updateDeck/togglePause/markLevelPassed/resplitDeck/rearrangeDeck/seedBuiltinDeck` 全部打时间戳；`applySyncDecks()` = **唯一合并落库入口**（保留 id、`revlog` 一起回写、删除本地多出来的卡组/卡片）；`resetAll()` 连墓碑一起清
 - **设置页 UI**：新增「多端同步（WebDAV）」区块（服务器地址 / 用户名 / 密码 / 同步目录 / 记住密码 / 打开应用时自动同步 / 数据变更后自动同步 + 测试连接 / 立即同步 / 保存设置 / 清除密码 + 状态区（成功/失败配色 + 上次时间 + 本机标识）+ 跨域提示），动作 `sync-save` / `sync-toggle` / `sync-clear` / `sync-test` / `sync-now`；`app.js` 启动 `sync.initAutoSync()`、`pagehide` 时 `sync.notifyDataChanged()`；「关于」区块同步改写为「默认不上传任何服务器」
 - **接线**：`js/app.js` `APP_VERSION = 'v0.8.0'`；`sw.js` `VERSION = 'v1.13.0'` ＋ PRECACHE 增 `./js/webdav.js` / `./js/sync.js`；`css/style.css` 新增 `.sync-grid` / `.sync-row`（窄屏单列）/ `.sync-check` / `.sync-status`（is-good / is-bad）/ `.sync-actions`
-- **「每关词数」也能双向同步（v0.9.0 顺手修掉的老问题）**：以前合并规则是「设置取快照 `savedAt` 更新的一方」，但本地快照的 `savedAt` 恒等于 `now` → **远端永远赢不了**（等于单向）。现在 `store` 给全局设置加了 `settings.updatedAt`（`setSetting('cardsPerLevel', …)` 只在值真的变了时推进），合并改为**优先比它**、老数据没这个字段才退回 `savedAt`；`applySyncDecks()` 落库时把合并结果里的 `updatedAt` 一起写回（否则「本机刚采纳」会被当成「本机刚改」）。
 - 测试：新增 `scripts/test-sync.mjs`（**103** 条：WebDAV（URL/认证/五个动作/错误映射/超时/无 fetch）+ 合并内核（卡片内容与进度分治 / 日志并集 / 墓碑与复活 / 卡组与快照合并 / 幂等 / 统计）+ 快照往返（buildSnapshot → resetAll → applySyncDecks → id/进度/revlog 全还原）+ 墓碑 TTL + 配置（记住密码与否 / 清凭据 / 状态文案）+ 自动同步接线）；`smoke-dom` 275 → **289**（设置页同步区块渲染 + 无配置不发请求 + 保存/测试连接/立即同步的请求序列与结果落盘）；`test-a11y` 124 → **137**（同步表单 label/type=password/checkbox/原生 button/状态区/esc 转义/窄屏单列/危险色变量）；`verify-assets` 482 → **522**（第 11 节：两个模块的存在与 PRECACHE、导出符号、字段语义、接线与 CSS）
 
 **v0.9.0** 多端同步增强：增量传输（索引 + 分卡组文件）+ 同步前预览差异 + 「本机专用」卡组
@@ -241,85 +251,19 @@
 - **本机专用卡组（`deck.syncLocal`）**：`isLocalOnlyDeck` / `localOnlyDeckIds`；`buildSnapshot` 跳过它并**过滤它（及其卡片）的墓碑**；`signature()` 不计它（改它不触发自动同步）；落库时以 `keepDeckIds` 传给 `applySyncDecks`（**不覆盖也不删除**）；`deleteDeck` / `deleteCard(s)` 对它是**不记墓碑**（删除不外传）；`deckPayload` 不外带该标记（每台设备各自选择）；`DB` 侧 `normalizeDeck` / `deckMetaOf` / `createDeck` / `updateDeck` 都带上它
 - **UI**：`app.js` 设置页新增「预览差异」按钮 + `syncPreviewModal`（`ui.openModal({ wide: true })`：本机/网盘/合并后规模 `sync-counts`、逐卡组变化表 `sync-table`（`th scope=col`）、冲突列表 `sync-conflict-list`、传输量与「只读」说明；「开始同步」与「立即同步」共用 `runSync()`）、「已排除 N / M 个本机专用卡组」提示、网盘文件布局说明；`decks.js` 卡组编辑弹窗 `name="syncLocal"` 勾选框 + 卡组页 ⋮ 菜单 `deck-local` 开关 + 卡组卡片 / 详情页 `.pill-local` 标记
 - **接线**：`js/app.js` `APP_VERSION = 'v0.9.0'`；`sw.js` `VERSION = 'v1.14.0'`；`css/style.css` 新增 `.pill-local` / `.sync-note` / `.sync-counts` / `.sync-table` / `.sync-conflict-list` / `.modal-wide`（窄屏 `.sync-counts` 单列）
-- 测试：`test-sync` 103 → **169**（新增**假 WebDAV 服务端桩** `makeServer`：首次全量上传 / 空索引不产生 prev / **数据没变 → 零卡组传输** / **只改一个卡组 → 只 PUT 它** / 另一端新增卡组 → **只 GET 它** / 墓碑删除 + 远端残留文件被 DELETE / 本机专用不上传·不被删·不外传墓碑·不影响指纹 / **预览只发 GET 且冲突来源正确** / **v1 单文件快照自动升级**）；`smoke-dom` 289 → **305**（设置页「预览差异」按钮与提示、卡组页「本机专用」标记、卡组菜单开关、编辑弹窗勾选框选中态、预览弹窗内容与「只发 GET、不改数据」）；`test-a11y` 137 → **146**（预览按钮 / openModal 复用 / 表格 `scope=col` / modal-wide / 只读说明 / 本机专用 checkbox 与文字标记）；`verify-assets` 522 → **558**（第 12 节：常量、指纹、manifest、增量读写、预览、本机专用、UI 接线与 CSS）
+- 测试：`test-sync` 103 → **161**（新增**假 WebDAV 服务端桩** `makeServer`：首次全量上传 / 空索引不产生 prev / **数据没变 → 零卡组传输** / **只改一个卡组 → 只 PUT 它** / 另一端新增卡组 → **只 GET 它** / 墓碑删除 + 远端残留文件被 DELETE / 本机专用不上传·不被删·不外传墓碑·不影响指纹 / **预览只发 GET 且冲突来源正确** / **v1 单文件快照自动升级**）；`smoke-dom` 289 → **305**（设置页「预览差异」按钮与提示、卡组页「本机专用」标记、卡组菜单开关、编辑弹窗勾选框选中态、预览弹窗内容与「只发 GET、不改数据」）；`test-a11y` 137 → **146**（预览按钮 / openModal 复用 / 表格 `scope=col` / modal-wide / 只读说明 / 本机专用 checkbox 与文字标记）；`verify-assets` 522 → **558**（第 12 节：常量、指纹、manifest、增量读写、预览、本机专用、UI 接线与 CSS）
 - **限制（已在 README 说明）**：增量粒度是**整卡组**（改一张卡重传该卡组文件）；索引每次同步都会刷新；不做三方合并（但预览能提前看到冲突取哪一端）
 
-**v0.9.1** 修复「整卡组测试只勾『多义多选』（没勾『英英选择』）却出英文题面 + 英文选项」
-- **根因**：`test.js` 的 `multiSenseSet()` 在卡片**中文释义 < 2 条**时**无条件回退 GCIDE 英文释义** → 多义题变成「英文单词 + 英文释义选项」，与用户「没开英英选择」的预期矛盾
-- **出题层**：`multiSenseSet(card, max = 4, { allowEnglish = true })` —— `allowEnglish:false`（默认没开英英选择）时中文不足 2 条直接返回 `null`（不出这道题）；`buildQuestionSafe` 随之回退到基础题型（不会变成英文题）；`buildOneQuestion` 的 `eng_eng` 分支在 `allowEnSenses === false` 时也直接返回 `null`（防御）
-- **口径统一**：新增 `canBuildType(card, type, { allowEnSenses })`（基础题型恒可用；`eng_eng` 需英文释义**且**允许英文题；`multi_sense` 需 ≥2 条同语言释义），`pickQuestionType` 与抽题计划共用它，避免「计划能派 / 出题又回退」
-- **抽题计划（`js/test-engine.js`）**：`samplePlan({ canType })` + `assignTypesByCard(seq, typeList, random, { byId, canType })` —— 候选里**有可用**的只在可用的里挑；**都不可用**时（例：只剩多义槽位但这张卡没有 ≥2 条中文释义）改用一个**基础题型**顶上（挑当前派得最少的，分布均衡），把那个槽位**留给后面合适的卡**（旧做法是硬塞 → 出题回退 → 题型分布失衡）
-- **接线**：`startDeckTest` 以 `allowEnSenses = !!conf.enabled.eng_eng` 同时传给 `samplePlan(canType)` 与 `buildQuestionsFromPlan({ allowEnSenses })`（两条链路一致，所以「预览题型比例 = 实际题型」）；`buildQuestions`（关卡测试）也接受该参数
-- **可自查的文案**：`test-config.js` 的 `OPTIONAL_TYPES` 说明改为「多义多选：勾选该词的全部中文释义；中文释义不足 2 条的词不出此题型，开启「英英选择」后才会用 GCIDE 英文释义兜底」「英英选择：…开启后「多义多选」在中文释义不足时会用 GCIDE 英文释义兜底」
-- **接线**：`js/app.js` `APP_VERSION = 'v0.9.1'`；`sw.js` `VERSION = 'v1.15.0'`
-- 测试：`test-multi-sense` 39 → **56**（allowEnglish 三态 / canBuildType 六条 / 回退成基础题型 / 选项全中文 / 配置文案）；`test-deck-test` 92 → **99**（`assignTypesByCard` 可用性过滤、借补基础题型、池里只剩多义题时留给后面的卡、6 组随机种子端到端「没有任何英文多义题」、计划与出题完全一致）；`smoke-dom` 305 → **313**（注入 GCIDE 释义后跑真实 `startDeckTest`：只开多义多选 → 20 题里一道英文题都没有；再开英英选择 → `eng_eng` / `multi_sense(en)` 才回来）；`verify-assets` 558 → **574**（第 13 节：判定口径 / 抽题接线 / 文案 / 测试覆盖）
-- 语义约定：**「英英选择」是唯一的「允许出英文题」开关**；`allowEnSenses` 由它派生，抽题与出题两条链路必须传同一个值（`systemPatterns.md` 第 25 条）
-
-**v0.9.2** 同步「连不上也说得清」：错误分类 + 逐步诊断 + 可复制报告（不再只报 `request failed`）
-- **根因**：`webdav.request()` 在 fetch 抛错时统一抛 `new WebdavError('request failed', { status: 0, cause })` —— 文案把「谁、哪个地址、为什么」全丢了；`explainError()` 又不认这句话、也不读 `cause`，于是界面只剩一句英文（用户填了坚果云应用密码也看不出问题在哪）
-- **错误分类**：`WebdavError` 新增 `kind`（`timeout` / `offline` / `mixed-content` / `network`）+ `causeText()` 输出浏览器原始异常（`TypeError: Failed to fetch`）；`request()` 文案 = `连不上服务器（GET https://…）— TypeError: Failed to fetch`
-- **解释更可操作**：`explainError()` 给出「原因 + 地址 + 浏览器原始信息 + 怎么办」；HTTP 状态文案补上坚果云等场景的具体建议（401 → 账号/应用密码；403 → 目录只读；404 → 缺 `/dav/`）；**HTTPS 页面 + `http://` 地址**直接判为混合内容（连请求都不发）
-- **`diagnose()` 逐步探测（永不抛错）**：解析地址 → 环境（混合内容 / 离线）→ **基础连通性**（`GET` 不带认证/自定义头 = 不触发预检的简单请求）→ **跨域预检**（`PROPFIND` 不带认证）→ **带认证的 `PROPFIND`**（测试连接本体）；据此给出可执行结论：连不上服务器 / 跨域预检被拒（CORS）/ 账号密码错 / 无权限 / 路径不对
-- **`setupHints()`**：自查清单（坚果云专项：端点 `https://dav.jianguoyun.com/dav/`、用户名 = 注册邮箱、密码 = 应用密码；通用：https 混用、CORS、广告拦截与代理、换网络）；**`diagnoseReport()`**：可复制的纯文本报告（结论 + 逐步结果 + 环境信息），**绝不含密码**
-- **UI**：设置页新增 **「诊断连接」** 按钮 + `syncDiagModal`（`openModal({ wide: true })`：结论 + `diag-list` 步骤 + 自查清单 + 「复制诊断信息」）；**「测试连接」/「立即同步」/「预览差异」失败（无 HTTP 状态）时自动跑诊断**；设置页说明与跨域提示同步改写
-- **接线**：`js/app.js` `APP_VERSION = 'v0.9.2'`；`sw.js` `VERSION = 'v1.16.0'`；`css/style.css` 新增 `.diag-list` / `.diag-step(.is-ok/.is-fail)` / `.diag-mark` / `.diag-body` / `.diag-hints`
-- 测试：`test-sync` 169 → **198**（错误分类 / 原始信息保留 / 混合内容不发请求 / diagnose 六种场景 / 报告不含密码 / 清单针对性）；`smoke-dom` 313 → **326**（诊断按钮、跨域与「连接正常」两种结论、测试连接失败自动弹诊断、页面不出现密码）；`test-a11y` 146 → **154**；`verify-assets` 574 → **593**
-- **顺手修掉一个存储层真实竞态**：`store.flushPending()` 原来**一进函数就清空 pending 队列**再 `await` 写 IndexedDB → 中间存在「pending 里没有、IDB 里也还没写」的空窗，期间 `revlogsOfDeck()`（`sync.buildSnapshot()` 也走它）会**漏读刚产生的复习日志**（高负载下 `test-import-file` 偶发失败正是它）。现在改为「取快照 → 写完后只删掉快照里那些**未被再次修改**的条目」，空窗消失；`test-idb-store` 80 → **83**（`test-idb-store` 新增「flushPending 进行中也能读到刚写的日志」守卫）
-
-**v0.9.7** Cloudflare Pages Function 同源反代（`functions/dav/[[path]].js`）+ 与 Worker 的关系说明
-- **动机**：用户用的是**部署版（https）**，仍在 CORS 卡住；「本机代理」不适用、Worker 又要另建一个云服务 —— 补一条「用自己的 Pages 站点」的零第三方方案
-- **`functions/dav/[[path]].js`**（Pages 自动把 `/dav/*` 变成接口）：与页面**同源** → 不做跨域检查；未配置 `DAV_TARGET` → **501 + 配置指引**；OPTIONS→204；白名单转发头（Authorization/Depth/If-None-Match/…）+ 请求体；回传 ETag/Content-Type/WWW-Authenticate 且**不透传 set-cookie**；`buildTargetUrl()` 拒绝 `..`，**任何输入都只在固定 `DAV_TARGET` 主机内转发**（不会变成开放代理）
-- **用法**：部署仓库（含该文件）→ Pages 设 `DAV_TARGET = https://dav.jianguoyun.com/dav` → 设置页「服务器地址」填 `https://你的站点域名/dav`
-- **`scripts/test-dav-fn.mjs`**（新，21 条）：纯逻辑单测（直接 `onRequest` + 桩 fetch，**不需要真部署**）
-- **诊断**：非本机场景的 `fixSteps`/`setupHints` 同时提示这条（与 Worker 并列）
-- **接线**：`js/app.js` `APP_VERSION = 'v0.9.7'`；`sw.js` `VERSION = 'v1.21.0'`
-- 测试：`test-sync` 249 → **251**；新增脚本 21 条；`verify-assets` 650 → **664**（**34 个脚本 / 4095 条校验全绿**）
-
-**v0.9.6** 本机「同源代理」（`scripts/dav-proxy.py`，零账号）+ http 页面警告
-- **动机**：用户报告 `页面协议：http:`（本机打开）—— 网盘缺 CORS 时，**最省事的不是去云上建 Worker，而是让页面与网盘同源**
-- **`scripts/dav-proxy.py`**（只用标准库）：同时是**静态站点服务器 + WebDAV 代理**；`/dav/...` → `--target`（默认 `https://dav.jianguoyun.com/dav`）的 `/...`；OPTIONS→204；转发 Authorization/Depth/If-None-Match/Content-Type/请求体；4xx·5xx（含 401 `WWW-Authenticate`）如实回传；不可达 → 502 + 可读原因；拒绝 `..`；`flush=True` 打印用法
-- **用法**：`python3 scripts/dav-proxy.py` → 打开 `http://localhost:8080/` → 服务器地址填 `http://localhost:8080/dav`（可替代 `python3 -m http.server`）
-- **`scripts/test-dav-proxy.mjs`**（新，21 条）：Node 起假 WebDAV + `spawn` 真 Python 代理，端到端校验静态供出 / 方法·路径·认证头·Depth·请求体 / 401 回传 / OPTIONS 不转发 / 穿越被拒 / 不可达 502；无 python3 时优雅跳过
-- **诊断增强**：`webdav.isLocalPage()` + 「页面安全性」警告步骤（http → Service Worker / 剪贴板不可用，解释「手动复制」弹窗的由来）；本机页面下 `fixSteps` **优先给 dav-proxy.py 方案**（含该填的地址与「可替代 http.server」），非本机仍走 Worker 方案；`setupHints` 同步补一条
-- **接线**：`js/app.js` `APP_VERSION = 'v0.9.6'`；`sw.js` `VERSION = 'v1.20.0'`
-- 测试：`test-sync` 238 → **249**；**新增脚本 21 条**；`verify-assets` 631 → **650**（**33 个脚本 / 4058 条校验全绿**）
-
-**v0.9.5**「复制出去就能照做」：报告自带「怎么修」+ 附 Worker 代码 + 剪贴板兜底
-- **动机**：把诊断报告复制出来的人，手里只有「结论 + 逐步结果」，**修复步骤仍留在弹窗/文档里** → 报告不可独立执行
-- **`webdav.fixSteps(rep, cfg)`**：按 `reason` 给「怎么修」（cors 三步含 `https://你的worker.workers.dev/dav` 的具体写法 / network 三条 / auth 注册邮箱与应用密码 / permission / path / mixed-content / offline / address / ok）
-- **`diagnoseReport()` 插入「怎么修：」段**；`reason === 'cors'` 时**报告末尾附完整 Worker 反代代码**（复制报告即可直接部署）；结论文案改为「点弹窗里的『复制 Worker 反代代码』」
-- **剪贴板兜底**：`copyText(text, { label, title })` 在 clipboard 不可用/被拒时**弹出只读文本框**（`.copy-box`，等宽、自动聚焦选中）提示 ⌘/Ctrl + C（Safari 偶发拒绝权限时不再卡死）
-- **修掉 v0.9.4 的一个真 bug**：Worker 模板里 `const url` 重复声明（注释里的那行 + 正文）→ **生成出来的代码是语法错误的**；现在 `url` 只声明一次、可选口令校验改为一行注释
-- **新增硬断言**：test-sync 把生成的 Worker 代码写盘并 `import(pathToFileURL(...))`，校验可加载且导出 `default.fetch` —— 这类「模板字符串生成的代码」必须真能跑
-- **接线**：`js/app.js` `APP_VERSION = 'v0.9.5'`；`sw.js` `VERSION = 'v1.19.0'`；`css/style.css` 新增 `.copy-box`
-- 测试：`test-sync` 227 → **238**；`smoke-dom` 334 → **339**（剪贴板不可用 → 手动复制弹窗）；`verify-assets` 619 → **631**
-
-**v0.9.4** 跨域场景「一键方案」：诊断带 `reason` + 应用内复制 Worker 反代代码
-- **动机**：实测诊断显示「基础连通性 ✗、**服务器可达性 ✓**」= 网盘（坚果云）不给浏览器跨域许可。结论已经准确，但「出路」只写在 README 里，用户还得自己找、自己改代码
-- **`diagnose()` 返回 `reason`**：`ok` / `cors` / `network` / `auth` / `permission` / `path` / `server`（+ 提前返回的 `address` / `mixed-content` / `offline`）——UI 不再靠文案匹配来分支
-- **`webdav.workerProxyCode(base)`**：生成**可直接粘贴部署**的 Cloudflare Worker 反代源码；`TARGET` = `new URL(normalizeBase(base)).origin`（非法地址回退示例域名）；内含 OPTIONS → 204 预检放行、完整 CORS 头（Methods 含 PROPFIND/MKCOL、Headers 含 Authorization/Depth/If-None-Match）、`set-cookie` 不透传
-- **UI**：`syncDiagModal` 在 `reason === 'cors'` 时渲染「**怎么修：三步**」（复制 Worker 代码 → Cloudflare 新建 Worker 粘贴部署 → 服务器地址改成 `https://xxx.workers.dev/dav`）+ 主按钮 **「复制 Worker 反代代码」**；并明确提示**不要用公共 CORS 代理**（密码会经手第三方）。`css/style.css` 新增 `.diag-fix`
-- **接线**：`js/app.js` `APP_VERSION = 'v0.9.4'`；`sw.js` `VERSION = 'v1.18.0'`
-- 测试：`test-sync` 214 → **227**（`reason` 六种取值 + Worker 代码 8 条：TARGET 推导 / CORS 头 / 预检 / 无占位符 / 非法地址回退 / 端口保留）；`smoke-dom` 330 → **334**（跨域弹窗出现三步方案 + 复制按钮 + 地址示例 + 公共代理警告）；`verify-assets` 605 → **619**
-
-**v0.9.3** 诊断再进一步：`no-cors` 可达性探测（把「网络不通」与「缺跨域头」分开）
-- **动机**：v0.9.2 的诊断仍会在「基础连通性失败」时含糊地说「网络 / CORS / 插件」——因为浏览器对这两类失败给的是同一句 `TypeError: Failed to fetch`（Safari 是 `Load failed`）
-- **`webdav.probeReachable(url)`**：`mode: 'no-cors'` + `cache: 'no-store'` 的**简单 GET**（响应 opaque、读不到内容，但**不要求服务端回 CORS 头**）→ `resolve` = 请求真的到了服务器 ⇒ 缺的是跨域许可；`reject` = 请求压根没完成 ⇒ 网络 / DNS / 证书 / 内容拦截 / 代理。返回 `{ ok, reason: 'timeout'|'offline'|'unreachable'|'no-fetch'|'mixed-content', cause }`
-- **接进 `diagnose()`**：新步骤 `reach`「服务器可达性（no-cors 探测）」，**只在「基础连通性」失败时才补**（不多发无用请求）；结论分两支：①「服务器其实是可达的，只是它没有给浏览器跨域许可（响应缺少 CORS 头）——换网络 / 关插件都没用」+ 出路（换支持跨域的 WebDAV / Cloudflare Worker 反代）；②「这台设备根本到不了服务器」+ 网络层面建议（换网络 / 关内容拦截与隐私扩展 / 避开代理）
-- **`setupHints()`**：补「可达性通过但连通性失败 = 缺跨域头」「可达性也失败 = 网络层面」两条互斥说明
-- **README**：新增「结论是『服务器可达，但缺少跨域许可』怎么办」——含**可直接粘贴的 Cloudflare Worker 反代代码**（OPTIONS 直接 204、转发 `Authorization`、补 CORS 头、可选口令校验）
-- **接线**：`js/app.js` `APP_VERSION = 'v0.9.3'`；`sw.js` `VERSION = 'v1.17.0'`
-- 测试：`test-sync` 198 → **214**（探测三种结果 + 结论两分支 + 清单分支 + 不再误导去查 CORS）；`smoke-dom` 326 → **330**（Safari `Load failed` + no-cors 可达 → 结论必须指向「缺跨域许可」并给出出路）；`verify-assets` 593 → **605**
-
-## 测试资产（32 个 test-*.mjs + `smoke-dom` + `verify-assets` = 34 个脚本 / 4095 条断言）
+## 测试资产（30 个 test-*.mjs + `smoke-dom` + `verify-assets` = 32 个脚本 / 3788 条断言）
 | 分类 | 脚本 |
 | --- | --- |
 | 核心纯函数 | `test-core`(43) `test-difficulty`(39) `test-arrange`(22) `test-pagination`(25) `test-resplit-levels`(26) `test-revlog`(58) |
 | 学习与题型 | `test-confusables`(82) `test-hardwords`(26) `test-level-retry`(78) `test-fill`(115，含移动端字母键盘) `test-listen`(21) `test-deck-test`(92) `test-eng-eng`(34) `test-multi-sense`(39) `test-review-complete`(11) `test-review-interaction`(18) |
-| 存储与主题 | `test-idb-store`(83，含「flushing 期间读不到刚写日志」的竞态守卫) `test-theme`(150) |
-| 新功能 | `test-add-words`(110) `test-import-file`(336) `test-table-editor`(223) `test-export`(155) `test-xlsx`(125) `test-wordbook`(124) `test-match`(292，明牌配对：≥1 关解锁 / 词源（整卡组·已通关关卡）/ 分轮建牌与洗牌 / 爆炸消除 / 状态机 / 连击 / 薄 UI / 连击提示贴右下角 / 棋局只存内存重进即重洗) `test-crossword`(213，填字游戏：词条清洗与去重 / canPlace 四条规则 / 交叉排版生成与可复现 / 逐格状态机 / 移动端格子尺寸与字母键盘 / 打字只打补丁的薄 UI / 入口横幅) `test-keyboard`(52，移动端英文字母键盘) `test-sync`(251，多端同步：WebDAV 客户端 / 合并内核 / 快照往返 / 墓碑 / 配置 / 增量布局（假服务端：只传变化·只下载变化·预览只读·本机专用·v1 升级）/ 连通性诊断（错误分类·逐步探测·报告不含密码）) |
-| 无障碍 | `test-a11y`(154，键盘焦点环 / aria 覆盖 / 减少动效 / 弹窗焦点管理 / 配对页·填字页·字母键盘·同步表单标注 / 同步诊断) |
-| DOM / 资源 | `smoke-dom`(339) `verify-assets`(664) `test-dav-proxy`(21，本机同源代理 scripts/dav-proxy.py 的功能测试) `test-dav-fn`(21，Pages Function 逻辑单测) |
+| 存储与主题 | `test-idb-store`(80) `test-theme`(150) |
+| 新功能 | `test-add-words`(110) `test-import-file`(336) `test-table-editor`(223) `test-export`(155) `test-xlsx`(125) `test-wordbook`(124) `test-match`(292，明牌配对：≥1 关解锁 / 词源（整卡组·已通关关卡）/ 分轮建牌与洗牌 / 爆炸消除 / 状态机 / 连击 / 薄 UI / 连击提示贴右下角 / 棋局只存内存重进即重洗) `test-crossword`(213，填字游戏：词条清洗与去重 / canPlace 四条规则 / 交叉排版生成与可复现 / 逐格状态机 / 移动端格子尺寸与字母键盘 / 打字只打补丁的薄 UI / 入口横幅) `test-keyboard`(52，移动端英文字母键盘) `test-sync`(161，多端同步：WebDAV 客户端 / 合并内核 / 快照往返 / 墓碑 / 配置 / 增量布局（假服务端：只传变化·只下载变化·预览只读·本机专用·v1 升级）) |
+| 无障碍 | `test-a11y`(146，键盘焦点环 / aria 覆盖 / 减少动效 / 弹窗焦点管理 / 配对页·填字页·字母键盘·同步表单标注) |
+| DOM / 资源 | `smoke-dom`(305) `verify-assets`(558) |
+
 | 性能金丝雀 | `test-perf`(29，1 万词 / 500 关：统计/分组/抽题（含优先池读取次数）+ 耗时) |
 
 ## 已知问题 / 技术债

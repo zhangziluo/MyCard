@@ -7,7 +7,7 @@
  * 说明：发布新版本时递增 VERSION，新 SW 会 skipWaiting + claim 立即接管，
  *       配合 app.js 的 controllerchange 自动刷新，用户无需手动强刷即可看到新功能。
  * ============================================================ */
-const VERSION = 'v1.21.0';
+const VERSION = 'v1.22.0';
 const CACHE = 'mycard-' + VERSION;
 
 const PRECACHE = [
@@ -26,6 +26,7 @@ const PRECACHE = [
   './js/arrange.js',
   './js/theme.js',
   './js/engdefs.js',
+  './js/lang.js',
   './js/add-words.js',
   './js/import-file.js',
   './js/table-editor.js',

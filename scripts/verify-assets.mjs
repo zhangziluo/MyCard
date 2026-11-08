@@ -612,7 +612,7 @@ console.log('\n[我的生词批量整理（js/wordbook.js + js/wordbook-view.js�
   must(existsSync(rel('js/wordbook-view.js')), 'js/wordbook-view.js 存在（整理页）');
   must(sw.includes("'./js/wordbook.js'"), 'sw.js PRECACHE 含 ./js/wordbook.js');
   must(sw.includes("'./js/wordbook-view.js'"), 'sw.js PRECACHE 含 ./js/wordbook-view.js');
-  must(/const VERSION = 'v1\.21\.0'/.test(sw), 'sw.js VERSION 已递增（v1.21.0）');
+  must(/const VERSION = 'v1\.22\.0'/.test(sw), 'sw.js VERSION 已递增（v1.22.0）');
 
   // 内核：去重合并 / 标签 / 筛选排序 / 选中集 / 补查目标
   must(/export function normKey/.test(wbSrc), 'wordbook.js：normKey（大小写 / 空格归一为同一个词）');
@@ -630,7 +630,7 @@ console.log('\n[我的生词批量整理（js/wordbook.js + js/wordbook-view.js�
   must(/merge: true/.test(storeSrc2) && /extraBacks/.test(storeSrc2), 'store.js：addWords 支持 { merge: true } 合并释义');
 
   // 路由与入口
-  must(/APP_VERSION = 'v0\.9\.7'/.test(appSrc), 'app.js 版本号更新为 v0.9.7');
+  must(/APP_VERSION = 'v0\.10\.0'/.test(appSrc), 'app.js 版本号更新为 v0.10.0');
   must(/from '\.\/wordbook-view\.js'/.test(appSrc) && /renderWordbook\(root\)/.test(appSrc), 'app.js 挂载 renderWordbook');
   must(/seg\[0\] === 'words'/.test(appSrc) && /#\/words/.test(appSrc), 'app.js 解析 #/words 路由（含 ?page=N 分页）');
   must(/on\('nav-words'/.test(decksSrc3), 'decks.js 提供 nav-words 入口动作');
@@ -680,6 +680,10 @@ console.log('\n[明牌配对（v0.6.1，通关 ≥1 关解锁 · 每轮 5 对 ·
   );
   must(/matchTitle\(src\)/.test(mSrc) && /sourceNoteHtml\(deck, state\)/.test(mSrc), 'match.js：页头标题与「整卡组已全部纳入 / 已纳入 X/Y 张」说明');
   must(/export function buildTiles/.test(mSrc) && /export function shuffle/.test(mSrc), 'match.js：buildTiles / shuffle（随机源可注入）');
+  must(
+    /export function shortText/.test(mSrc) && /DEF_MAX_CHARS/.test(mSrc) && /fullText/.test(mSrc),
+    'match.js：长释义截取（shortText / DEF_MAX_CHARS，另存 fullText 供 title / 读屏）'
+  );
   must(
     /export function splitRounds/.test(mSrc) && /export function buildBoard/.test(mSrc),
     'match.js：splitRounds / buildBoard（按轮切分 + 每轮独立洗牌）'
@@ -992,27 +996,30 @@ console.log('\n[题型联动修复（v0.9.1：只开多义多选 → 不出英�
   const cfgSrc = readFileSync(rel('js/test-config.js'), 'utf8');
   must(/export function multiSenseSet\(card, max = 4, \{ allowEnglish = true \} = \{\}\)/.test(testSrc), 'test.js：multiSenseSet 支持 allowEnglish（不再无条件回退 GCIDE）');
   must(/if \(!allowEnglish\) return null;/.test(testSrc), 'test.js：不允许英文题时直接返回 null（中文释义不足就不出多义题）');
-  must(/export function canBuildType\(card, type, \{ allowEnSenses = true \} = \{\}\)/.test(testSrc), 'test.js：canBuildType（抽题与出题共用的唯一判定口径）');
+  must(/export function canBuildType\(card, type, \{ allowEnSenses = true/.test(testSrc), 'test.js：canBuildType（抽题与出题共用的唯一判定口径）');
   must(
     /if \(type === 'eng_eng'\) return !!allowEnSenses/.test(testSrc) && /multiSenseSet\(card, 4, \{ allowEnglish: !!allowEnSenses \}\)/.test(testSrc),
     'test.js：canBuildType 同时约束 eng_eng 与 multi_sense'
   );
-  must(/allowEnSenses = true \} = \{\}\)/.test(testSrc) && /buildQuestionsFromPlan\(deck, plan, hardIds = null, random = Math\.random, \{ allowEnSenses = true \}/.test(testSrc), 'test.js：buildQuestions / buildQuestionsFromPlan 接受 allowEnSenses');
+  must(
+    /allowEnSenses = true, mode = null \} = \{\}\)/.test(testSrc) && /buildQuestionsFromPlan\(deck, plan, hardIds = null, random = Math\.random, \{ allowEnSenses = true, mode = null \}/.test(testSrc),
+    'test.js：buildQuestions / buildQuestionsFromPlan 接受 allowEnSenses 与学习模式 mode'
+  );
   must(/if \(!allowEnSenses\) return null; \/\/ 没开「英英选择」时不该出现英文题/.test(testSrc), 'test.js：buildOneQuestion 对英英题有防御性回退');
   must(/const set = multiSenseSet\(card, 4, \{ allowEnglish: !!allowEnSenses \}\)/.test(testSrc), 'test.js：出题时按 allowEnSenses 决定要不要英文兜底');
   must(/const allowEnSenses = !!\(conf\.enabled && conf\.enabled\.eng_eng\)/.test(testSrc), 'test.js：startDeckTest 以「是否开启英英选择」作为 allowEnSenses');
   must(
-    /canType: \(card, type\) => canBuildType\(card, type, \{ allowEnSenses \}\)/.test(testSrc) &&
-      /buildQuestionsFromPlan\(deck, plan, hw\.hardSet\(deckId\), Math\.random, \{ allowEnSenses \}\)/.test(testSrc),
-    'test.js：整卡组测试同时把 allowEnSenses 传给抽题计划与出题（两条链路一致）'
+    /canType: \(card, type\) => canBuildType\(card, type, \{ allowEnSenses, mode: learnMode \}\)/.test(testSrc) &&
+      /buildQuestionsFromPlan\(deck, plan, hw\.hardSet\(deckId\), Math\.random, \{ allowEnSenses, mode: learnMode \}\)/.test(testSrc),
+    'test.js：整卡组测试同时把 allowEnSenses / 学习模式传给抽题计划与出题（两条链路一致）'
   );
-  must(/canType = null \} = \{\}\)/.test(engineSrc) && /const byId = typeof canType === 'function'/.test(engineSrc), 'test-engine.js：samplePlan 支持 canType（卡片级可用性）');
+  must(/canType = null, omitTypes = \[\] \} = \{\}\)/.test(engineSrc) && /const byId = typeof canType === 'function'/.test(engineSrc), 'test-engine.js：samplePlan 支持 canType（卡片级可用性）与 omitTypes（同语种排除题型）');
   must(
-    /export function assignTypesByCard\(seq, typeList, random = Math\.random, \{ byId = null, canType = null \} = \{\}\)/.test(engineSrc),
-    'test-engine.js：assignTypesByCard 支持 byId / canType'
+    /export function assignTypesByCard\(seq, typeList, random = Math\.random, \{ byId = null, canType = null, basics = null \} = \{\}\)/.test(engineSrc),
+    'test-engine.js：assignTypesByCard 支持 byId / canType / basics'
   );
   must(
-    /const ok = cands\.filter\(\(t\) => canType\(card, t\)\)/.test(engineSrc) && /QUESTION_TYPES\.filter\(\(t\) => !used\.has\(t\) && canType\(card, t\)\)/.test(engineSrc),
+    /const ok = cands\.filter\(\(t\) => canType\(card, t\)\)/.test(engineSrc) && /basicTypes\.filter\(\(t\) => !used\.has\(t\) && canType\(card, t\)\)/.test(engineSrc),
     'test-engine.js：可用题优先；都不可用时借基础题型顶上，把槽位留给后面合适的卡'
   );
   must(/中文释义不足 2 条/.test(cfgSrc) && /GCIDE 英文释义兜底/.test(cfgSrc), 'test-config.js：题面说明写明英文兜底只在开启「英英选择」后生效');

@@ -187,6 +187,51 @@ export function defText(card) {
   return extra || '（无释义）';
 }
 
+/** 释义牌最多显示的字数（超出后截取一小段，见 shortText） */
+export const DEF_MAX_CHARS = 24;
+
+/** 为了凑到逗号 / 句号，允许比上限多看几个字（仍属「一小段」） */
+const DEF_HEADROOM = 8;
+
+/** 自然停顿标点：中英文逗号 / 句号，外加分号、顿号、问号、叹号、冒号 */
+const BREAK_CHARS = new Set(['，', ',', '。', '.', '；', ';', '、', '！', '!', '？', '?', '：', ':']);
+
+/**
+ * 长文本截取（明牌配对的释义牌用；**语种无关**——中 / 英 / 日 / 韩都按字符计）：
+ * - 未超长 → 原样返回（只把连续空白压成一个空格，避免多行释义把牌撑高）；
+ * - 超长 → 在前 `max` 个字符里找**最后一个逗号 / 句号**（保留该标点）；
+ *   前半段就断句太短时，允许往后多看 HEADROOM 个字找到第一个自然停顿；
+ *   实在没有标点才硬截，并在末尾补省略号。
+ *
+ * 用 `Array.from` 按码点计数，汉字 / emoji / 组合字符不会被切成半个。
+ */
+export function shortText(text, max = DEF_MAX_CHARS) {
+  const s = String(text == null ? '' : text).replace(/\s+/g, ' ').trim();
+  const limit = Math.max(4, Math.floor(Number(max) || DEF_MAX_CHARS));
+  const chars = Array.from(s);
+  if (chars.length <= limit) return s;
+  // 至少保留 60% 的预算，避免「苹果，……」这种只剩两三个字的截断
+  const minKeep = Math.max(2, Math.floor(limit * 0.6));
+  let cut = -1;
+  for (let i = limit - 1; i >= minKeep; i--) {
+    if (BREAK_CHARS.has(chars[i])) {
+      cut = i;
+      break;
+    }
+  }
+  if (cut < 0) {
+    const end = Math.min(chars.length - 1, limit + DEF_HEADROOM);
+    for (let i = limit; i <= end; i++) {
+      if (BREAK_CHARS.has(chars[i])) {
+        cut = i;
+        break;
+      }
+    }
+  }
+  if (cut >= 0) return chars.slice(0, cut + 1).join('').trimEnd();
+  return chars.slice(0, limit).join('').trimEnd() + '…';
+}
+
 /** Fisher-Yates 洗牌（随机源可注入 → 单测用 LCG 完全复现） */
 export function shuffle(list, rng = Math.random) {
   const a = [...(list || [])];
@@ -206,8 +251,17 @@ export function buildTiles(cards, rng = Math.random, limit = MAX_PAIRS) {
   const tiles = [];
   for (const c of (Array.isArray(cards) ? cards : []).slice(0, max)) {
     if (!c || !c.id) continue;
+    // 压平空白后的完整释义（title / 读屏用；多行释义也不会撑破属性）
+    const def = defText(c).replace(/\s+/g, ' ').trim();
+    const text = shortText(def);
     tiles.push({ id: `w-${c.id}`, cardId: c.id, kind: 'word', text: wordText(c) });
-    tiles.push({ id: `d-${c.id}`, cardId: c.id, kind: 'def', text: defText(c) });
+    tiles.push({
+      id: `d-${c.id}`,
+      cardId: c.id,
+      kind: 'def',
+      text,
+      fullText: text === def ? '' : def // 被截断时保留全文（title / 读屏用）
+    });
   }
   return shuffle(tiles, rng);
 }
@@ -511,10 +565,14 @@ function setText(el, text) {
 function tileHtml(tile, selected) {
   const cls = ['match-tile', `match-tile-${tile.kind}`, selected ? 'is-selected' : ''].filter(Boolean).join(' ');
   const kindLabel = tile.kind === 'word' ? '单词' : '释义';
+  const full = tile.fullText ? String(tile.fullText) : '';
+  // 长释义只显示截取后的一小段；悬停 title 与读屏 aria-label 仍给全文
+  const titleAttr = full ? ` title="${esc(full)}"` : '';
+  const label = full || tile.text;
   return `
-    <button type="button" class="${cls}" data-action="match-pick" data-tile="${esc(tile.id)}"
+    <button type="button" class="${cls}" data-action="match-pick" data-tile="${esc(tile.id)}"${titleAttr}
       aria-pressed="${selected ? 'true' : 'false'}"
-      aria-label="${kindLabel}「${esc(tile.text)}」">
+      aria-label="${kindLabel}「${esc(label)}」">
       <span class="match-tile-text">${esc(tile.text)}</span>
     </button>`;
 }

@@ -303,8 +303,8 @@ console.log('\n[app.js / sw.js：播报接线与版本]');
 ok(/import \{[^}]*\bannounce\b[^}]*\} from '\.\/ui\.js'/.test(appSrc), 'app.js 从 ui.js 引入 announce');
 ok(/routeKey !== lastRouteKey/.test(appSrc), '仅路由变化时播报（同一路由重渲染不打扰读屏）');
 ok(/const pageTitle = renderAppbar\(route\)/.test(appSrc) && /announce\(pageTitle\)/.test(appSrc), 'render() 用顶栏标题播报当前页面');
-ok(/APP_VERSION = 'v0\.9\.7'/.test(appSrc), 'app.js 版本号 v0.9.7');
-ok(/const VERSION = 'v1\.21\.0'/.test(swSrc), 'sw.js VERSION v1.21.0');
+ok(/APP_VERSION = 'v0\.10\.0'/.test(appSrc), 'app.js 版本号 v0.10.0');
+ok(/const VERSION = 'v1\.22\.0'/.test(swSrc), 'sw.js VERSION v1.22.0');
 
 console.log('\n[明牌配对（#/match）的键盘可达性与标注]');
 {
@@ -321,7 +321,12 @@ console.log('\n[明牌配对（#/match）的键盘可达性与标注]');
       /setAttribute\('aria-pressed', chosen \? 'true' : 'false'\)/.test(matchSrc),
     '牌面带 aria-pressed（初始反映选中；已配对在爆炸前由 paintPick 置 true）'
   );
-  ok(/aria-label="\$\{kindLabel\}「\$\{esc\(tile\.text\)\}」/.test(matchSrc), '牌面有中文 aria-label（单词 / 释义）');
+  ok(
+    /aria-label="\$\{kindLabel\}「\$\{esc\(label\)\}」/.test(matchSrc) &&
+      /const label = full \|\| tile\.text/.test(matchSrc) &&
+      /title="\$\{esc\(full\)\}"/.test(matchSrc),
+    '牌面有中文 aria-label（单词 / 释义；长释义截断时 aria-label / title 仍用全文）'
+  );
   ok(
     /role="progressbar" aria-label="配对进度" aria-valuemin="0" aria-valuemax="100"/.test(matchSrc),
     '配对进度 role=progressbar + aria-valuemin/max/now'

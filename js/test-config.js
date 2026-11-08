@@ -46,6 +46,25 @@ export const TYPE_LABELS = {
   multi_sense: '多义多选'
 };
 
+/**
+ * 按学习模式取题型展示名：
+ *   cross（默认，跨语种）沿用「英选中 / 中选英」；
+ *   same（同语种，如 中文-中文）用中性名称，避免把中文题标成「英文」。
+ */
+export function typeLabel(id, mode = 'cross') {
+  if (mode === 'same') {
+    const same = {
+      word2def: '正面选背面',
+      def2word: '背面选正面',
+      sentence2word: '句子选词（同语种不启用）',
+      fill: '挖空填空',
+      listen: '听写'
+    };
+    if (same[id]) return same[id];
+  }
+  return TYPE_LABELS[id] || id;
+}
+
 export const MIN_QUESTIONS = 20;
 export const MAX_QUESTIONS = 150;
 export const STEP_QUESTIONS = 10;

@@ -20,14 +20,13 @@
 - **作答交互**：选择题**答对**即提示并自动进入下一题；**答错**提示错误并允许重新选择（错误项被禁用），每题最多 **3 次**机会，用尽机会后自动跳下一题并短暂标出正确答案；**答错（机会用尽）时展示完整信息卡** `front ＋ back ＋ 例句`，便于即时巩固
 - **测试题型**
   - **五种基础题型（v0.3）**：单词选释义 `word2def`、释义选单词 `def2word`、句子选单词 `sentence2word`、填空 `fill`、听音辨意 `listen`（浏览器 TTS，离线可用）
+  - **按卡组语种关系自适应（v0.10.0）**：按卡组正反面**整组投票**判定语种（英 / 中 / 日 / 韩 / 德 / 法 / 西 / 俄 / 希腊…）。**跨语种**（如 英-中 / 日-中）保留全部 5 种题型；**同语种**（如 中文-中文）只保留 **4 种**——去掉「句子选词」，`listen` 改为**听背面 → 填写正面**的听写填空，`fill` 支持**正面/背面双向挖空**；非拉丁语种答案不做英文屈折容错、填空改用系统输入法
   - **两种可选题型（v0.5，默认关闭）**：*仅在「整卡组可配置测试」中按设置启用；**关卡测试固定使用五种基础题型**（v0.5.1）*
     - **英英选择 `eng_eng`**（*建议考研及以上水平使用（需较强英文阅读理解能力）*）：子模式 A「看单词选英文释义」/ 子模式 B「看英文释义猜单词」随机出现，释义取自 GCIDE
-    - **多义多选 `multi_sense`**（*建议考研及以上水平使用*）：勾选该词**全部释义**后提交判分，**全对才算对**，漏选 / 多选 / 错选均算错；释义优先取卡组内中文释义（`back` ＋ 多释义）；**中文释义不足 2 条的词不出此题型**（卡片级可用性会进入抽题计划：用不了的卡不占多义槽位，槽位留给后面合适的卡），**只有同时开启「英英选择」**才会回退 GCIDE 英文释义兜底（v0.9.1 修复：以前只要开了多义多选就会回退英文，导致没开英英选择却出「英文题面 + 英文选项」）
+    - **多义多选 `multi_sense`**（*建议考研及以上水平使用*）：勾选该词**全部释义**后提交判分，**全对才算对**，漏选 / 多选 / 错选均算错；释义优先取卡组内中文释义（`back` ＋ 多释义），缺失时回退 GCIDE 英文释义
 - **整卡组可配置测试**：题数 **20~150** 可调（快速 20 / 标准 50 / 挑战 150 ＋ 滑块，步长 10），题型按权重分配、词数不足时循环覆盖，错题进优先池，支持中途退出续做
-- **明牌配对（v0.5.12，连击提示位置 v0.5.13，重进重洗 v0.6.1，整卡组词源 v0.7.1）**：卡组**通关 ≥ 1 关**后，详情页出现 **「明牌配对 · 玩一局」** 入口（路由 `#/match/{deck}`）——**词源可切**：**整个卡组** 或 任意**已通关关卡**（默认取最高的已通关关卡）；不管选哪个，都按 **每轮 5 对**（10 张明牌：5 张单词 ＋ 5 张释义，位置随机打乱、**全程可见**）铺进**固定两列**棋盘，多余的配对**自动排到后面的轮次**——所以**选「整卡组」就是一轮一轮一直配到本卡组没有对为止（不再 20 张就结束）**，轮次行实时显示「第 R/T 轮 · 本轮还剩 N 对」；**先点单词、再点它的释义**：配对成功 → **金色闪光 ＋ 爆炸消除**（这一对从棋盘上消失）、连击 +1（**连击 ≥2 在棋盘右下角弹「combo✖️N」提示并抖动**——提示落在棋盘底部留白条内，**不遮挡牌面文字**；「最大连击」格同步弹跳）；配对失败 → **抖动**、连击清零、失误 +1；一轮清完自动铺下一轮，全部配完结算 **用时 / 失误 / 最大连击** 并可「再玩一次」；**每次重新进入同一关（重新打开页面 / 刷新 / 从卡组页再进来）都重新洗牌开局**（牌面与牌底顺序全换），只有同一页内的重渲染（切主题 / 切主色）会保持当前棋局
+- **明牌配对（v0.5.12，连击提示位置 v0.5.13，重进重洗 v0.6.1，长释义截取 v0.10.0）**：卡组**通关 ≥ 1 关**后，详情页出现 **「明牌配对 · 玩一局」** 入口（路由 `#/match/{deck}`）——取某一**已通关关卡**的卡片，**每轮 5 对**（10 张明牌：5 张单词 ＋ 5 张释义，位置随机打乱、**全程可见**）铺进**固定两列**棋盘，多余的配对**自动排到后面的轮次**（如 20 张卡 = 4 轮，轮次行实时显示「第 R/T 轮 · 本轮还剩 N 对」）；**先点单词、再点它的释义**：配对成功 → **金色闪光 ＋ 爆炸消除**（这一对从棋盘上消失）、连击 +1（**连击 ≥2 在棋盘右下角弹「combo✖️N」提示并抖动**——提示落在棋盘底部留白条内，**不遮挡牌面文字**；「最大连击」格同步弹跳）；配对失败 → **抖动**、连击清零、失误 +1；一轮清完自动铺下一轮，全部配完结算 **用时 / 失误 / 最大连击** 并可「再玩一次」；**释义过长时牌面只显示截取的一小段（优先在逗号 / 句号处收尾，中 / 英 / 日等语种一致）**，悬停 `title` 与读屏 `aria-label` 仍给全文；**每次重新进入同一关（重新打开页面 / 刷新 / 从卡组页再进来）都重新洗牌开局**（牌面与牌底顺序全换），只有同一页内的重渲染（切主题 / 切主色）会保持当前棋局
 - **填字游戏（v0.6.0，第二种游戏）**：卡组**通关 ≥ 1 关**后，详情页出现 **「填字游戏 · 拼一局」** 入口（路由 `#/crossword/{deck}`）——**完全按当前词库生成**横竖交叉的填字棋盘（单词正面作为答案、释义作为线索），**词源可选「整卡组」或任一已通关关卡**、**每局词数 6 / 8 / 10 / 12 可切**，还有「换一批」（重新抽词 + 重新排版）；玩法：读线索 → **逐格填字母**（点线索/格自动选中所属线索、打字自动推进、Backspace 回上一格、方向键换线索），「检查」标出填错的格、「提示一字母」补一格、「显示本词」填全该线索，全部填对结算 **用时 / 提示次数 / 线索数**
-- **多端同步（WebDAV，v0.8.0 起，v0.9.0 增量 + 预览 + 本机专用，v0.9.2 可诊断）**：设置页填 **服务器地址 / 用户名 / 密码 / 目录** 即可把 **词库（卡组 + 卡片）+ 学习进度（每张卡的复习调度）+ 复习日志 + 关卡通关记录 + 每关词数设置** 同步到**你自己的** WebDAV 网盘（坚果云 / Nextcloud / Synology…），多台设备共用一份数据；合并规则是 **内容按「最后修改时间」新者胜、学习进度按「最后学习时间」新者胜**（进度只进不退），**删除也会同步**（用删除墓碑，且「对方在删除后又改过 / 学过」时保留，防误删）；支持 **测试连接 / 立即同步 / 打开应用时自动同步 / 变更后自动同步（每 5 分钟检查）**；**v0.9.0 起**：网盘上的数据拆成 **索引 `mycard-sync.json` + 按卡组分文件 `mycard-decks/{id}.json`**，**只传变化的卡组**（改一个卡组只传这一个），并可在同步前点 **「预览差异」** 先看「本机 / 网盘 / 合并后」的规模、每个卡组会变什么、冲突各取哪一端（**预览是只读的，不会改任何数据**），确认后再同步；还可把某个卡组标为 **「本机专用」**（不上传、不被其他设备覆盖或删除、本机的删除也不会外传）；**v0.9.2 起连不上也说得清**：失败时给出**具体原因 + 浏览器原始信息 + 可执行建议**（不再是浏览器那句没有信息量的 `request failed`），并可点 **「诊断连接」** 逐步判断到底是「网络不通」「网盘不允许跨域（CORS）」还是「账号 / 应用密码不对」，报告**可一键复制**且**不含密码**；**默认不上传任何数据**，密码默认不落盘（可勾「记住密码」）
-- **移动端英文字母键盘（v0.7.0）**：**填字游戏与填空题在触屏设备上自动弹出自绘 QWERTY 字母键盘**（26 字母 + 退格，填空题多一个空格键；带「收起键盘」），配合 `inputmode="none"` **抑制系统输入法** —— 不再弹出中文候选框 / 拼音键盘，也不会把页面顶飞；收起后收成右下角 **「⌨ 字母键盘」迷你胶囊**，点它随时唤回；**桌面端不显示**（继续用物理键盘）。填字页的格子同时按触屏放大（**≥30px**，放不下就横向滚动，并把当前焦点格自动滚进视野）
 - **导出词表 / Anki 卡包（v0.4.11，v0.4.13 扩至四种格式，v0.4.16 起带复习进度，v0.5.8 起带复习日志）**：卡组菜单（⋮）提供五种导出，纯前端下载（离线可用）；列序统一为 `正面 / 背面 / 例句 / 例句翻译 / 音标 / 标签(逗号)`，无正面的卡片不导出
   - **标准 txt（TSV）**：UTF-8 带 BOM、制表符分隔、一卡一行，首行为列名；单元格内的制表符与换行会被清洗为空格（保证「一卡一行」）
   - **CSV（带表头）**：UTF-8 带 BOM、逗号分隔、CRLF 行尾，首行为列名；按 **RFC 4180** 转义 —— 含 `,` / `"` / 换行的字段用双引号包裹、内部 `"` 加倍（因此多行释义在 Excel / 表格工具里也不会串行）
@@ -75,7 +74,7 @@
   - 整份文件解析后**一次事务批量写入**本地库，按单词去重并报告跳过数；新建牌组时 `source=null` 故可重复导入（各自新建卡组）
 - **数据存储（v0.4，v0.5.8 库升到 v3）**：卡片正文与学习进度存 **IndexedDB**（库 `mycard` v3，stores：`decks` / `cards` / `meta` / `lookup` / **`revlog`**），localStorage 只保留设置与卡组清单（key `mycard-meta`）；旧版 `mycard-v1` 整库会在首次启动时**自动迁移**到 IndexedDB 并删除旧键，v2 → v3 为**增量升级**（只补建 `revlog` store 与其 `byDeck` / `byCard` 索引，既有数据不动），从而支持万词级词库
 - **内置词库**：仅内置「英语高频词（示范）」约 60 词（`data/words.json` ＋ 易混分组 `data/confusables.json`），首次打开**自动导入**并按难度编排 3 关；应用不再内置其它词库，需要时可用首页「导入」按钮导入自己的 CSV / JSON 词表（见上一条）。旧版本曾内置的 10 本考试词库（考研 / 四级 / 六级 / 托福 / 雅思 / 专四 / 专八 / SAT / 初中 / 高中）已下线，浏览器里**遗留的历史卡组会在启动时自动清理**（按 `source` 精确匹配，仅删这些内置卡组，不影响你自建的卡组与「我的生词」）
-- **PWA**：`manifest.json` ＋ `sw.js`；**代码 / 数据走网络优先**（在线总是最新，离线回退缓存），图片走缓存优先；新版本 SW 接管后自动刷新一次，通常**一次刷新即可看到新功能**；顶栏显示当前版本号（当前 `v0.9.7`），设置页另提供「强制刷新到最新版（清理离线缓存）」应对极端缓存情况
+- **PWA**：`manifest.json` ＋ `sw.js`；**代码 / 数据走网络优先**（在线总是最新，离线回退缓存），图片走缓存优先；新版本 SW 接管后自动刷新一次，通常**一次刷新即可看到新功能**；顶栏显示当前版本号（当前 `v0.6.1`），设置页另提供「强制刷新到最新版（清理离线缓存）」应对极端缓存情况
 - **界面**：移动端优先、深色主题、毛玻璃（glassmorphism）卡片；**桌面端自适应** —— `#app` 按 640 / 960 / 1280 / 1600px 断点逐级放宽（600 → 760 → 1080 → 1280 → 1440px），卡组用 `auto-fill` 网格随宽度平铺 2–5 列，宽屏下关卡列表两列平铺
 - **无障碍（v0.5.10）**：全局键盘焦点环（`:focus-visible`）、「跳到主要内容」跳转链接、路由变化用 `#sr-announce` 实时区域播报页面名、可点击卡片（`role="button"`）支持 Enter / 空格、弹窗焦点陷阱与关闭后焦点还原、系统「减少动态效果」全局生效——详见下文「无障碍与键盘可达性」
 
@@ -85,7 +84,6 @@
 ├── index.html              # 单页应用入口（应用外壳）
 ├── manifest.json           # PWA manifest
 ├── sw.js                   # Service Worker（预缓存 App Shell + 示范词库）
-├── functions/dav/[[path]].js # Cloudflare Pages Function：/dav/* 同源反代到你的 WebDAV（设 DAV_TARGET 环境变量即用；网盘不给跨域时的零第三方方案）
 ├── package.json            # 仅元信息（零依赖、无构建脚本）
 ├── favicon.svg
 ├── icons/                  # 应用图标（192 / 512 / maskable / apple-touch）
@@ -107,14 +105,12 @@
 │   ├── ui.js               # 通用 UI：Action 委托 / toast / modal / 导航
 │   ├── decks.js            # 卡组列表 / 详情（关卡分页）/ 卡片管理（分页）/ 表单
 │   ├── review.js           # 翻转记忆模式（按关卡 / 整卡组循环 / 会话续学）
-│   ├── test-config.js      # 测试配置（题数 20~150、档位、题型权重、可选题型、通关阈值）
-│   ├── test-engine.js      # 测试引擎（抽题 / 循环 / 题型分配 / 优先池 / 进度）
-│   ├── test.js             # 测试题模式（7 种题型 + 整卡组可配置测试）
-│   ├── match.js            # 明牌配对游戏 #/match（通关 ≥1 关解锁；词源可切整卡组/已通关关卡 / 每轮 5 对 / 固定两列 / 爆炸消除 + combo✖️N；纯内核 + 薄 UI，点击只局部打补丁；棋局只存内存 → 重进同一关即重新洗牌）
+│   ├── test-config.js      # 测试配置（题数 20~150、档位、题型权重、可选题型、通关阈值、按模式取题型标签）
+│   ├── test-engine.js      # 测试引擎（抽题 / 循环 / 题型分配 / 优先池 / 进度 / omitTypes）
+│   ├── test.js             # 测试题模式（7 种题型 + 按卡组语种关系自适应 + 整卡组可配置测试）
+│   ├── lang.js             # 语种检测（中/日/韩/德/法/西/俄/希腊…）+ 卡组同语种判定 + TTS 语音标签
+│   ├── match.js            # 明牌配对游戏 #/match（通关 ≥1 关解锁；每轮 5 对 / 固定两列 / 爆炸消除 + combo✖️N；长释义按逗号·句号截取（title / 读屏保留全文）；纯内核 + 薄 UI，点击只局部打补丁；棋局只存内存 → 重进同一关即重新洗牌）
 │   ├── crossword.js        # 填字游戏 #/crossword（通关 ≥1 关解锁；按当前词库交叉排版生成棋盘 / 每局 6~12 词 / 检查·提示·显示本词；纯内核 + 薄 UI，输入只局部打补丁）
-│   ├── keyboard.js         # 移动端英文字母键盘（#kb-bar 单例底栏：QWERTY + 退格 / 空格键 / 收起·唤出；inputmode=none 抑制系统输入法）
-│   ├── webdav.js           # 极简 WebDAV 客户端（零依赖：PROPFIND / 递归 MKCOL / GET / PUT（可抢锁）/ DELETE + Basic 认证 + 中文错误映射 + 「诊断连接」逐步探测 diagnose / 修复步骤 / 可复制报告）
-│   ├── sync.js             # 多端同步引擎（合并内核 mergeSnapshots 纯函数 + 增量读写 readRemote·writeRemote / 预览 planSync·previewSync / syncNow / 抢锁 / 自动同步 / 配置与墓碑）
 │   ├── add-words.js        # 首页添加单词/词表：语种检测 / 分词 / 在线查词 / 缓存 / 预览
 │   ├── import-file.js      # 本地文件导入：CSV/TSV/JSON/XLSX 解析（零依赖）+ 预览 + 字段映射 + 多文件批量 + 拖拽区
 │   ├── import-history.js   # 导入历史与回滚（撤销导入：删新建卡组 / 移除追加卡片）
@@ -148,29 +144,25 @@
     ├── test-confusables.mjs# 干扰项 + 三种题型（82 项断言）
     ├── test-hardwords.mjs  # 整卡组翻转循环 / 困难词标记（26 项断言）
     ├── test-level-retry.mjs# 关卡重新挑战 / 直接测试 / 题型微调（含「关卡测试不含可选题型」，78 项断言）
-    ├── test-fill.mjs       # 填空题（判题 / 单复数容错 / 提示 / 发音降级 / 移动端字母键盘，115 项断言）
+    ├── test-fill.mjs       # 填空题（85 项断言）
     ├── test-listen.mjs     # 听音辨意（21 项断言）
-    ├── test-deck-test.mjs  # 整卡组可配置测试（抽题/可用性/优先池/权重/续做，99 项断言）
+    ├── test-deck-test.mjs  # 整卡组可配置测试（抽题/优先池/优先池快路径/权重/续做，92 项断言）
     ├── test-eng-eng.mjs    # 英英选择题型（34 项断言）
-    ├── test-multi-sense.mjs# 多义多选题型（56 项断言）
-    ├── test-idb-store.mjs  # 存储层（v2→v3 升级 / 迁移 / 写穿 / 重载水合 / 复习日志 / 重排 / 旧内置词库清理 / 批量整理写穿 / 落盘竞态，83 项断言）
+    ├── test-multi-sense.mjs# 多义多选题型（39 项断言）
+    ├── test-lang.mjs       # 语种检测 / 同语种题型自适应（77 项断言）
+    ├── test-idb-store.mjs  # 存储层（v2→v3 升级 / 迁移 / 写穿 / 重载水合 / 复习日志 / 重排 / 旧内置词库清理 / 批量整理写穿，80 项断言）
     ├── test-add-words.mjs  # 首页添加单词 / 词表（含重复词处理偏好 / 预填查词框，110 项断言）
     ├── test-import-file.mjs# 本地文件导入（解析/表头映射/预览/字段映射/目标牌组/追加/大词表/进度与日志还原/XLSX 多表切换/批量/历史回滚/CSV·JSON 模版，336 项断言）
     ├── test-xlsx.mjs       # 极简 .xlsx 读取器（ZIP STORED/DEFLATE、共享字符串、日期、多工作表/公式求值/合并单元格，125 项断言）
     ├── test-table-editor.mjs # 表格编辑页 #/editor（模版列一致性 / 表格内核 / 草稿 / 载入 / 粘贴多行 / 预览报告 / 渲染 / 事件 / 导入为卡组 / xlsx 指定工作表，223 项断言）
     ├── test-export.mjs     # 导出 txt/CSV/Markdown/JSON/Anki apkg（RFC4180、meta protobuf、Anki 调度、revlog 日志、ZIP+CRC32、Python sqlite3 校验产物，155 项断言）
-    ├── smoke-dom.mjs       # 无头 DOM 冒烟（各界面渲染 + 分页 + 明暗切换 + 导出/导入入口 + 表格编辑页 + 生词本整理页 + 明牌配对（含整卡组词源）+ 填字游戏 + 移动端字母键盘 + 多端同步设置页 + 只开多义多选不出英文题，339 项断言）
+    ├── smoke-dom.mjs       # 无头 DOM 冒烟（各界面渲染 + 分页 + 明暗切换 + 导出/导入入口 + 表格编辑页 + 生词本整理页 + 明牌配对 + 填字游戏，253 项断言）
     ├── test-perf.mjs       # 大卡组（1 万词 / 500 关）规模：统计/分组/抽题（含优先池读取次数）正确性 + 耗时金丝雀（29 项）
     ├── test-wordbook.mjs   # 生词本整理（同词归并 / 保留卡片优先级 / 合并语义 / 标签整理 / 筛选排序 / 多选批量 / 页面渲染与分页，124 项断言）
-    ├── test-a11y.mjs       # 无障碍（键盘焦点环 / aria 覆盖 / 减少动效 / 弹窗焦点管理 / 配对页·填字页·字母键盘·同步表单标注，154 项断言）
-    ├── test-match.mjs      # 明牌配对（解锁 / 词源（整卡组·关卡）/ 分轮建牌洗牌 / 牌面文案 / 点击状态机 / 连击 / 薄 UI 与入口横幅 / 棋局只存内存重进即重洗，292 项断言）
-    ├── test-crossword.mjs  # 填字游戏（解锁 / 词条清洗 / 交叉排版规则 / 棋盘生成 / 状态机 / 移动端格子尺寸与字母键盘 / 薄 UI 与入口横幅，213 项断言）
-    ├── test-keyboard.mjs   # 移动端英文字母键盘（环境判定 / 键位 HTML / 四态状态机 / DOM 三态 / inputmode 同步 / 事件派发 / 只绑一次，52 项断言）
-    ├── test-sync.mjs       # 多端同步（WebDAV 客户端 / 合并内核 / 快照往返 / 增量布局（假服务端）/ 连通性诊断与修复步骤 / 墓碑与配置，251 项断言）
-    ├── test-dav-proxy.mjs  # 本机「同源代理」脚本 dav-proxy.py（转发方法·路径·认证头·Depth·请求体 / 401 回传 / OPTIONS / 穿越被拒 / 502，21 项；无 python3 自动跳过）
-    ├── test-dav-fn.mjs     # Cloudflare Pages Function（functions/dav/[[path]].js：501 配置指引 / OPTIONS / 方法·路径·认证头·Depth·请求体 / 401 回传 / 逃不出目标主机，21 项）
-    ├── dav-proxy.py        # 本机代理 + 静态站点服务器（零依赖，网盘不给跨域时的零账号方案：同源 → 无需 CORS）
-    └── verify-assets.mjs   # 资源完整性校验（664 项）
+    ├── test-a11y.mjs       # 无障碍（键盘焦点环 / aria 覆盖 / 减少动效 / 弹窗焦点管理，109 项断言）
+    ├── test-match.mjs      # 明牌配对（解锁 / 分轮建牌洗牌 / 牌面文案（长释义截取）/ 点击状态机 / 连击 / 薄 UI 与入口横幅 / 棋局只存内存重进即重洗，312 项断言）
+    ├── test-crossword.mjs  # 填字游戏（解锁 / 词条清洗 / 交叉排版规则 / 棋盘生成 / 状态机 / 薄 UI 与入口横幅，173 项断言）
+    └── verify-assets.mjs   # 资源完整性校验（446 项）
 ```
 
 ## 本地运行
@@ -200,32 +192,29 @@ node scripts/test-theme.mjs           # 明暗模式（浅色/深色/跟随系�
 node scripts/test-confusables.mjs     # 干扰项 + 三种题型（释义/同组/兜底/单词池/挖空，82 项）
 node scripts/test-hardwords.mjs       # 整卡组翻转循环 / 困难词标记（26 项）
 node scripts/test-level-retry.mjs     # 关卡重新挑战 / 直接测试 / 题型微调（含关卡测试不含可选题型，78 项）
-node scripts/test-fill.mjs            # 填空题（判题容错 / 渲染 / 🔊 发音与降级 / 移动端字母键盘，115 项）
+node scripts/test-fill.mjs            # 填空题（判题容错 / 渲染 / 🔊 发音与降级，85 项）
 node scripts/test-listen.mjs          # 听音辨意（出题 / TTS 播放与降级，21 项）
-node scripts/test-deck-test.mjs       # 整卡组可配置测试（抽题/循环/可用性/优先池快路径/权重/续做，99 项）
+node scripts/test-deck-test.mjs       # 整卡组可配置测试（抽题/循环/优先池/优先池快路径/权重/续做，92 项）
 node scripts/test-eng-eng.mjs         # 英英选择题型（子模式 A/B、选项构成、回退，34 项）
-node scripts/test-multi-sense.mjs     # 多义多选题型（中文优先→仅开英英时才 GCIDE 回退、多选判分，56 项）
-node scripts/test-idb-store.mjs       # 存储层（v2→v3 升级 / 迁移 / 写穿 / 重载水合 / 复习日志 / 重排 / 旧内置词库清理 / 批量整理写穿 / 落盘竞态，83 项）
+node scripts/test-multi-sense.mjs     # 多义多选题型（中文优先→GCIDE 回退、多选判分，39 项）
+node scripts/test-lang.mjs            # 语种检测 / 卡组同语种判定 / 同语种 4 题型自适应（77 项）
+node scripts/test-idb-store.mjs       # 存储层（v2→v3 升级 / 迁移 / 写穿 / 重载水合 / 复习日志 / 重排 / 旧内置词库清理 / 批量整理写穿，80 项）
 node scripts/test-add-words.mjs       # 首页添加单词/词表（语种/分词/查词/缓存/限速/去重落库/重复词处理偏好，110 项）
 node scripts/test-import-file.mjs     # 本地文件导入（解析/预览/字段映射/目标牌组/追加/大词表/进度与日志还原/XLSX 多表切换/批量/历史回滚/CSV·JSON 模版，336 项）
 node scripts/test-xlsx.mjs            # 极简 .xlsx 读取器（ZIP STORED/DEFLATE、共享字符串、日期、多工作表/公式求值/合并单元格，125 项）
 node scripts/test-table-editor.mjs    # 表格编辑页 #/editor（模版列一致性 / 表格内核 / 草稿 / 载入 / 粘贴多行 / 预览报告 / 导入为卡组 / xlsx 指定工作表，223 项）
 node scripts/test-export.mjs          # 导出 txt / CSV / Markdown / JSON / Anki apkg（RFC4180·meta protobuf·Anki 调度·revlog 日志·ZIP·CRC32，Python sqlite3 校验，155 项）
-node scripts/smoke-dom.mjs            # 无头 DOM 冒烟（各界面渲染 + 分页 + 明暗切换 + 导出/导入入口 + 表格编辑页 + 生词本整理页 + 明牌配对（含整卡组词源）+ 填字游戏 + 移动端字母键盘 + 多端同步设置页 + 只开多义多选不出英文题，339 项）
+node scripts/smoke-dom.mjs            # 无头 DOM 冒烟（各界面渲染 + 分页 + 明暗切换 + 导出/导入入口 + 表格编辑页 + 生词本整理页 + 明牌配对 + 填字游戏，253 项）
 node scripts/test-perf.mjs            # 大卡组（1 万词）规模：单遍统计 / 复用关卡分组 / 抽题快路径（含优先池）× 读取次数 + 耗时（29 项）
 node scripts/test-wordbook.mjs        # 生词本整理（同词归并 / 保留卡片优先级 / 合并语义 / 标签整理 / 筛选排序 / 多选批量 / 页面渲染与分页，124 项）
-node scripts/test-a11y.mjs            # 无障碍（键盘焦点环 / aria 覆盖 / prefers-reduced-motion / 弹窗焦点陷阱与还原 / 配对·填字·字母键盘·同步表单标注，154 项）
-node scripts/test-match.mjs           # 明牌配对（解锁门槛 / 词源（整卡组·已通关关卡）/ 分轮建牌与可复现洗牌 / 点击状态机 / 连击与用时 / 薄 UI 与入口横幅 / 重进同一关重新洗牌，292 项）
-node scripts/test-crossword.mjs       # 填字游戏（解锁门槛 / 词条清洗 / 交叉排版规则 / 棋盘生成与可复现 / 状态机 / 移动端格子尺寸 + 字母键盘 / 薄 UI 与入口横幅，213 项）
-node scripts/test-keyboard.mjs        # 移动端英文字母键盘（环境判定 / 键位 HTML / 四态状态机 / DOM 三态 / inputmode 同步 / 事件派发，52 项）
-node scripts/test-sync.mjs            # 多端同步（WebDAV 客户端（URL/认证/PROPFIND/MKCOL/GET/PUT/DELETE/错误映射/超时）/ 合并内核（内容与进度分治·日志并集·删除墓碑·幂等·统计）/ 快照与存储往返 / 增量布局（假 WebDAV 服务端）/ 连通性诊断与修复步骤 / 配置，251 项）
-node scripts/test-dav-proxy.mjs       # 本机「同源代理」脚本 scripts/dav-proxy.py（静态站点供出 / /dav 转发的方法·路径·认证头·Depth·请求体 / 401 与 WWW-Authenticate 回传 / OPTIONS 预检 / 目录穿越被拒 / 不可达 502，21 项；无 python3 时自动跳过）
-node scripts/test-dav-fn.mjs          # Cloudflare Pages Function functions/dav/[[path]].js（未配置 DAV_TARGET → 501 + 指引 / OPTIONS → 204 / 转发方法·路径·认证头·Depth·请求体 / 业务响应头回传 / 只在目标主机内转发，21 项）
-node scripts/verify-assets.mjs        # PWA 资源完整性 + 字段映射 / 明暗模式 / 导出（含 revlog）/ 导入增强（xlsx 多表·公式·合并）/ 表格编辑 / 生词本整理 / 明牌配对（含整卡组词源）/ 填字游戏 / 移动端字母键盘 / 多端同步 / 性能校验（664 项）
+node scripts/test-a11y.mjs            # 无障碍（键盘焦点环 / aria 覆盖 / prefers-reduced-motion / 弹窗焦点陷阱与还原 / 配对页与填字页标注，109 项）
+node scripts/test-match.mjs           # 明牌配对（解锁门槛 / 分轮建牌与可复现洗牌 / 牌面文案（长释义截取）/ 点击状态机 / 连击与用时 / 薄 UI 与入口横幅 / 重进同一关重新洗牌，312 项）
+node scripts/test-crossword.mjs       # 填字游戏（解锁门槛 / 词条清洗 / 交叉排版规则 / 棋盘生成与可复现 / 状态机 / 薄 UI 与入口横幅，173 项）
+node scripts/verify-assets.mjs        # PWA 资源完整性 + 字段映射 / 明暗模式 / 导出（含 revlog）/ 导入增强（xlsx 多表·公式·合并）/ 表格编辑 / 生词本整理 / 明牌配对 / 填字游戏 / 性能校验（446 项）
 node --check js/*.js                  # 语法检查
 ```
 
-当前合计 **4095 条校验**（34 个脚本，各套件输出的 `✓`）**全部通过、0 失败**（含纯函数单测、无头 DOM 冒烟、IndexedDB 存储与 v2→v3 升级、大词表导入、Anki 卡包产物（含 `revlog`）、明牌配对与填字游戏两套游戏断言、移动端字母键盘、多端同步（WebDAV），万级性能金丝雀）。
+当前各脚本套件输出的 `✓` **全部通过、0 失败**（含纯函数单测、无头 DOM 冒烟、IndexedDB 存储与 v2→v3 升级、大词表导入、Anki 卡包产物（含 `revlog`）、明牌配对与填字游戏两套游戏断言、语种自适应题型、万级性能金丝雀）。
 
 ## 部署：Cloudflare Pages
 
@@ -236,6 +225,16 @@ node --check js/*.js                  # 语法检查
 5. 部署完成后即得到可安装的 HTTPS PWA 链接。
 
 发布新版本如需更新缓存：修改 `sw.js` 顶部 `VERSION`（如 `v1.7.8`）即可触发 Service Worker 换新。
+
+### WebDAV 同步的跨域兜底（v0.9.7）
+
+网盘（Nextcloud / 坚果云等）通常不给浏览器跨域许可，应用内会给出三步修复方案：
+
+1. **本机同源代理**：运行仓库里的 `scripts/dav-proxy.py`（`python3 scripts/dav-proxy.py <网盘地址>`），把打印出的 `http://localhost:8080` 填进设置页；
+2. **Cloudflare Pages Function 同源反代**：部署在 Pages 上时，仓库内的 `functions/dav/[[path]].js` 会把 `/dav/*` 转发到固定目标（只转发白名单请求头、不透传 `set-cookie`），无需第三方服务；
+3. **Cloudflare Worker 反代**：设置页的诊断弹窗可直接生成可粘贴部署的 Worker 源码，并一键复制。
+
+> 安全提示：不要使用公共 CORS 代理 —— Basic 认证头会让第三方经手网盘密码。
 
 ## 数据说明
 
@@ -261,8 +260,6 @@ node --check js/*.js                  # 语法检查
 | localStorage | `mycard-active-tag` | 首页标签筛选 |
 | localStorage | `mycard-hard-words` | 困难词标记 |
 | localStorage | `mycard-aw-merge` | 首页添加单词的「重复词自动合并」偏好（v0.5.9，默认开） |
-| localStorage | `mycard-sync` | 多端同步配置与上次结果（地址 / 用户名 / 目录 / 自动同步开关；**密码仅在勾选「记住密码」时保存**） |
-| localStorage | `mycard-sync-tombstones` | 同步用的删除墓碑（卡组 / 卡片 id → 删除时间，保留 90 天，最多 4000 条） |
 | localStorage | `mycard-test-config` | 测试配置（题数 / 题型权重 / 可选题型开关） |
 | localStorage | `mycard-test-priority` | 错题优先池 |
 | localStorage | `test_progress_{deckId}` / `test_progress_{deckId}__wrong` | 测试进度（常规 / 错题专项） |
@@ -310,7 +307,7 @@ node --check js/*.js                  # 语法检查
 - **语义标注**：进度条 `role="progressbar"` ＋ `aria-valuemin/max/now`；分页 `role="navigation"` ＋ `aria-label`（「‹ 上一页」这类图标按钮都有中文 `aria-label`）；筛选 chips `aria-pressed`；生词本概览 `role="group"`；CSV 预览与表格编辑页表头 `<th scope="col">`；装饰性氛围光 `aria-hidden="true"`；**明牌配对（v0.5.12）**的牌面是原生 `<button>`（`aria-pressed` 反映选中，中文 `aria-label` 含「单词 / 释义」，已配对的牌爆炸后直接离开 DOM）、棋盘与关卡 chips 为 `role="group"` ＋ `aria-label`、配对进度 `role="progressbar"`、轮次行 `data-match="round"` 随点击更新，配对成功 / 连击 / 铺下一轮 / 完成都用 `announce()` 播报；「combo✖️N」提示是**纯装饰层**（`aria-hidden="true"`，读屏只听播报；v0.5.13 起贴在**棋盘右下角**的底部留白条内，不遮挡牌面文字）；**填字游戏（v0.6.0）**的答题格是原生 `<input>`（`maxlength=1` ＋ `inputmode="latin"` ＋ `autocapitalize="characters"`，`aria-label` 含「第 R 行第 C 列 / 线索号 / 已填字母」）、棋盘与词源·词数 chips 为 `role="group"` ＋ `aria-label`、chips 带 `aria-pressed`、填字进度 `role="progressbar"`，方向键移动 / 退格回上一格 / Delete 清格都有键盘等价操作（文档级委托，`bindKeysOnce` 只绑一次），完成与重新开始用 `announce()` 播报、提示与检查用 `toast()`（状态区自动朗读）
 - **弹窗焦点管理**（`ui.openModal`）：`role="dialog"` ＋ `aria-modal="true"` ＋ 标题 `aria-labelledby`（无标题时回退 `aria-label="对话框"`）；打开即聚焦首个可聚焦元素；`Tab` / `Shift+Tab` **焦点陷阱**在弹窗内循环；`Esc` 关闭并把焦点**还给触发元素**
 - **`prefers-reduced-motion`**：系统开启「减少动态效果」时动画 / 过渡时长收敛到 `0.001s`、`animation-iteration-count: 1`（呼吸光 / 发音脉冲不再循环闪烁）、`scroll-behavior: auto`，且同时覆盖 `::before` / `::after`
-- 校验：`node scripts/test-a11y.mjs`（154 项断言：CSS 焦点环与减少动效 / `index.html` 结构 / 各页面 `role`·`aria-*`（含明牌配对页、填字页、移动端字母键盘与同步表单）/ `activateOnKey`·`announce`·`openModal` 运行时行为）
+- 校验：`node scripts/test-a11y.mjs`（109 项断言：CSS 焦点环与减少动效 / `index.html` 结构 / 各页面 `role`·`aria-*`（含明牌配对页与填字页）/ `activateOnKey`·`announce`·`openModal` 运行时行为）
 
 ## 复习日志（v0.5.8）
 
@@ -413,14 +410,13 @@ node --check js/*.js                  # 语法检查
 - **题型比例微调**：首次测试题型等权；每次重刷按 `(重刷次数 − 1) % 5` 在**五种基础题型**内轮换侧重一种（权重 ×2），使每次重刷的题型分布略有变化；**不含英英 / 多义**（v0.5.1）。
 - 「再测一次」（结果页）同样计入重刷次数并微调题型比例。
 
-## 明牌配对（`#/match/{deck}`，v0.5.12；连击提示位置 v0.5.13；重进重洗 v0.6.1；整卡组词源 v0.7.1）
+## 明牌配对（`#/match/{deck}`，v0.5.12；连击提示位置 v0.5.13；重进重洗 v0.6.1；长释义截取 v0.10.0）
 
 卡组**通关 ≥ 1 关**后，卡组详情页在「头盔」与关卡列表之间出现 **「明牌配对 · 玩一局」** 横幅（未解锁不显示；直接访问 `#/match/{deck}` 会看到「还差 N 关」引导页）。解锁门槛由 `UNLOCK_LEVELS` 统一控制，`js/decks.js` 直接复用 `match.unlockInfo()`，规则只写一处。
 
-- **词源可切（v0.7.1）**：头部 chips = **「整卡组（N 张）」** ＋ 每个**已通关关卡**（`aria-pressed` 标记当前项；点当前项不会重开，避免误触白洗一局；未通关关卡不可切换）。默认仍是**最高**的已通关关卡；选「整卡组」即把该卡组**全部卡片**纳入本局 —— 因为轮次机制不变，所以就是**一轮一轮一直配到本卡组没有对为止（不再 20 张就结束）**：60 张卡 = 12 轮，页头会写明「整卡组 60 张卡全都在本局里」。
-  - **兜底上限**：整卡组模式单局最多纳入 `MAX_DECK_PAIRS = 300` 张卡（600 张牌 / 60 轮）；超出时页头如实提示「已纳入 300/2000 张卡（整卡组最多 300 张，其余不纳入本局）」——单关模式仍沿用 `MAX_PAIRS = 30`。
-- **每轮 5 对（`ROUND_PAIRS = 5`）**：按每轮 5 对把词源切成若干轮（每轮 10 张牌 ＝ 5 张单词 ＋ 5 张释义），**每轮各自独立洗牌**（不会出现「整轮全是词牌」的死局）；**多余的配对自动溢出到后面的轮次**，一轮清空才铺下一轮 —— 所以「整卡组」也能一轮一轮稳稳配完，且**棋盘始终只渲染当前轮的 10 张牌**（DOM 不会随卡组规模膨胀）。
+- **每轮 5 对（`ROUND_PAIRS = 5`）**：取某一**已通关关卡**的卡片，按每轮 5 对切成若干轮（每轮 10 张牌 ＝ 5 张单词 ＋ 5 张释义），**每轮各自独立洗牌**（不会出现「整轮全是词牌」的死局）；某关 20 张卡 → 4 轮。**多余的配对自动溢出到后面的轮次**，一轮清空才铺下一轮。
 - **牌面（全明牌、固定两列）**：棋盘 `grid-template-columns: repeat(2, minmax(0, 1fr))` 固定两列（间距 / 字号随屏宽 `clamp()` 自适应，**不再随屏宽变 3 / 4 列**），一眼可分：词牌偏主色、义牌偏中性。整关牌数上限 `MAX_PAIRS = 30`（关卡本就 ≤30 张，这里兜底防异常数据）。
+- **长释义截取（v0.10.0，`shortText` / `DEF_MAX_CHARS = 24`）**：释义牌文本超过 24 个字符时只显示**一小段**——优先截到前 24 字里**最后一个逗号 / 句号**（`， , 。 . ； ; 、 ！ ？ ：` 都算自然停顿，保留标点）；若这样只剩太短的前半句，允许往后多看 8 个字找到第一个停顿；实在没有标点才硬截并补 `…`。按码点计数（`Array.from`），**中文 / 英文 / 日文 / emoji 都不会被切坏**，因此**同语种与跨语种卡组一致适用**；截断时把全文存进牌的 `fullText`，渲染成 `title`（悬停可看全文）与 `aria-label`（读屏仍读完整释义）。
 - **轮次行**：头部实时显示「第 R/T 轮 · 本轮还剩 N 对」（全部配完 → 「全部完成 · 共 T 轮」），点击后**只更新文本**。
 - **连击提示位置（v0.5.13）**：「combo✖️N」贴棋盘**右下角**——`.match-board-wrap` 底部留出一条 `clamp(28px, 8vw, 34px)` 的窄留白，提示（`right: 0; bottom: 0` ＋ `transform-origin: 100% 100%`）落在这条留白里，因此**不遮挡牌面文字**；`combo-kick` 动画绕右下角缩放 / 轻抖（一次性动画，`prefers-reduced-motion` 下自然降级），隐藏态由 `.match-combo[hidden] { display: none }` 兜底。
 - **玩法**：**先点单词、再点它的释义**。
@@ -428,12 +424,13 @@ node --check js/*.js                  # 语法检查
   - 词 ＋ 义且**同一张卡** → **配对成功**：两张牌 **金色闪光 ＋ 爆炸消除**（`is-matched` / `is-boom`，动画播完 `BOOM_MS = 420ms` 后这一对**真正从 DOM 上摘掉**，棋盘随之变短）、连击 +1；连击 ≥2 时**棋盘右下角**浮出 **「combo✖️N」**提示并抖动（`combo-kick`，落在底部留白条内 → 不压牌面文字），同时播报「配对成功，连击 ×N」并让「最大连击」格弹跳；
   - 词 ＋ 义但**不同卡** → **配对失败**：两张牌**抖动**并取消选中（460ms 后复原）、连击清零、失误 +1、连击提示收起；
   - 点**已配对**的牌 = 无效（不打断当前选中）。
-- **结算**：全部配完 → 结算面板显示 **用时 / 失误 / 最大连击** ＋ 「再玩一次」（同一词源重新洗牌）＋「返回卡组」；用时实时每秒刷新，配完即定格，**不强制限时**。
-- **词源（v0.7.1）**：头部 chips 列出 **「整卡组（N 张）」** ＋ 各**已通关关卡**（`role="group"` ＋ `aria-label="选择词源"`，原生 `<button>` ＋ `aria-pressed`）；默认从**最高**的已通关关卡开局，选「整卡组」后页头标题变为「明牌配对 · 整卡组」并注明纳入张数；未通关的关卡不可切换，点当前词源不重开。相关内核：`normalizeSource` / `stateSource` / `defaultSource` / `isValidSource` / `sourceLabel` / `matchTitle` / `sourceLimit` / `sourceTotal` / `sourceCards`（旧的 `levelCardsFor` 保留为关卡词源的薄包装）。
-- **会话（v0.6.1：只存内存）**：棋局（洗好的牌面 / 词源 / 轮次 / 选中态 / 连击 / 用时）只保存在 `js/match.js` 的**模块级变量**里，**不写 sessionStorage**。因此：**任何一次「进入配对页」都会重新洗牌开局** —— 首次加载 / 刷新 / 从卡组页重新进来（路由切换由 `app.js` 调 `clearMatchSession()` 清场）/ 点词源 chip / 点「再玩一次」，牌面与牌底顺序都会重洗、进度清零；**只有同一页内的重渲染**（切主题 / 切主色 / 跟随系统变色）会沿用当前棋局、不打乱棋盘、不丢选中态。最佳成绩**暂不持久化**（仅在结算面板显示本局成绩）。
+- **结算**：全部配完 → 结算面板显示 **用时 / 失误 / 最大连击** ＋ 「再玩一次」（同关重新洗牌）＋「返回卡组」；用时实时每秒刷新，配完即定格，**不强制限时**。
+- **关卡选择**：已通关关卡 ≥2 个时，头部列出「第 N 关」chips（`aria-pressed` 标记当前关），默认从**最高**的已通关关卡开局；未通关的关卡不可切换。
+- **会话（v0.6.1：只存内存）**：棋局（洗好的牌面 / 轮次 / 选中态 / 连击 / 用时）只保存在 `js/match.js` 的**模块级变量**里，**不写 sessionStorage**。因此：**任何一次「进入配对页」都会重新洗牌开局** —— 首次加载 / 刷新 / 从卡组页重新进来（路由切换由 `app.js` 调 `clearMatchSession()` 清场）/ 点同一关 chip / 点「再玩一次」，牌面与牌底顺序都会重洗、进度清零；**只有同一页内的重渲染**（切主题 / 切主色 / 跟随系统变色）会沿用当前棋局、不打乱棋盘、不丢选中态。最佳成绩**暂不持久化**（仅在结算面板显示本局成绩）。
   - 为什么去掉缓存：原来把棋局写进 `sessionStorage`，唯一效果是「刷新后把上一局捞回来」——而这正是「重进同一关必须重新洗牌」要避免的；同一页内重渲染本来就不需要落盘（`S` 还在内存里）。随之下线的还有只服务于「复活损坏棋局」的 `isRoundComplete` / `isBoardComplete` 守门（该「每轮词义成对完整」的性质改由 `scripts/test-match.mjs` 直接对 `buildBoard` 的产物断言）。
-- **实现分工**（见 `memory-bank/systemPatterns.md` 第 20 条）：`js/match.js` = **纯函数内核**（`UNLOCK_LEVELS` / `ROUND_PAIRS` / `MAX_PAIRS` / `MAX_DECK_PAIRS` / `BOOM_MS` / `passedLevels` / `unlockInfo` / `normalizeSource` / `stateSource` / `defaultSource` / `defaultLevel` / `isPlayableLevel` / `isValidSource` / `sourceLabel` / `matchTitle` / `sourceLimit` / `sourceTotal` / `sourceCards` / `levelCardsFor` / `splitRounds` / `buildBoard` / `buildTiles` / `shuffle`（随机源可注入）/ `roundTiles` / `roundStats` / `liveTiles` / `roundCount` / `roundLeft` / `isMatch` / `nextSelection` / `applyPick`（返回 `roundCleared`）/ `boardStats` / `playStats` / `formatDuration`）＋ **薄 UI**（`renderMatch` / `clearMatchSession`）。
-- **点击不整页重渲染**：单击只做局部打补丁（选中态 / 金光 · 爆炸 / 连击提示 / 轮次行 / 统计 / 焦点）——否则每配一对都会重建棋盘，导致**已消除的牌复活**、**金光重复播放**、键盘焦点丢失；配对成功后焦点自动交给**下一张还能点的牌**（纯键盘可连玩），本轮清空铺下一轮时焦点落到新铺的第一张牌。整页 `innerHTML` 只留给「开局 / 换词源 / 重开 / 主题切换」这类低频时刻。
+- **实现分工**（见 `memory-bank/systemPatterns.md` 第 20 条）：`js/match.js` = **纯函数内核**（`UNLOCK_LEVELS` / `ROUND_PAIRS` / `MAX_PAIRS` / `BOOM_MS` / `DEF_MAX_CHARS` / `shortText` / `passedLevels` / `unlockInfo` / `defaultLevel` / `isPlayableLevel` / `splitRounds` / `buildBoard` / `buildTiles` / `shuffle`（随机源可注入）/ `roundTiles` / `roundStats` / `liveTiles` / `roundCount` / `roundLeft` / `isMatch` / `nextSelection` / `applyPick`（返回 `roundCleared`）/ `boardStats` / `playStats` / `formatDuration`）＋ **薄 UI**（`renderMatch` / `clearMatchSession`）。
+
+- **点击不整页重渲染**：单击只做局部打补丁（选中态 / 金光 · 爆炸 / 连击提示 / 轮次行 / 统计 / 焦点）——否则每配一对都会重建棋盘，导致**已消除的牌复活**、**金光重复播放**、键盘焦点丢失；配对成功后焦点自动交给**下一张还能点的牌**（纯键盘可连玩），本轮清空铺下一轮时焦点落到新铺的第一张牌。整页 `innerHTML` 只留给「开局 / 换关 / 重开 / 主题切换」这类低频时刻。
 
 ## 填字游戏（`#/crossword/{deck}`，v0.6.0）
 
@@ -455,190 +452,7 @@ node --check js/*.js                  # 语法检查
 - **会话与性能**：棋盘（词源 / 每局词数 / 排版结果 / 已填与已提示的格 / 提示次数与用时）写入 `sessionStorage['mycard-crossword-session']`，重渲染（切主题等）**不重新抽词、不重新排版**；会话复活有完整性守门（缺格 / 越界 / 损坏一律丢弃重开）；路由切换 / 清空数据时由 `app.js` 调 `clearCrosswordSession()` 清场（同时清掉计时器）。
 - **实现分工**（见 `memory-bank/systemPatterns.md` 第 21 条）：`js/crossword.js` = **纯函数内核**（`UNLOCK_LEVELS` / `SIZES` / `DEFAULT_SIZE` / `MIN_LEN` / `MAX_LEN` / `passedLevels` / `unlockInfo` / `defaultSource` / `isValidSource` / `sourceCards` / `sanitizeAnswer` / `clueText` / `entryFromCard` / `candidateEntries` / `canPlace` / `findPlacement` / `placeWord` / `generateCrossword` / `buildBoard` / `cellMap` / `wordCells` / `wordAt` / `newGame` / `setLetter` / `checkAll` / `hintCell` / `revealCell` / `revealWord` / `progress` / `isSolved` / `playStats` / `formatDuration` / `cellSize`，随机源 `rng` 可注入）+ **薄 UI**（`renderCrossword` / `crosswordHtml` / `statusText` / `clearCrosswordSession`）。
 - **输入不整页重渲染**：每次打字 / 提示 / 显示本词只做局部打补丁（格子的值 · `is-wrong` · `is-revealed` · `is-active`、线索状态、状态行与四个统计格、进度条），只有「换词源 / 换词数 / 换一批 / 重新开始 / 路由重渲染」这类低频时刻才重写整页 `innerHTML` —— 否则会丢焦点、丢光标、丢输入法候选框。
-- **移动端适配（v0.7.0 加强）**：格子边长由 `cellSize(列数, 行数, { 视口, touch })` 计算后内联 `--cw-cell`；**触屏下限抬到 30px**（桌面 24px、上限 40px），可用高度按 40% 视口估算（底部压着字母键盘与线索区）——**宁可让棋盘横向滚动，也不把格子压成看不清的“蚂蚁格”**；棋盘用 `inline-grid` + 外层 `text-align: center`（横向溢出时不会切掉左端）；**焦点格会自动滚进视野**（`scrollIntoView({ block:'nearest', inline:'nearest' })`）；触屏进入即可用底部**英文字母键盘**（详见「移动端字母键盘」一节）。
-
-## 多端同步（WebDAV，`v0.8.0` 起，`v0.9.0` 增量 + 预览 + 本机专用）
-
-**默认不上传任何数据**；只有你在设置页「多端同步（WebDAV）」区块里填好账号并点「立即同步」（或开启自动同步）之后，才会把数据写到**你自己的**网盘。手机 + 电脑共用一份词库与学习进度：在 A 端背完的卡，B 端同步后接着背。
-
-### 同步什么
-| 内容 | 说明 |
-| --- | --- |
-| 词库 | 全部卡组（名称 / 简介 / 标签 / 暂停 / 每关词数 / 是否示范）+ 卡片全部字段（正面 / 背面 / 例句 / 例句翻译 / 音标 / 标签 / 易混分组 / 多释义 / 关卡归属） |
-| 学习进度 | 每张卡的 `state / repetitions / interval / easeFactor / due / lastReview`（间隔重复调度的全部字段） |
-| 复习日志 | `revlog`（每次评分的 ease / 间隔 / 用时，逐条合并，只增不减） |
-| 关卡进度 | `passedLevels`（已通关关卡取并集，不会被另一台设备抹掉） |
-| 设置 | 「每关词数」（`cardsPerLevel`，以最后改动的一方为准） |
-
-### 冲突与删除（合并规则）
-- **内容**（卡面 / 卡组元信息 / 关卡归属）：按 **`updatedAt`（最后修改时间）新者胜** —— store 只在**内容编辑**时推进这个时间戳（纯「记住了 / 困难」等学习动作不会推进，所以不会把另一端的释义编辑冲掉）。
-- **学习进度**：按 **`lastReview`（最后学习时间）新者胜** —— **进度只进不退**：A 端背了两遍、B 端只背一遍，同步后取 A 的调度。
-- **复习日志**：按日志 id 求并集（同日同时刻重复评分也会各自保留）。
-- **设置（「每关词数」）**：按 **`settings.updatedAt`（这项设置最后一次改动的时间）** 取更新的那一方（v0.9.0 起 store 会给它打时间戳；老数据没有这个字段时退回「快照时间」比较）。这样「在手机上把每关词数从 20 改成 15」能真的传到电脑上。
-- **删除**：本地删除会记一条**墓碑**（`{id: 删除时间}`）。同步时只有当「**删除时间晚于对方副本的最后修改 / 复习时间**」才真正删除；如果对方在你删除之后**又改过或又背过**这张卡（或者这个卡组里有卡片在删除后学习过），则**保留**（宁可多留一张，也不误删你的学习数据）。墓碑保留 90 天、最多 4000 条（超出的按时间裁剪）。
-- 合并是**幂等**的：同一份数据反复同步结果不变（`test-sync` 有专门断言）。
-
-### 用法
-1. 设置页 → **多端同步（WebDAV）** → 填 **服务器地址**（如 `https://dav.jianguoyun.com/dav/`）、**用户名**、**密码 / 应用密码**、**同步目录**（默认 `mycard`，不存在会自动创建）；
-2. 点 **测试连接**（发一次 `PROPFIND`）确认能读写；想免去每次输密码就勾 **记住密码**（明文存在本机浏览器，公共设备别勾）；
-3. 想先看看到底会改什么，点 **预览差异**：弹窗里给出「本机 / 网盘 / 合并后」的卡组·卡片·日志数量、**逐卡组的变化**（新增 / 更新 / 删除多少张、日志多少条）、**冲突明细**（同一张卡两端都改过时，内容与进度各自取了哪一端）以及本次会下载 / 上传哪些卡组；确认无误再点「开始同步」。**预览只发 `GET`，不改网盘也不改本机数据**。
-4. 点 **立即同步** —— 首次会把本地数据推上去；在另一台设备重复「填账号 → 立即同步」，两台设备就合并成同一份数据；
-5. 可选开关：**打开应用时自动同步一次**、**数据变更后自动同步**（每 5 分钟检查一次数据指纹，变了才真正同步；离开页面时也会尝试推一次）。
-
-### 增量传输（`v0.9.0`）
-网盘上不再是一份大文件，而是 **「索引 + 每个卡组一个文件」**：
-
-| 文件 | 作用 |
-| --- | --- |
-| `同步目录/mycard-sync.json` | **索引**：每个卡组的摘要（名字 / 卡片数 / 最后修改 / 最后复习）+ **内容指纹** + 删除墓碑 + 设置。体积很小 |
-| `同步目录/mycard-decks/{卡组id}.json` | 该卡组的完整内容（卡面 + 每卡调度 + 复习日志） |
-| `同步目录/mycard-decks/{卡组id}.prev.json` | 该卡组文件**覆盖前的备份** |
-| `同步目录/mycard-sync.prev.json` | 索引**覆盖前的备份**（出问题可手工下载回滚） |
-| `同步目录/mycard-sync.lock.json` | 同步锁（有效期 10 分钟；异常退出后可自动抢占） |
-
-同步时先读索引，**只下载指纹与本地不同的卡组文件**；合并后**只上传内容发生变化的卡组**，其余一个字节都不动；万一某个卡组在合并后消失（被删除），它的远端文件也会一起删掉，不留垃圾。**旧版本（v0.8.0）写的单文件快照可以无缝合并**，并在第一次同步后自动升级成这个新布局（老文件会原样备份到 `mycard-sync.prev.json`）。
-
-### 本机专用卡组（`v0.9.0`）
-在**卡组编辑弹窗**勾选「**本机专用（不参与多端同步）**」，或用卡组页 ⋮ 菜单里的「**设为本机专用（不同步）**」，这个卡组就会：
-- **不上传**（索引与卡组文件里都不会出现它），也不参与数据指纹（改它不会触发自动同步）；
-- **不被远端影响**：其他设备的同名 / 同 id 卡组不会覆盖它，也不会把它删掉；
-- **本机删除不外传**：在它里面删卡片 / 删卡组**不记墓碑**，因此不会连累其他设备的副本。
-
-卡组列表与详情页会显示 **「本机专用」** 标记，设置页也会提示当前有几个卡组被排除。适合「私人笔记」「临时整理」「不想上云的词库」。
-
-### 连不上怎么办：点「诊断连接」（`v0.9.2`）
-浏览器出于安全限制，**不会**告诉网页「为什么连不上」——`fetch` 只会抛一句没有信息量的 `Failed to fetch`。所以本应用：
-- 失败时不再只显示 `request failed`，而是给出 **`连不上服务器｜地址 …｜浏览器原始信息：TypeError: Failed to fetch`**，并提示可以点「诊断连接」；
-- **「诊断连接」** 按钮（设置页，与「测试连接」并排）会**逐步**探测，每步都不抛错、只如实报告：
-
-| 步骤 | 做什么 | 能说明什么 |
-| --- | --- | --- |
-| 解析服务器地址 | 规范化并打印最终 URL | 地址是否拼错（如漏了 `/dav/`） |
-| 环境检查 | 页面协议 / 是否离线 | HTTPS 页面 + `http://` 地址会被浏览器直接拦（**混合内容**） |
-| 基础连通性（GET，不带认证） | 发一个**简单请求**（不触发跨域预检） | 能拿到状态码 → 网络通、服务端允许简单跨域 |
-| **服务器可达性（`no-cors` 探测）** | 只在上一行失败时才跑：`no-cors` 的简单 GET 不要求服务端给跨域头 | **通了** → 服务器其实可达，是**它没给跨域许可（缺 CORS 头）**；**没通** → 请求压根没完成（DNS / 证书 / 网络策略 / 内容拦截 / 代理） |
-| 跨域预检（PROPFIND，不带认证） | `PROPFIND` 一定要先过 CORS 预检 | 若「基础连通性」通过而这步失败 → **网盘不允许浏览器跨域**（结论明确） |
-| 带认证的 PROPFIND | 「测试连接」本体 | 401 = 账号 / 应用密码不对；403 = 目录无权限；404 = 路径不对 |
-
-- 最后给一句**可执行结论**（例如「服务器其实是可达的，只是它没有给浏览器跨域许可 —— 换网络 / 关插件都没用」，或「这台设备根本到不了服务器」，或「跨域正常，是账号或密码不对：坚果云要用『账号邮箱 + 应用密码』」），并附 **常见原因自查清单**（含坚果云专项：地址 `https://dav.jianguoyun.com/dav/`、用户名 = **注册邮箱**、密码 = 「账户信息 → 安全选项 → 添加应用」生成的**应用密码**）；
-- **「复制诊断信息」** 一键复制纯文本报告（含**结论 / 怎么修 / 逐步结果 / 地址·用户名·目录 / 浏览器与页面协议**）—— **绝不包含密码**，可放心贴给他人排查；**报告里自带「怎么修」**，若是「服务器可达但缺跨域许可」，报告末尾还会**附上完整的 Worker 反代代码**，复制出去就能照做；
-- 剪贴板被浏览器拒绝时（Safari 偶发）会**自动弹出可手选的文本框**，提示按 ⌘/Ctrl + C 复制，不会卡在「复制不了」；
-- 诊断只做**只读**请求（`GET` / `PROPFIND`），不改网盘、不改本机数据。
-- 兼容各浏览器的原始文案：Chrome/Edge 的 `Failed to fetch`、Safari/iOS 的 `Load failed` 都会如实显示。
-
-### 方案 A′（本机运行 Mycard 时最省事，**零账号**）：本机「同源代理」脚本
-如果你的 Mycard 是**在本机打开**的（地址形如 `http://localhost:8080`，`python3 -m http.server` 之类），**不需要注册任何账号**：仓库里带了一个零依赖脚本，它同时充当「静态站点服务器 + WebDAV 代理」，让**页面与网盘同源**——同源请求浏览器根本不做跨域检查，网盘不给 CORS 头也无所谓。
-
-```bash
-# 在 Mycard 目录下（它会打印用法；Ctrl+C 停止）
-python3 scripts/dav-proxy.py
-# 目标默认是 https://dav.jianguoyun.com/dav；换网盘用 --target（= 你原来填在「服务器地址」里的那个地址）
-python3 scripts/dav-proxy.py --target https://cloud.example.com/remote.php/dav/files/me --port 8080
-```
-
-启动后：
-
-| 用途 | 填什么 |
-| --- | --- |
-| 打开 Mycard | `http://localhost:8080/` ← **用它替掉原来的 `python3 -m http.server`** |
-| 设置页「服务器地址」 | `http://localhost:8080/dav` |
-| 用户名 / 密码 | 照旧（坚果云 = 注册邮箱 + 应用密码） |
-| 同步目录 | `mycard` |
-
-> 说明：脚本只把请求转发到 `--target` 指定的**一个**主机、拒绝带 `..` 的路径、`Authorization` 头原样转发；密码只在「浏览器 → 本机进程 → 网盘」之间流动，不经第三方。
-> 诊断里若你是本机打开，**弹窗里的「怎么修」会优先给出这条方案**（零账号、不用部署任何云服务）。
-
-### 方案 A″（Mycard 部署在**你自己的** Cloudflare Pages 上，零第三方服务）：Pages Function 同源反代
-仓库里已经带了 **`functions/dav/[[path]].js`**（Cloudflare Pages 会自动把它变成 `/dav/*` 这个接口）。它和页面**同源** → 浏览器不做跨域检查 → 网盘给不给 CORS 头都无所谓。
-
-1. 把仓库（含 `functions/dav/[[path]].js`）**部署到你的 Pages 项目**；
-2. Pages → 项目 → **Settings → Environment variables** 添加：
-   `DAV_TARGET = https://dav.jianguoyun.com/dav`（就是你原来填在「服务器地址」里的那个地址）；
-3. 重新部署后，Mycard 设置页的 **「服务器地址」填 `https://你的站点域名/dav`**，用户名 / 应用密码 / 同步目录照旧即可。
-
-> 未配置 `DAV_TARGET` 时该接口会返回 **501 并告诉你该怎么配**（不会静默失败）；函数只转发到 `DAV_TARGET` 这一个主机、拒绝带 `..` 的路径、`Authorization` 原样转发、不透传 `set-cookie` —— 密码只在「浏览器 → 你自己的 Pages 函数 → 网盘」之间。
-> 逻辑单测：`node scripts/test-dav-fn.mjs`（21 项，**不需要真部署**，直接调用 `onRequest` 并桩住 `fetch`）。
-
-### 方案 B：一条兜底的云反代（部署在别人域名 / 本机没 Python / 不想动仓库）
-如果你既不在本机运行、也不想给 Pages 加函数、或 Mycard 是别人部署的，就用这一条：**临时加一个 Cloudflare Worker 反代**。
-
-「服务器**可达**但缺少跨域许可」**不是你的网络问题**——网盘（坚果云 WebDAV 常见）没有回 `Access-Control-Allow-Origin` 等响应头，浏览器就会把请求判为失败。**诊断弹窗会直接显示「怎么修：三步」并给出「复制 Worker 反代代码」按钮**（目标服务器已按你填的地址自动填好），照做即可：
-
-1. 点弹窗里的 **「复制 Worker 反代代码」**；
-2. 打开 [Cloudflare Workers](https://dash.cloudflare.com/?to=/:account/workers-and-pages) → 创建 Worker → 整段粘贴 → 部署（免费）；
-3. 回到设置页，把 **「服务器地址」改成 `https://你的worker.workers.dev/dav`**（Worker 地址 + 原来 `/dav` 这段路径前缀），用户名 / 应用密码照旧 → 点「测试连接」。
-
-也可以换用**本身支持跨域的 WebDAV**：自建 Nextcloud（`https://域名/remote.php/dav/files/用户名/`）、群晖 / 威联通等大多可配；地址换掉、账号密码照旧即可。
-
-> **不要用公共 CORS 代理**（网上搜到的那些免费代理 URL）：你的网盘密码（Basic 认证头）会经手第三方。
-
-下面是从应用里复制出来的 Worker 代码（`export function workerProxyCode()` 生成，`TARGET` 会按你填的地址自动替换）：
-
-```js
-// Mycard · WebDAV CORS 反代（Cloudflare Worker，免费）
-// 部署：dash.cloudflare.com → Workers & Pages → 创建 Worker → 粘贴 → 部署
-// 用法：设置页「服务器地址」= https://<你的 Worker 域名>/dav（目录仍填 mycard）
-const TARGET = 'https://dav.jianguoyun.com'; // ← 你的 WebDAV 服务器（只到域名，不含 /dav 之后的路径）
-const CORS = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET,HEAD,PUT,DELETE,PROPFIND,MKCOL,OPTIONS',
-  'Access-Control-Allow-Headers': 'Authorization,Content-Type,Depth,If-None-Match,If-Match,Overwrite',
-  'Access-Control-Expose-Headers': 'ETag,Content-Length',
-  'Access-Control-Max-Age': '86400'
-};
-
-export default {
-  async fetch(req) {
-    if (req.method === 'OPTIONS') {
-      return new Response(null, { status: 204, headers: CORS }); // 跨域预检直接放行
-    }
-    const url = new URL(req.url);
-    const headers = new Headers(req.headers);
-    ['host', 'origin', 'referer', 'cf-connecting-ip', 'cf-ray', 'cf-ipcountry'].forEach((h) => headers.delete(h));
-    const res = await fetch(TARGET + url.pathname + url.search, {
-      method: req.method,
-      headers,
-      body: ['GET', 'HEAD'].includes(req.method) ? undefined : req.body
-    });
-    const out = new Headers(res.headers);
-    Object.entries(CORS).forEach(([k, v]) => out.set(k, v));
-    out.delete('set-cookie'); // 不必把网盘的 cookie 透给浏览器
-    return new Response(res.body, { status: res.status, headers: out });
-  }
-};
-```
-
-> 说明：`Authorization`（Basic 认证头）会被原样转发，**密码仍然只在你和 Worker / 网盘之间**；本应用依旧不落盘密码（勾了「记住密码」才存本机）。
-> 安全提示：这个 Worker 只转发到 `TARGET` 这一个主机，别人拿到地址也只能用自己的账号密码访问自己的空间；若仍不放心，可在 `fetch()` 开头加一句 `if (url.searchParams.get('k') !== '你的口令') return new Response('forbidden', { status: 403 });`，并在服务器地址里带上 `?k=你的口令`。
-
-### 实现分工
-- `js/webdav.js` = **极简 WebDAV 客户端**（零依赖，只用 `fetch`）：`normalizeBase` / `normalizeDir` / `buildUrl`（逐段编码，中文目录可用）/ `authHeader`（Basic，UTF-8 安全）/ `probe`（PROPFIND）/ `ensureCollection`（逐级 MKCOL，405 视为已存在）/ `getText`（404 → `exists:false`，不是错误）/ `putText`（`createOnly` 时带 `If-None-Match: *` 用于抢锁）/ `remove`；所有失败统一抛 `WebdavError`（带 `status` / `kind` / `url` / 原始 `cause`），`explainError()` 转成「原因 + 地址 + 浏览器原始信息 + 建议」；**v0.9.2 新增** `causeText()`（保住浏览器那句 `Failed to fetch`）、`diagnose()`（逐步探测：地址 → 环境 → 连通性 → 跨域预检 → 认证，**永不抛错**）、`setupHints()`（自查清单）、`diagnoseReport()`（可复制、**不含密码**）。
-- `js/sync.js` = **同步引擎**：`mergeSnapshots()` 是**纯函数内核**（不碰 DOM / 网络 / 存储，`test-sync` 直接单测，并附带 `report` 明细给预览用）；`planSync()` 只算（只 GET）→ `previewSync()` 展示 → `syncNow()` 建目录 → 抢锁 → 读索引 → 拉有变化的卡组 → 合并 → 只写有变化的卡组与索引 → 落到本地 → 存墓碑；`manifestOf()` / `manifestEntry()` / `deckHash()`（稳定序列化，与字段顺序无关）负责「索引 + 指纹」；配置（含「记住密码」与否）与上次同步结果存 `localStorage['mycard-sync']`；自动同步用**数据指纹**（卡组数 : 卡片数 : 最新修改 : 最新复习，**不含本机专用卡组**）判断「有没有变」。
-- `js/store.js` 配套：卡片 / 卡组新增 `updatedAt`；`deleteCard` / `deleteCards` / `deleteDeck` 记墓碑（`mycard-sync-tombstones`，**本机专用卡组除外**）；`applySyncDecks()` 是**唯一的合并落库入口**（保留 id、连 `revlog` 一起回写、删除本地多出来的卡组 / 卡片，但**跳过 `keepDeckIds`（本机专用）**）。
-- `js/app.js` 设置页新增 **「预览差异」** 按钮 + **预览弹窗**（`syncPreviewModal`，`ui.openModal({ wide: true })`，含规模对比、逐卡组变化表、冲突明细、传输量）；卡组侧在 `js/decks.js` 提供「本机专用」勾选框 / 菜单开关与 `pill-local` 标记。
-
-### 限制与注意
-- **浏览器直连 WebDAV 需要网盘允许跨域**。坚果云 `https://dav.jianguoyun.com/dav/`、Nextcloud `https://域名/remote.php/dav/files/用户名/` 通常可用；若「测试连接」失败，**先点「诊断连接」**——它会告诉你卡在那一步：连不上服务器（网络 / DNS / 插件 / 代理）、跨域预检被拒（CORS），还是账号 / 应用密码不对（401）。坚果云请务必用 **注册邮箱 + 应用密码**（登录密码连不上）。
-- **增量但仍是整卡组粒度**：改一张卡就会重传它所在的**整个卡组文件**（个人量级毫无压力；一个卡组几千张卡时也只传这一个文件，比整库单文件快得多）。索引每次同步都会刷新（很小）。
-- **同一时刻只应有一台设备在同步**：锁文件能挡住并发写，但如果两台设备**离线各改很久再同时同步**，冲突只会按上面的规则择一保留（内容按时间、进度按学习时间），**不会做逐字段三方合并**——不过「预览差异」能让你在动手前就看到这些冲突取的是哪一端。
-- **不合并**：`mycard-mode` / `mycard-accent`（明暗与主题色是本机偏好）、测试进度（`test_progress_*`）、关卡重刷统计（sessionStorage）、以及**「本机专用」标记本身**（这是每台设备自己的选择）——这些刻意保持在设备本地。
-- **密码安全**：默认不落盘（只在本会话内存里）；勾了「记住密码」就是**明文存在本机 localStorage**，公共设备请勿勾选，用完后点「清除密码」。
-
-## 移动端字母键盘（`js/keyboard.js`，v0.7.0）
-
-一个**共享的屏幕字母键盘**，目前被 **填字页**（`#/crossword/{deck}`）与 **填空题**（`fill` 题型）使用 —— 手机做题不再被系统输入法打断。
-
-- **何时出现**：`isTouchDevice()`（`pointer: coarse` → `navigator.maxTouchPoints` → `ontouchstart` 三级兜底）为真、且本页没被手动收起过 → 进入页面即展开；**桌面端不显示**（用物理键盘）。
-- **抑制系统输入法**：展开时把宿主声明的输入框（`inputs: '.cw-input'` / `'.fill-field'`）的 `inputmode` 同步成 **`none`**（`syncInputs()`），于是**不弹中文候选框 / 拼音键盘、不把页面顶飞**；收起时还原为 `latin`。若某浏览器不支持 `inputmode="none"`，只会退化成「系统键盘 + 自绘键盘都能用」，功能不受影响。
-- **键位**：三行 QWERTY（10 / 9 / 7）+ **⌫ 退格** + 「收起键盘」；填空题额外有 **空格键**（多词答案如 `ice cream` 可用）。全是原生 `<button>`（Tab / Enter 天然可达），每键带中文 `aria-label`（`字母 A` / `退格` / `空格`）。
-- **三种形态**（单例 `#kb-bar`，挂在 `<body>` 下 —— 不进 `#view`，页面重渲染不会重建）：
-  1. **展开** → 完整键盘；同时给 `<body>` 加 `kb-open` 并把实测高度写进 CSS 变量 `--kb-h`，`#view` 据此追加底部留白，内容不会被压住；
-  2. **收起**（点「收起键盘」）→ 只剩右下角 **「⌨ 字母键盘」迷你胶囊**，点它随时唤回（**不依赖页面重渲染**）；同一页内不再自动弹回；
-  3. **无宿主**（离开页面 / 当前不是填空题 / 已完成 / 非触屏）→ 整条 `hidden`（退出 tab 序与无障碍树）。
-- **宿主接入**：`kb.openKeyboard({ inputs, space, onKey, onBackspace, onSpace, onEnter })` 声明「我要用键盘」——
-  - **填字页**：字母写进**当前聚焦格**（没有聚焦格时写当前线索的第一个空格），复用物理键盘同一条处理链路（自动推进 / 只打补丁）；退格等价 `Backspace`；完成 / 离场时 `closeKeyboard()`；
-  - **填空题**：字母小写追加进输入框并把草稿写回内核（重渲染不丢输入），退格删一个字符，**回车 = 提交**；已作答 / 离开测试页时 `closeKeyboard()`。
-- **实现约定**（见 `memory-bank/systemPatterns.md` 第 23 条）：键盘**不碰存储、不碰业务状态**，只负责「渲染 + 把按键派发给宿主」；按键走 Action 事件委托（`kb-key` / `kb-hide` / `kb-show`），宿主重渲染出新输入框后再调一次 `syncInputs()` 重新同步 `inputmode`。
+- **移动端适配**：格子边长由 `cellSize(列数, 行数, 视口)` 计算后内联 `--cw-cell`（限幅 18–40px），列数走 `--cw-cols`；棋盘过宽时由 `.cw-board-wrap` **横向滚动**兜底，不挤压线索文字。
 
 ## 间隔重复算法（简版说明）
 
@@ -663,26 +477,32 @@ export default {
 
 > 数据：`data/confusables.json`（39 个易混组 + 51 词多释义）。`water / money / time` 等没有强易混关系的词不分组，直接走随机兜底。
 
-## 测试题型（5 种基础 + 2 种可选）
+## 测试题型（5 种基础 + 2 种可选；按卡组语种关系自适应）
+
+> **v0.10.0 起按卡组语种关系自适应**：用 `js/lang.js` 对卡组正反面**整组投票**判定语种。
+> **跨语种**（如 英-中 / 日-中 / 德-中）保留下表全部 5 种基础题型；
+> **同语种**（如 中文-中文）只保留 **4 种**：去掉 `sentence2word`，`listen` 改为「听背面 → 填写正面」的听写填空，`fill` 支持「正面/背面双向挖空」。
+> 非拉丁语种答案按**精确匹配**判分（不做英文单复数屈折），填空在移动端改用系统输入法（不弹自绘英文键盘）。
+> 中日区分：**含假名 → 日语；纯汉字 → 中文**（整组投票；拉丁字母语种在不带重音字符时统一归 `en`，见已知限制）。
 
 | 题型 | id | 题干 | 作答方式 | 正确项 | 默认 |
 | --- | --- | --- | --- | --- | --- |
 | 单词选释义 | `word2def` | front | 从 4 个释义中选 | back | 启用 |
 | 释义选单词 | `def2word` | back | 从 4 个单词中选 | front | 启用 |
-| 句子选单词 | `sentence2word` | example 挖空 | 从 4 个单词中选 | front | 启用 |
-| 填空 | `fill` | example 挖空 或 back（每题随机二选一） | 输入英文单词 | front | 启用 |
-| 听音辨意 | `listen` | 🔊 单词发音（浏览器 TTS） | 从 4 个释义中选 | back | 启用 |
+| 句子选单词 | `sentence2word` | example 挖空 | 从 4 个单词中选 | front | 启用（**同语种不启用**） |
+| 填空 | `fill` | 跨语种：example 挖空 或 back；同语种：front / back 随机挖空 | 输入对应答案 | 跨语种 front；同语种另一面 | 启用 |
+| 听音辨意 | `listen` | 跨语种：🔊 正面发音（4 选 1）；同语种：🔊 背面发音 | 跨语种选释义；同语种输入正面 | back / front | 启用 |
 | 英英选择 | `eng_eng` | 单词 或 英文释义（子模式 A/B 随机） | 从 4 个**英文**选项中选择 | 对应英文释义 / 单词 | 可选（默认关） |
 | 多义多选 | `multi_sense` | 单词 + 「多选」标识 | 勾选**全部**释义后提交 | 该词全部释义 | 可选（默认关） |
 
 - 每张卡随机分配一种（已启用的）题型，选择题为「1 个正确项 + 3 个干扰项」并打乱顺序。
 - 以「单词」为选项的两类题型，干扰项遵循「同易混组其它词优先 → 随机单词兜底」，且排除自身。
-- 句子选单词只在例句确含目标词时生成，挖空会把词形变化一并匹配（如 `run→runs`、`play→playing`、`study→studies`、`word→words`）。
-- **听音辨意**：题干为「🔊 播放发音」按钮（进入该题自动播放一次，可点击重播），用浏览器内置 **Web Speech API（`speechSynthesis`）** 合成英文发音，**离线可用、无需音频文件**；环境不支持 TTS 时降级为「显示单词」提示。选项与键盘操作（A–D / 1–4 / ↑↓←→ + Enter）与选择题完全一致。
+- 句子选单词只在例句确含目标词时生成，挖空会把词形变化一并匹配（英文如 `run→runs`、`play→playing`、`study→studies`、`word→words`；非拉丁语种用精确子串匹配）；**同语种卡组不出此题型**。
+- **听音辨意**：题干为「🔊 播放发音」按钮（进入该题自动播放一次，可点击重播），用浏览器内置 **Web Speech API（`speechSynthesis`）** 合成发音，**离线可用、无需音频文件**；语音按文本语种自动选择（英 `en-US` / 中 `zh-CN` / 日 `ja-JP` / 韩 `ko-KR` / 德 `de-DE` / 法 `fr-FR` / 西 `es-ES` / 俄 `ru-RU` / 希腊 `el-GR`），环境不支持 TTS 时降级为「显示文字」提示。选项与键盘操作（A–D / 1–4 / ↑↓←→ + Enter）与选择题完全一致。**同语种卡组**改为听写题：朗读背面，用户在输入框填写正面（复用填空的判分 / 提示逻辑）。
 - **英英选择 `eng_eng`（v0.5，可选）**：*建议考研及以上水平使用（需较强英文阅读理解能力）*。子模式 A「看单词选英文释义」/ 子模式 B「看英文释义猜单词」随机出现；选项均为英文，释义取自 **GCIDE**（`data/eng-defs.json`，14428 词，按需懒加载，不进 SW 预缓存）；词库缺少该词英文释义时自动回退到其它可用题型。
-- **多义多选 `multi_sense`（v0.5，可选；v0.9.1 修「不该出英文」）**：*建议考研及以上水平使用*。一词多义，勾选该词的**全部释义**后点「提交」判分，**全对才算对**（漏选 / 多选 / 错选均算错，错题进优先池）；左上角有「多选」标识。释义取**卡组内中文释义**（`back` + `extraBacks`）：**中文释义不足 2 条的词就不出这道题**（抽题计划会按「卡片级可用性」把多义槽位让给后面合适的卡，所以题型比例仍能落到实处），**仅当同时开启「英英选择」**时才回退 GCIDE 英文释义兜底——**没开英英选择就一定不会出现英文题面 / 英文选项**。正确项 2–4 个 + 1 个其它词干扰（正确项 4 个时共 5 个选项）。
-- **填空题容错**：答案比对忽略**大小写**、**首尾 / 连续空格**，并容错**单复数与常见屈折**（`book`/`books`、`study`/`studies`、`run`/`runs`/`running` 均判对）；每题最多 3 次机会，输入框内 `Enter` 或点「提交」作答，用尽机会后展示完整信息卡。
-- **填空：移动端字母键盘（v0.7.0）**：触屏设备进入填空题会自动在底部弹出**自绘英文字母键盘**（26 字母 + **空格键** + 退格 + 收起），并把输入框 `inputmode` 置为 `none` **抑制系统输入法**（不再弹中文候选框 / 拼音键盘）；敲字母即追加到输入框（小写）、退格删一个字符、**回车 = 提交**，草稿写回内核所以「提示 / 重渲染」不丢输入；桌面端不显示（用物理键盘）。详见「移动端字母键盘」一节。
+- **多义多选 `multi_sense`（v0.5，可选）**：*建议考研及以上水平使用*。一词多义，勾选该词的**全部释义**后点「提交」判分，**全对才算对**（漏选 / 多选 / 错选均算错，错题进优先池）；左上角有「多选」标识。释义优先取**卡组内中文释义**（`back` + `extraBacks`），缺失时回退 GCIDE 英文释义；正确项 2–4 个 + 1 个其它词干扰（正确项 4 个时共 5 个选项）。
+- **填空题容错**：拉丁语种答案比对忽略**大小写**、**首尾 / 连续空格**，并容错**单复数与常见屈折**（`book`/`books`、`study`/`studies`、`run`/`runs`/`running` 均判对）；**非拉丁语种（中/日/韩/希腊/西里尔…）按规范化后的精确匹配**（不生成英文屈折变体）。每题最多 3 次机会，输入框内 `Enter` 或点「提交」作答，用尽机会后展示完整信息卡。**同语种卡组**的填空为「正面/背面随机挖空 → 填写另一面」，移动端改用系统输入法（不弹自绘英文键盘）。
+- **已知限制（语种检测）**：检测基于 Unicode 字符区间 —— 含假名 → 日语，纯汉字 → 中文，谚文 → 韩语，希腊/西里尔字母各归其语种，`ä/ö/ü/ß → de`、`ñ/¿/¡ → es`、其余重音拉丁字母 → `fr`。**拉丁字母语种在不带重音字符时统一归 `en`**（如法/德词无重音时），因此「法-英」「德-英」这类双拉丁语种卡组可能被判为同语种；中文-中文、日-中等非拉丁场景不受影响。
 - **填空 🔊 发音提示**：输入框右侧紧邻一个 **🔊 按钮**（32×32 圆形，触屏 ≥ 44px），点一下用浏览器 TTS 朗读**当前目标词**，**播放中再点即停止**（按钮变红 + 脉动动画），播放结束 / 出错后自动复原；切题或换词时先 `cancel()` 旧词，**同一时间只播放一个词**。语言自动判定（**英文 `en-US` / 中文 `zh-CN`**），语速 **0.8**。环境不支持 `speechSynthesis` 时降级为**音标 chip**：优先读卡片 `phonetic` 字段，无该数据则显示单词本身。
 - **填空首字母提示**：可随时点「💡 首字母提示」按钮（**不消耗作答机会**、并保留已输入内容），答错时也会自动提示；每次**多揭示一个字母 + 词长**（如 `b•••••（共 6 个字母）`），最多揭示到「词长 − 1」，始终不给出完整答案，答对即消失。困难词在填空题中同样**前置并额外多出一题**。
 - **答错（机会用尽）时**：除标出正确选项外，另展示完整信息卡 `front ＋ back ＋ example`（含例句翻译），便于即时回顾。

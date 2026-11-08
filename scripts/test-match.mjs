@@ -5,7 +5,8 @@
 // 覆盖：① 解锁判定（通关 ≥1 关解锁 / 可玩关卡 / 默认关卡）
 //       ② 建牌与洗牌（2N 张、牌 id 唯一、rng 可注入 → 完全可复现、上限兜底）
 //       ③ 轮次切分（每轮 5 对 / 多余的自动往后 / 每轮独立洗牌 / 每轮词义成对完整）
-//       ④ 牌面文案（正面 / 背面 → 多释义 → 兜底文案）
+//       ④ 牌面文案（正面 / 背面 → 多释义 → 兜底文案；长释义按逗号 / 句号截取一小段，
+//          中 / 英 / 日 等语种通用；DOM 只显示截取文案，title / aria-label 保留全文）
 //       ⑤ 点击状态机（select / cancel / replace / match / miss / ignore / 越界牌忽略）
 //       ⑥ 轮次推进与连击（本轮清零自动铺下一轮 / 连击跨轮累计 / 失误清零 / 用时）
 //       ⑦ 薄 UI（DOM 桩：只铺本轮 10 张 / 点击只打补丁 / 爆炸消除后从 DOM 移除 /
@@ -450,6 +451,38 @@ ok(matchMod.defText({ back: '  苹果  ' }) === '苹果', '释义去掉首尾空
 ok(matchMod.defText({ back: '', extraBacks: ['苹果树'] }) === '苹果树', '无背面 → 取第一条其它释义');
 ok(matchMod.defText({ back: '', extraBacks: ['', 'x'] }) === '（无释义）', '其它释义也空 → 继续兜底');
 ok(matchMod.defText({}) === '（无释义）' && matchMod.defText(null) === '（无释义）', '既无背面也无其它释义 → 兜底文案');
+
+console.log('\n[长释义截取：单语种 / 多语种通用]');
+const zhLong = '苹果，蔷薇科苹果属落叶乔木，果实富含维生素与膳食纤维，是全球广泛栽培的水果之一。';
+const zhShort = matchMod.shortText(zhLong);
+ok(matchMod.DEF_MAX_CHARS === 24, '释义牌默认上限 24 字（未超长不截取）');
+ok(matchMod.shortText('苹果') === '苹果', '短释义原样保留');
+ok(matchMod.shortText('apple  apple\napple') === 'apple apple apple', '连续空白 / 换行压成一个空格（多行释义不撑高牌面）');
+ok(zhShort !== zhLong && zhLong.startsWith(zhShort), '中文长释义只保留原文开头一段（不篡改文字）');
+ok(/[，。；、]$/.test(zhShort), '中文长释义截到逗号 / 句号处（保留标点）');
+ok(Array.from(zhShort).length >= 12 && Array.from(zhShort).length <= 32, '截取长度控制在一小段内');
+const enLong = 'A round fruit with red skin, grown in orchards worldwide.';
+const enShort = matchMod.shortText(enLong);
+ok(enShort !== enLong && enLong.startsWith(enShort) && /[,.;:]$/.test(enShort), '英文长释义同样在逗号 / 句号处截断');
+const jaLong = 'リンゴはバラ科リンゴ属の落葉高木で、果実は食用として広く栽培されています。';
+ok(/[、。]$/.test(matchMod.shortText(jaLong)), '日文长释义按「、/。」截断（语种无关）');
+const noPunct = '一二三四五六七八九十一二三四五六七八九十一二三四五六七八九十';
+ok(Array.from(matchMod.shortText(noPunct)).length === matchMod.DEF_MAX_CHARS + 1 && matchMod.shortText(noPunct).endsWith('…'), '没有标点 → 硬截到上限并补省略号');
+const emojiShort = matchMod.shortText('😀'.repeat(40));
+ok(Array.from(emojiShort).length === matchMod.DEF_MAX_CHARS + 1 && Array.from(emojiShort).every((ch) => ch === '😀' || ch === '…'), 'emoji 按码点截取，不会被切成半个');
+ok(matchMod.shortText(null) === '' && matchMod.shortText('') === '', '空文本安全返回空串');
+ok(matchMod.shortText('abcdefghij', 4) === 'abcd…', '自定义上限生效（少于上限原样返回）');
+
+const longTiles = matchMod.buildTiles([{ id: 'long', front: '苹果', back: zhLong }], lcg(1));
+const longDef = longTiles.find((t) => t.id === 'd-long');
+ok(longDef.text === zhShort && longDef.fullText === zhLong, 'buildTiles：释义牌只显示截取文案，并保留全文');
+const shortDef = matchMod.buildTiles([{ id: 'short', front: '梨', back: '梨' }], lcg(1)).find((t) => t.id === 'd-short');
+ok(shortDef.text === '梨' && shortDef.fullText === '', '未超长的释义不带冗余全文');
+const nlDef = matchMod
+  .buildTiles([{ id: 'nl', front: 'x', back: '第一行说明，\n第二行继续说明，第三行还有很多很多内容需要截断。' }], lcg(1))
+  .find((t) => t.id === 'd-nl');
+ok(!/\n/.test(nlDef.text) && !/\n/.test(nlDef.fullText), '多行释义在牌面与全文属性中都压成单行');
+
 
 console.log('\n[点击状态机]');
 const cards3 = [
@@ -902,6 +935,23 @@ matchMod.clearMatchSession();
 matchMod.renderMatch(ROOT, 'nope');
 ok(ROOT._html.includes('卡组不存在') && session() === null, '卡组不存在 → 兜底页');
 
+console.log('\n[长释义牌：DOM 只显示截取文案，title / aria-label 保留全文]');
+const longDeck = store.createDeck({ name: '长释义卡组' });
+store.addManyCards(
+  longDeck.id,
+  Array.from({ length: 20 }, (_, i) => ({ front: '词' + i, back: i === 0 ? zhLong : '释义' + i }))
+);
+const longReady = passLevels(longDeck.id, [0]);
+matchMod.clearMatchSession();
+matchMod.renderMatch(ROOT, longReady.id);
+const longCard = longReady.cards.find((c) => c.back === zhLong);
+const longTile = session().tiles.find((t) => t.id === `d-${longCard.id}`);
+ok(!!longTile && longTile.text === zhShort, '会话里的释义牌用截取文案');
+ok(!!longTile && longTile.fullText === zhLong, '会话里保留完整释义（供 title / 读屏）');
+ok(ROOT._html.includes(`title="${zhLong}"`), 'DOM 释义牌带 title（悬停可看全文）');
+ok(ROOT._html.includes(`aria-label="释义「${zhLong}」"`), 'aria-label 读完整释义（读屏不被截断）');
+ok(tiles.length === 10 && !ROOT._html.includes(`>${zhLong}<`), '棋盘上不再直接铺整段长释义（超出部分已截取）');
+
 console.log('\n[接线：路由 / 顶栏 / SW / 版本 / 样式]');
 const appSrc = read('js/app.js');
 const decksSrc = read('js/decks.js');
@@ -912,8 +962,8 @@ ok(/seg\[0\] === 'match' && seg\[1\]/.test(appSrc), 'app.js 解析 #/match/{deck
 ok(/case 'match':[\s\S]{0,200}t = '明牌配对'/.test(appSrc), "顶栏标题「明牌配对」+ 返回卡组");
 ok(/route\.view === 'match'[\s\S]{0,140}renderMatch\(root, route\.id\)/.test(appSrc), 'render() 分发到 renderMatch');
 ok(/clearMatchSession\(\); \/\/ 同时清除配对棋局与计时器/.test(appSrc), 'hashchange 清空配对会话与计时器');
-ok(/APP_VERSION = 'v0\.9\.7'/.test(appSrc) && /通关 ≥\s?1 关/.test(appSrc), 'APP_VERSION 升到 v0.9.7（解锁 ≥1 关）');
-ok(swSrc.includes("'./js/match.js'") && /VERSION = 'v1\.21\.0'/.test(swSrc), 'sw.js 预缓存 match.js 且 VERSION = v1.21.0');
+ok(/APP_VERSION = 'v0\.10\.0'/.test(appSrc) && /通关 ≥\s?1 关/.test(appSrc), 'APP_VERSION 升到 v0.10.0（解锁 ≥1 关）');
+ok(swSrc.includes("'./js/match.js'") && /VERSION = 'v1\.22\.0'/.test(swSrc), 'sw.js 预缓存 match.js 且 VERSION = v1.22.0');
 ok(
   !/sessionStorage\.(setItem|getItem|removeItem)/.test(read('js/match.js')),
   'match.js 不再读写 sessionStorage（棋局只存内存：重进即重新洗牌）'

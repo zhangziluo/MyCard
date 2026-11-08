@@ -23,14 +23,20 @@ index.html ──► js/app.js（入口：路由 / 顶栏 / 设置页 / boot）
                  ├─ keyboard.js（移动端英文字母键盘：#kb-bar 单例底栏（QWERTY + 退格 / 空格 /
                  │           收起→迷你胶囊）+ inputmode=none 抑制系统输入法，被填字页与填空题复用）
                  ├─ webdav.js（极简 WebDAV 客户端：零依赖；PROPFIND / 递归 MKCOL / GET /
-                 │           PUT（可 If-None-Match 抢锁）/ DELETE + Basic + 中文错误映射）
-                 ├─ sync.js（多端同步引擎：mergeSnapshots 纯函数内核 + syncNow（抢锁→拉取→合并→
-                 │           备份→写回→落库）+ 配置 / 墓碑 / 自动同步（数据指纹））
+                 │           PUT（可 If-None-Match 抢锁）/ DELETE + Basic + 中文错误映射 +
+                 │           连通性诊断 diagnose（no-cors 可达性 → 区分网络/CORS）+ 修复步骤 fixSteps +
+                 │           可复制报告 diagnoseReport + Worker 反代代码生成 workerProxyCode）
+                 ├─ sync.js（多端同步引擎：mergeSnapshots 纯函数内核 + 增量读写 readRemote/writeRemote +
+                 │           预览 planSync/previewSync + syncNow（抢锁→拉索引→拉变化卡组→合并→只写变化→落库）+
+                 │           配置 / 墓碑 / 自动同步（数据指纹））
                  ├─ review.js（翻转记忆）· test.js（测试）+ test-engine.js + test-config.js
                  ├─ levels.js（关卡/分页）· levelstats.js · hardwords.js
                  ├─ difficulty.js（难度判定）· arrange.js（关卡编排）· engdefs.js（GCIDE 释义）
                  ├─ theme.js（明暗模式 + 主色调）· ui.js（事件委托 / modal / toast / 导航）
                  └─ scheduler.js（艾宾浩斯调度，纯函数）
+
+functions/dav/[[path]].js ──► Cloudflare Pages Function（可选）：/dav/* 同源反代到 DAV_TARGET 指向的 WebDAV
+scripts/dav-proxy.py      ──► 本机同源代理 + 静态站点服务器（零依赖；网盘缺 CORS 时的零账号方案）
 ```
 
 ## 关键模式（改代码时请沿用）
@@ -96,6 +102,21 @@ index.html ──► js/app.js（入口：路由 / 顶栏 / 设置页 / boot）
     - **可复制的产物必须自带「怎么做」**：用户复制的诊断报告就是他的全部上下文——**结论、逐步结果、修复步骤、可执行代码（涉及跨域时）都要在同一份文本里**（`fixSteps()` + `diagnoseReport()`），否则「诊断到了但没法照做」。同理，`copyText()` 要准备**剪贴板被拒时的兜底**（只读文本框 + ⌘/Ctrl + C 提示），别假设 `navigator.clipboard` 一定可用。
     - **扩展方向**：新的网络类失败一律走同一套（分类 → `explainError` 说清 → `diagnose` 定位 → `fixSteps` 给步骤），不要另起一套文案。
 
+27. **网盘不给浏览器跨域时：用「同源」绕开 CORS —— 三条通道、一套约束**（v0.9.4~v0.9.7；`functions/dav/[[path]].js` / `scripts/dav-proxy.py` / `webdav.workerProxyCode()`）：
+    - **为什么**：浏览器对「网页 → 网盘」的跨域请求要求服务端回 `Access-Control-Allow-Origin` 等头；坚果云这类 WebDAV **不回**这些头，于是无论怎么排查都连不上（`diagnose()` 的 `no-cors` 探测会明确指出来）。**同源请求不做跨域检查** —— 所以正解是「让页面和 WebDAV 走同一个域」，而不是去改浏览器 / 换网络。
+    - **三条通道（按使用场景选，UI 会按页面所在位置自动推荐）**：
+      1. **本机运行** → `scripts/dav-proxy.py`（零依赖 Python，**同时是静态站点服务器 + `/dav` 代理**，零账号）；服务器地址填 `http://localhost:8080/dav`；
+      2. **部署在自己的 Cloudflare Pages** → `functions/dav/[[path]].js`（Pages 自动把 `/dav/*` 变成接口；只需设 `DAV_TARGET` 环境变量，**零第三方服务**）；服务器地址填 `https://你的站点/dav`；
+      3. **部署在别人域名 / 不便动仓库** → `webdav.workerProxyCode()` 生成 Cloudflare Worker（复制粘贴即可部署）；服务器地址填 `https://xxx.workers.dev/dav`。
+    - **三者共享的硬约束（新增通道时必须照抄）**：① **只转发到固定的一个目标主机**（`DAV_TARGET` / `--target`），任何输入（含 `..`、`//evil.com/x`）都逃不出去 —— **绝不接受「目标由请求参数决定」**（那会变成开放代理 / SSRF）；② `OPTIONS` 由代理直接 **204** 放行（预检不打扰网盘）；③ **只转发白名单请求头**（`Authorization` / `Depth` / `If-None-Match` / `Content-Type` …）与请求体；④ 回传业务响应头（`ETag` / `Content-Type` / `WWW-Authenticate` 等）以保住 WebDAV 语义与 401 判定，但**不透传 `set-cookie`**；⑤ 连不上要给**可读原因**（502 + 说明），不要留空白错误；⑥ 每个通道都要有一条**真能跑**的测试（本机代理：`test-dav-proxy.mjs` 起真进程；Pages Function：`test-dav-fn.mjs` 直接调 `onRequest` + 桩 fetch）。
+    - **配套 UI 约定**：诊断的 `fixSteps()` 按 `isLocalPage()` 决定推荐哪条；**别把「怎么修」只写在文档里** —— 报告 / 弹窗里都要带（见第 26 条）。
+
+28. **牌面文案要「短而完整」：长文本按自然停顿截取，全文另存不丢**（v0.10.0，`js/match.js` 的 `shortText` / `DEF_MAX_CHARS`）：
+    - 明牌配对的释义牌只有两列宽，整段词典释义会把牌撑高、破坏「一眼扫完」；但**不能直接 `slice`**——既会切坏 emoji / 代理对，也会把句子切成半截。
+    - 做法：`shortText(text, max = DEF_MAX_CHARS = 24)` —— 先压平连续空白；未超长原样返回；超长时在前 `max` 个**码点**里找**最后一个自然停顿**（`， , 。 . ； ; 、 ！ ？ ：`）并保留标点；若因此只剩太短的前半句，允许往后多看 `DEF_HEADROOM = 8` 个码点找第一个停顿；实在没有标点才硬截并补 `…`。计数一律用 `Array.from`，**与语种无关**（中 / 英 / 日 / 韩 / emoji 同一规则，单语种与跨语种卡组都适用）。
+    - **截断只发生在显示层**：`buildTiles` 的释义牌 `text` 用截取结果，原文另存 `fullText`；UI 渲染 `title`（悬停看全文）与 `aria-label`（读屏读全文）——视觉变短，信息不丢。
+    - 单测要覆盖：短文本不变、中文 `，/。`、英文 `,/.`、日文 `、/。`、无标点硬截、emoji 不被切半、`buildTiles` 的 `text` / `fullText`，以及 DOM 上的 `title` / `aria-label`（`scripts/test-match.mjs`）。
+
 ## 数据模型（store.js）
 - **Card**：`id, front, back, example, exampleZh, phonetic, tags[], groups[], extraBacks[], createdAt, level, state('new'|'learning'|'review'), repetitions, interval, easeFactor, due, lastReview, src, addedAt`
 - **导入时的复习进度**：`store.pickScheduling()` 统一校验（state 白名单 / easeFactor 1.3–3.0 / 数值钳制，非法 → 新卡）；`seedBuiltinDeck` 与 `addManyCards` 均调用 → JSON 完整导出可无损回导
@@ -122,6 +143,10 @@ index.html ──► js/app.js（入口：路由 / 顶栏 / 设置页 / boot）
 - **铁律**：新增 UI 不要写死颜色（尤其 `rgba(...)` 深色底、浅色字），一律用上述变量；`verify-assets.mjs` 会审计（未定义 var、残留硬编码中性色、`.modal` 是否走变量）
 
 ## 忽略策略（.gitignore）
+- 体积大的本地数据不入库：`gcide-0.51/`（约 60MB 词典源语料）、`data/` 下的考试词库（CET4/CET6/考研/托福…，需要时用首页「导入」按钮从任意位置选择文件导入）
+- 生成物按需保留：`data/eng-defs.json`（2.6MB，英英 / 多义题型所需，**入库**）
+- 本地脚本产物：`__pycache__/`、`*.pyc`（`scripts/dav-proxy.py` 运行 / 编译产生）
+- `node_modules/`、`.env*`、`*.log`、`.DS_Store`
 - `gcide-0.51/`（60MB 源语料，仅 `scripts/split-gcide.mjs`/`build-engdefs.mjs` 本地用；生成物 `data/eng-defs.json` 入库）
 - `data/` 下考试词库（CET4/托福/… 10 本）为**本地测试文件**，不入库
 - `.DS_Store`、`node_modules/`、`*.log`、`.env*`

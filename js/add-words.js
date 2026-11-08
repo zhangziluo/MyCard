@@ -14,6 +14,7 @@
 
 import * as idb from './idb.js';
 import * as store from './store.js';
+import * as lang from './lang.js';
 import { esc, on, toast, navigate } from './ui.js';
 
 export const RATE_LIMIT_MS = 100;
@@ -22,22 +23,13 @@ export const ADD_PLACEHOLDER = '输入单词查释义，或粘贴词表（每行
 
 /* ------------------------------ 语种检测 ------------------------------ */
 
-const LANG_CHARS = {
-  han: /[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]/,
-  kana: /[\u3040-\u30ff]/,
-  greek: /[\u0370-\u03ff\u1f00-\u1fff]/,
-  de: /[äöüßÄÖÜ]/,
-  fr: /[àâäéèêëïîôöùûüÿçœæ]/i
-};
-
-/** 基于字符范围判断语种（无需外部库） */
+/**
+ * 基于字符范围判断语种（无需外部库）——共享实现见 js/lang.js。
+ * 查词路由需要把**纯汉字也当作日语**（Jisho 才能查到汉字词），故这里传 `hanAs: 'ja'`；
+ * 测试题型里的中日区分（含假名 → ja，纯汉字 → zh）请直接用 lang.detectLang 默认值。
+ */
 export function detectLang(text) {
-  const s = String(text || '');
-  if (LANG_CHARS.han.test(s) || LANG_CHARS.kana.test(s)) return 'ja';
-  if (LANG_CHARS.greek.test(s)) return 'el';
-  if (LANG_CHARS.de.test(s)) return 'de';
-  if (LANG_CHARS.fr.test(s)) return 'fr';
-  return 'en';
+  return lang.detectLang(text, { hanAs: 'ja' });
 }
 
 /* ------------------------------ 输入分词 / 分类 ------------------------------ */

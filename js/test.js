@@ -16,6 +16,7 @@ import * as cfg from './test-config.js';
 import * as engine from './test-engine.js';
 import * as engdefs from './engdefs.js';
 import * as kb from './keyboard.js'; // v0.7.0 移动端英文字母键盘
+import * as lang from './lang.js'; // 语种检测 / 卡组同语种判定
 import { esc, on, navigate, toast, openModal } from './ui.js';
 
 const SESSION_KEY = 'mycard-test-session';
@@ -61,7 +62,9 @@ function attachFillInput() {
  */
 function attachFillKeyboard() {
   const q = T && T.questions[T.pos];
-  if (!q || q.type !== 'fill' || q.answered || !kb.shouldAutoOpen()) {
+  // 只有拉丁语种答案才用自绘 QWERTY 键盘；中文/日文等交给系统输入法（否则无法输入）
+  const latin = isFillLike(q) && lang.isLatin(String(q.answer || ''));
+  if (!q || !isFillLike(q) || q.answered || !latin || !kb.shouldAutoOpen()) {
     kb.closeKeyboard();
     return;
   }
@@ -98,14 +101,22 @@ function fillKeyboardEdit(ch, backspace = false) {
   }
 }
 
-/** 听音辨意：进入题目时自动播放一次发音（未作答时） */
+/**
+ * 填空题风格判定：普通填空（fill）或同语种模式的听写（listen + sub=back2front）。
+ * 听写题复用填空的输入框 / 判分 / 提示逻辑。
+ */
+function isFillLike(q) {
+  return !!q && (q.type === 'fill' || (q.type === 'listen' && q.sub === 'back2front'));
+}
+
+/** 听音辨意 / 听写：进入题目时自动播放一次（听写题朗读背面） */
 function attachListenAudio() {
   if (!T) return;
   const q = T.questions[T.pos];
   if (!q || q.type !== 'listen' || q.answered) return;
   const deck = store.getDeck(T.deckId);
   const card = deck ? deck.cards.find((c) => c.id === q.cardId) : null;
-  if (card) speakWord(card.front);
+  if (card) speakWord(q.sub === 'back2front' ? card.back : card.front);
 }
 
 function clearAdvanceTimer() {
@@ -162,19 +173,27 @@ function shuffle(arr) {
 /** 测试题型：word2def=单词选释义 / def2word=释义选单词 / sentence2word=句子选单词 / fill=填空 / listen=听音辨意 */
 export { QUESTION_TYPES } from './test-config.js';
 
+/** 卡组学习模式：'same'（正反面同语种，如 中文-中文）/ 'cross'（跨语种） */
+export function deckMode(deck) {
+  return lang.deckMode(deck);
+}
+
+// 语种工具：便于 UI / 单测直接复用
+export { detectLang, langTag, isLatin } from './lang.js';
+
 /** 当前环境是否支持语音合成（TTS） */
 export function canSpeak() {
   return typeof speechSynthesis !== 'undefined' && typeof SpeechSynthesisUtterance !== 'undefined';
 }
 
-/** 朗读英文单词（听音辨意用）；环境不支持时返回 false，不抛错 */
+/** 朗读单词（听音辨意 / 听写用）；环境不支持时返回 false，不抛错。语种按文本自动判定 */
 export function speakWord(word) {
   const text = String(word == null ? '' : word).trim();
   if (!text || !canSpeak()) return false;
   try {
     speechSynthesis.cancel();
     const u = new SpeechSynthesisUtterance(text);
-    u.lang = 'en-US';
+    u.lang = lang.langTag(text);
     u.rate = 0.9;
     speechSynthesis.speak(u);
     return true;
@@ -205,8 +224,8 @@ export function stopSpeaking() {
 
 /**
  * 朗读目标词（填空 🔊 按钮用）：
- *   中文 → zh-CN，英文 → en-US；rate 0.8（稍慢，便于听清拼写）。
- * 播放前先 cancel 旧词 → 同一时间只播放一个词。
+ *   语种按文本自动判定（中文 → zh-CN、英文 → en-US、日/韩/德/法…各自语音）；
+ *   rate 0.8（稍慢，便于听清拼写）。播放前先 cancel 旧词 → 同一时间只播放一个词。
  * 传入 el 时给按钮加 .speaking，播放结束 / 出错后自动复原。
  */
 export function speakTargetWord(word, el = null, { rate = 0.8 } = {}) {
@@ -221,7 +240,7 @@ export function speakTargetWord(word, el = null, { rate = 0.8 } = {}) {
   };
   try {
     const u = new SpeechSynthesisUtterance(text);
-    u.lang = /[\u4e00-\u9fa5]/.test(text) ? 'zh-CN' : 'en-US';
+    u.lang = lang.langTag(text);
     u.rate = rate;
     u.onend = finish;
     u.onerror = finish;
@@ -249,6 +268,8 @@ export function normalizeAnswer(s) {
 export function wordForms(word) {
   const base = String(word || '').trim().toLowerCase();
   if (!base) return [];
+  // 非拉丁语种（中 / 日 / 韩 / 希腊 / 西里尔…）没有英文式屈折：按精确匹配，避免造出无意义变体
+  if (!lang.isLatin(base)) return [base];
   const forms = [base, base + 's', base + 'es', base + 'ed', base + 'd', base + 'ing'];
   if (/[^aeiou]y$/.test(base)) {
     const y = base.slice(0, -1);
@@ -328,9 +349,11 @@ export function multiSenseSet(card, max = 4, { allowEnglish = true } = {}) {
 /**
  * 某张卡能不能出某个题型（抽题与出题共用的**唯一**判定口径，避免「计划能派 / 出题又回退」）。
  * 基础题型恒可用；`eng_eng` 需英文释义且**允许英文题**；`multi_sense` 需 ≥2 条同语言释义。
+ * `mode='same'`（正反面同语种）时不出「句子选词」。
  */
-export function canBuildType(card, type, { allowEnSenses = true } = {}) {
+export function canBuildType(card, type, { allowEnSenses = true, mode = 'cross' } = {}) {
   if (!card) return false;
+  if (type === 'sentence2word') return mode !== 'same';
   if (type === 'eng_eng') return !!allowEnSenses && engSenses(card, 1).length > 0;
   if (type === 'multi_sense') return !!multiSenseSet(card, 4, { allowEnglish: !!allowEnSenses });
   return true;
@@ -377,13 +400,19 @@ function escapeRegExp(s) {
 }
 
 /**
- * 将例句中的目标单词挖空为 ____（支持常见屈折变化：-s/-es/-ed/-d/-ing、辅音+y → -ies）。
- * 例如 run→runs、play→playing、study→studies、word→words；找不到该词时原样返回。
+ * 将例句中的目标文本挖空为 ____：
+ *   · 拉丁语种（英/德/法/西…）支持常见屈折变化（-s/-es/-ed/-d/-ing、辅音+y → -ies）；
+ *   · 非拉丁语种（中/日/韩/希腊/西里尔…）用大小写不敏感的**精确子串**匹配（无词边界）。
+ * 找不到该词时原样返回（调用方据此判断能否出句子题）。
  */
 export function blankWord(example, word) {
   const src = String(example || '');
   const base = String(word || '').trim();
   if (!base || !src) return src;
+  if (!lang.isLatin(base)) {
+    if (!src.toLowerCase().includes(base.toLowerCase())) return src;
+    return src.replace(new RegExp(escapeRegExp(base), 'gi'), '____');
+  }
   const forms = [base, base + 's', base + 'es', base + 'ed', base + 'd', base + 'ing'];
   if (/[^aeiou]y$/i.test(base)) forms.push(base.slice(0, -1) + 'ies');
   for (const form of forms) {
@@ -592,10 +621,10 @@ function buildOptions(correctText, distractorTexts) {
  * 可注入 { types, random } 便于单测固定题型 / 随机源。
  */
 /** 为某张卡决定题型（按卡片的可用性过滤：句子题需可挖空，英英/多义题需有释义） */
-function pickQuestionType(card, types, random, canSentence, { allowEnSenses = true } = {}) {
+function pickQuestionType(card, types, random, canSentence, { allowEnSenses = true, mode = 'cross' } = {}) {
   const eligible = (types || []).filter((t) => {
-    if (t === 'sentence2word') return canSentence;
-    if (t === 'eng_eng' || t === 'multi_sense') return canBuildType(card, t, { allowEnSenses });
+    if (t === 'sentence2word') return mode !== 'same' && canSentence;
+    if (t === 'eng_eng' || t === 'multi_sense') return canBuildType(card, t, { allowEnSenses, mode });
     return true;
   });
   const poolTypes = eligible.length ? eligible : ['word2def'];
@@ -603,9 +632,9 @@ function pickQuestionType(card, types, random, canSentence, { allowEnSenses = tr
 }
 
 /** 依据卡片与题型构建单道题目；不可用（如缺少英文释义）时返回 null 由调用方回退 */
-function buildOneQuestion(card, type, { defPool, wordPool, hard, random, engPool = [], zhPool = [], allowEnSenses = true }) {
+function buildOneQuestion(card, type, { defPool, wordPool, hard, random, engPool = [], zhPool = [], allowEnSenses = true, mode = 'cross' }) {
   const canSentence = !!(card.example && blankWord(card.example, card.front).includes('____'));
-  const kind = type === 'sentence2word' && !canSentence ? 'word2def' : type;
+  const kind = (type === 'sentence2word' && (mode === 'same' || !canSentence)) ? 'word2def' : type;
 
   // 英英选择：题干=英文单词（子模式 A）或英文释义（子模式 B），选项同为英文释义/单词
   if (kind === 'eng_eng') {
@@ -676,8 +705,51 @@ function buildOneQuestion(card, type, { defPool, wordPool, hard, random, engPool
     };
   }
 
-  // 填空题：题干随机用「例句挖空」或「中文释义」，用户输入英文作答
+  // 听写（同语种模式）：听背面，填写正面（填空式，而不是 4 选 1）
+  if (kind === 'listen' && mode === 'same') {
+    const answer = String(card.front || '');
+    if (!answer) return null; // 缺正面 → 交给调用方回退
+    return {
+      cardId: card.id,
+      type: 'listen',
+      sub: 'back2front',
+      answer,
+      accepts: wordForms(answer),
+      lang: lang.detectLang(answer),
+      answered: false,
+      correct: false,
+      attempts: 0,
+      wrongInputs: [],
+      lastInput: null,
+      hintLevel: 0,
+      draft: ''
+    };
+  }
+
+  // 填空题：跨语种 = 例句挖空 / 中文释义 → 输入正面；同语种 = 正面/背面挖空 → 填写另一面
   if (kind === 'fill') {
+    if (mode === 'same') {
+      const promptKind = random() < 0.5 ? 'front' : 'back'; // front：看正面填背面 / back：看背面填正面
+      const answer = String((promptKind === 'front' ? card.back : card.front) || '');
+      const prompt = String((promptKind === 'front' ? card.front : card.back) || '');
+      if (!answer) return null; // 另一面为空 → 交给调用方回退
+      return {
+        cardId: card.id,
+        type: 'fill',
+        promptKind,
+        prompt,
+        answer,
+        accepts: wordForms(answer),
+        lang: lang.detectLang(answer),
+        answered: false,
+        correct: false,
+        attempts: 0,
+        wrongInputs: [],
+        lastInput: null,
+        hintLevel: 0,
+        draft: ''
+      };
+    }
     const promptKind = canSentence && random() < 0.5 ? 'sentence' : 'meaning';
     return {
       cardId: card.id,
@@ -686,6 +758,7 @@ function buildOneQuestion(card, type, { defPool, wordPool, hard, random, engPool
       prompt: promptKind === 'sentence' ? String(card.example || '') : String(card.back || ''),
       answer: String(card.front || ''),
       accepts: wordForms(card.front),
+      lang: lang.detectLang(card.front),
       answered: false,
       correct: false,
       attempts: 0,
@@ -726,11 +799,14 @@ function buildQuestionSafe(card, type, ctx) {
 
 /**
  * 关卡测试的题目构建。
- * @param {{ types?: string[]|null, random?: Function, hardIds?: Set|null, allowEnSenses?: boolean }} [opts]
+ * @param {{ types?: string[]|null, random?: Function, hardIds?: Set|null, allowEnSenses?: boolean,
+ *           mode?: 'cross'|'same'|null }} [opts]
  *        `allowEnSenses` = 是否允许英文题（英英选择 / 多义多选的英文兜底）；关卡测试只出基础 5 种题型，
  *        传 `false` 可保证任何情况下都不出英文题（默认 true，保持既有行为）。
+ *        `mode` 缺省时按卡组正反面语种自动判定（同语种 → 去掉句子选词、听音辨意改为听写）。
  */
-export function buildQuestions(deck, levelIndex, { types = null, random = Math.random, hardIds = null, allowEnSenses = true } = {}) {
+export function buildQuestions(deck, levelIndex, { types = null, random = Math.random, hardIds = null, allowEnSenses = true, mode = null } = {}) {
+  const learnMode = mode || lang.deckMode(deck);
   const list = types && types.length ? types : enabledTypes();
   const levelCards = lv.cardsInLevel(deck, levelIndex);
   const hard = hardIds instanceof Set ? hardIds : new Set(hardIds || []);
@@ -749,17 +825,19 @@ export function buildQuestions(deck, levelIndex, { types = null, random = Math.r
 
   return quizCards.map((card) => {
     const canSentence = !!(card.example && blankWord(card.example, card.front).includes('____'));
-    const type = pickQuestionType(card, list, random, canSentence, { allowEnSenses });
-    return buildQuestionSafe(card, type, { defPool, wordPool, hard, random, engPool, zhPool, allowEnSenses });
+    const type = pickQuestionType(card, list, random, canSentence, { allowEnSenses, mode: learnMode });
+    return buildQuestionSafe(card, type, { defPool, wordPool, hard, random, engPool, zhPool, allowEnSenses, mode: learnMode });
   });
 }
 
 /**
  * 整卡组可配置测试：按「抽题计划」构建题目（计划由 test-engine.samplePlan 生成）。
- * @param {{ allowEnSenses?: boolean }} [opts] 是否允许英文题；**没开「英英选择」时必须传 false**，
- *        否则中文释义不足 2 条的卡会退回 GCIDE 英文释义，让「多义多选」变成英文题。
+ * @param {{ allowEnSenses?: boolean, mode?: 'cross'|'same'|null }} [opts]
+ *        是否允许英文题；**没开「英英选择」时必须传 false**，否则中文释义不足 2 条的卡会退回
+ *        GCIDE 英文释义，让「多义多选」变成英文题。`mode` 缺省时按卡组正反面语种自动判定。
  */
-export function buildQuestionsFromPlan(deck, plan, hardIds = null, random = Math.random, { allowEnSenses = true } = {}) {
+export function buildQuestionsFromPlan(deck, plan, hardIds = null, random = Math.random, { allowEnSenses = true, mode = null } = {}) {
+  const learnMode = mode || lang.deckMode(deck);
   const hard = hardIds instanceof Set ? hardIds : new Set(hardIds || []);
   const defPool = buildOptionPool(deck);
   const wordPool = buildWordPool(deck);
@@ -770,7 +848,7 @@ export function buildQuestionsFromPlan(deck, plan, hardIds = null, random = Math
   for (const item of plan || []) {
     const card = byId.get(item && item.cardId);
     if (!card) continue;
-    out.push(buildQuestionSafe(card, item.type, { defPool, wordPool, hard, random, engPool, zhPool, allowEnSenses }));
+    out.push(buildQuestionSafe(card, item.type, { defPool, wordPool, hard, random, engPool, zhPool, allowEnSenses, mode: learnMode }));
   }
   return out;
 }
@@ -834,7 +912,7 @@ function optionMark(q, opt, i) {
 }
 
 function feedbackHtml(q) {
-  const isFill = q.type === 'fill';
+  const isFill = isFillLike(q);
   const isMulti = q.type === 'multi_sense';
   let text = '';
   let cls = '';
@@ -862,8 +940,9 @@ function feedbackHtml(q) {
   return text ? `<div class="quiz-feedback ${cls}">${text}</div>` : '';
 }
 
-/** 题型名（进度行「第 N 题」后的小标签） */
-function typeName(type) {
+/** 题型名（进度行「第 N 题」后的小标签）；听写题（listen+back2front）单列 */
+function typeName(type, q = null) {
+  if (type === 'listen' && q && q.sub === 'back2front') return '听写';
   return {
     word2def: '选释义',
     def2word: '选单词',
@@ -883,9 +962,11 @@ function questionTag(type, card, q) {
     case 'sentence2word':
       return '根据例句意思，选出正确的单词';
     case 'fill':
+      if (q && q.promptKind === 'front') return '看正面内容，填写对应的背面';
+      if (q && q.promptKind === 'back') return '看背面内容，填写对应的正面';
       return q && q.promptKind === 'sentence' ? '根据例句，填入缺失的英文单词' : '根据中文释义，输入对应的英文单词';
     case 'listen':
-      return '听发音，选择正确的释义';
+      return q && q.sub === 'back2front' ? '听背面的发音，填写对应的正面' : '听发音，选择正确的释义';
     case 'eng_eng':
       return q && q.sub === 'def2word' ? '看英文释义，选择对应的单词' : '看单词，选择正确的英文释义';
     case 'multi_sense':
@@ -895,13 +976,14 @@ function questionTag(type, card, q) {
   }
 }
 
-/** 听音辨意题干：播放按钮（环境不支持 TTS 时降级显示单词） */
-function listenHtml(card) {
-  const word = String(card.front || '');
+/** 听音辨意 / 听写题干：播放按钮（环境不支持 TTS 时降级显示文字） */
+function listenHtml(card, q = null) {
+  const isBack = q && q.sub === 'back2front';
+  const word = String((isBack ? card.back : card.front) || '');
   if (!canSpeak()) {
-    return `<p class="q-prompt">${esc(word)}</p><p class="listen-note">当前环境不支持发音，已显示单词</p>`;
+    return `<p class="q-prompt">${esc(word)}</p><p class="listen-note">${isBack ? '当前环境不支持发音，已显示背面' : '当前环境不支持发音，已显示单词'}</p>`;
   }
-  return `<button class="listen-play" type="button" data-action="listen-play">🔊 播放发音</button>`;
+  return `<button class="listen-play" type="button" data-action="listen-play">${isBack ? '🔊 播放背面' : '🔊 播放发音'}</button>`;
 }
 
 /** 挖空例句的 HTML（____ 高亮） */
@@ -919,12 +1001,12 @@ function questionPromptHtml(type, card, q) {
     return blankSentenceHtml(card.example, card.front);
   }
   if (type === 'fill') {
-    return q.promptKind === 'sentence'
-      ? blankSentenceHtml(q.prompt, card.front)
-      : `<p class="q-prompt q-prompt-def">${esc(q.prompt)}</p>`;
+    if (q.promptKind === 'sentence') return blankSentenceHtml(q.prompt, card.front);
+    if (q.promptKind === 'front') return `<p class="q-prompt">${esc(q.prompt)}</p>`;
+    return `<p class="q-prompt q-prompt-def">${esc(q.prompt)}</p>`;
   }
   if (type === 'listen') {
-    return listenHtml(card);
+    return listenHtml(card, q);
   }
   if (type === 'eng_eng') {
     // 子模式 B：题干 = 英文释义（看义猜词）；子模式 A：题干 = 单词（看词选义）
@@ -991,13 +1073,14 @@ function fillRevealCount(q) {
 
 /** 填空题「首字母提示」：显示已揭示的字母 + 圆点掩码（不直接给出答案） */
 function fillHintHtml(q) {
-  if (q.type !== 'fill' || q.answered) return '';
+  if (!isFillLike(q) || q.answered) return '';
   const word = String(q.answer || '').trim();
   const reveal = fillRevealCount(q);
   if (!word || !reveal) return '';
   const shown = word.slice(0, reveal);
   const mask = '•'.repeat(Math.max(0, word.length - shown.length));
-  return `<p class="fill-hint">提示：<b>${esc(shown)}</b><span class="fill-mask">${mask}</span>（共 ${word.length} 个字母）</p>`;
+  const unit = lang.isLatin(word) ? '个字母' : '个字符';
+  return `<p class="fill-hint">提示：<b>${esc(shown)}</b><span class="fill-mask">${mask}</span>（共 ${word.length} ${unit}）</p>`;
 }
 
 /**
@@ -1006,6 +1089,7 @@ function fillHintHtml(q) {
  *   不支持 → 降级为音标 chip（卡片有 phonetic 字段就显示音标，否则显示单词本身）。
  */
 function fillAudioHtml(q, card) {
+  if (q.type === 'listen') return ''; // 听写题：题干自带「播放背面」按钮，输入区不再重复发音
   const word = String(q.answer || (card && card.front) || '').trim();
   if (!word) return '';
   if (canSpeak()) {
@@ -1018,20 +1102,24 @@ function fillAudioHtml(q, card) {
 /** 填空题输入区：输入框 + 🔊 发音 + 提交 + 「提示」按钮 */
 function fillInputHtml(q, card) {
   const word = String(q.answer || '').trim();
+  const latin = lang.isLatin(word);
   const reveal = fillRevealCount(q);
   const maxReveal = word ? Math.max(1, word.length - 1) : 0;
   const canHint = !q.answered && word.length > 1 && reveal < maxReveal;
+  const placeholder = latin ? '输入英文单词…' : '输入答案…';
+  const inputmode = latin ? kb.inputMode() : 'text'; // 非拉丁语种交给系统输入法
+  const tolerance = latin ? '（大小写 / 空格 / 单复数均容错）' : '（忽略首尾空格）';
   return `
       ${fillHintHtml(q)}
       <div class="fill-input">
-        <input class="fill-field" type="text" name="fill" placeholder="输入英文单词…" value="${esc(q.draft || '')}"
-          autocomplete="off" autocapitalize="off" spellcheck="false" inputmode="${kb.inputMode()}"
+        <input class="fill-field" type="text" name="fill" placeholder="${placeholder}" value="${esc(q.draft || '')}"
+          autocomplete="off" autocapitalize="off" spellcheck="false" inputmode="${inputmode}"
           ${q.answered ? 'disabled' : ''}>
         ${fillAudioHtml(q, card)}
         <button class="btn btn-primary" data-action="test-fill-submit" ${q.answered ? 'disabled' : ''}>提交</button>
       </div>
       ${canHint ? '<p class="fill-tip-row"><button class="btn-link" data-action="test-fill-hint">💡 首字母提示</button></p>' : ''}
-      <p class="quiz-kbd-hint"><span class="hint-kb">输入后按 Enter 或点「提交」（大小写 / 空格 / 单复数均容错）</span></p>`;
+      <p class="quiz-kbd-hint"><span class="hint-kb">输入后按 Enter 或点「提交」${tolerance}</span></p>`;
 }
 
 function questionHtml() {
@@ -1044,7 +1132,7 @@ function questionHtml() {
   return `
     <div class="quiz">
       <div class="quiz-head">
-        <span>第 ${T.pos + 1} / ${T.questions.length} 题 · ${typeName(type)}</span>
+        <span>第 ${T.pos + 1} / ${T.questions.length} 题 · ${typeName(type, q)}</span>
         <span class="quiz-score">已答对 ${T.correct} / ${done}</span>
       </div>
       <div class="progress-track"><i class="progress-fill" style="width:${Math.round((done / T.questions.length) * 100)}%"></i></div>
@@ -1058,7 +1146,7 @@ function questionHtml() {
       </div>
       ${feedbackHtml(q)}
       ${q.answered && !q.correct ? fullInfoHtml(card) : ''}
-      ${type === 'fill' ? fillInputHtml(q, card) : optionsHtml(q)}
+      ${isFillLike(q) ? fillInputHtml(q, card) : optionsHtml(q)}
     </div>`;
 }
 function resultHtml() {
@@ -1201,20 +1289,22 @@ export function renderDeckTestConfig(root, deckId) {
   const prio = engine.priorityCount(deckId);
   const prog = engine.loadProgress(deckId);
   const gap = Math.max(1, Math.floor(count / Math.max(1, words)));
+  const learnMode = lang.deckMode(deck); // 同语种卡组：题型名称改为中性表述
 
   const presetBtns = cfg.PRESETS.map((p) => {
     const on = p.count === count;
     return `<button class="btn ${on ? 'btn-primary' : 'btn-ghost'}" data-action="deck-test-preset" data-id="${esc(deckId)}" data-count="${p.count}" ${enabled ? '' : 'disabled'}>${p.label} · ${p.count} 题</button>`;
   }).join('');
 
-  const weightRows = cfg.QUESTION_TYPES.map(
-    (t) => `
+  const weightRows = cfg.QUESTION_TYPES.map((t) => {
+    const label = cfg.typeLabel(t, learnMode);
+    return `
     <div class="weight-row">
-      <span class="weight-name">${esc(cfg.TYPE_LABELS[t] || t)}</span>
-      <input id="wt-input-${t}" class="test-range weight-range" type="range" min="0" max="100" step="5" value="${conf.weights[t]}" data-action="deck-test-weight" data-type="${t}" data-id="${esc(deckId)}" aria-label="${esc(cfg.TYPE_LABELS[t] || t)} 比例">
+      <span class="weight-name">${esc(label)}</span>
+      <input id="wt-input-${t}" class="test-range weight-range" type="range" min="0" max="100" step="5" value="${conf.weights[t]}" data-action="deck-test-weight" data-type="${t}" data-id="${esc(deckId)}" aria-label="${esc(label)} 比例">
       <b id="wt-val-${t}">${conf.weights[t]}%</b>
-    </div>`
-  ).join('');
+    </div>`;
+  }).join('');
 
   // 可选题型（默认关闭）：开关 + 说明 + 启用后的第 6/7 个滑块
   const optionalRows = cfg.OPTIONAL_TYPES.map((o) => {
@@ -1351,14 +1441,17 @@ export function startDeckTest(deckId, count, { onlyWrong = false } = {}) {
   // 没开时，中文释义不足 2 条的卡**不再回退 GCIDE 英文释义**（否则「多义多选」会变成英文题），
   // 而是让抽题计划就别把「多义多选 / 英英选择」派给这些卡。
   const allowEnSenses = !!(conf.enabled && conf.enabled.eng_eng);
+  // 卡组级语种关系：同语种（如 中文-中文）→ 不出「句子选词」，listen 改为听写填空
+  const learnMode = lang.deckMode(deck);
   const plan = engine.samplePlan(pool, {
     count: n,
     weights: conf.weights,
     enabled: conf.enabled, // 可选题型（英英选择 / 多义多选）启用后才参与抽题
+    omitTypes: learnMode === 'same' ? ['sentence2word'] : [],
     priorityIds: onlyWrong ? new Set() : engine.getPriorityIds(deckId),
-    canType: (card, type) => canBuildType(card, type, { allowEnSenses })
+    canType: (card, type) => canBuildType(card, type, { allowEnSenses, mode: learnMode })
   });
-  const questions = buildQuestionsFromPlan(deck, plan, hw.hardSet(deckId), Math.random, { allowEnSenses });
+  const questions = buildQuestionsFromPlan(deck, plan, hw.hardSet(deckId), Math.random, { allowEnSenses, mode: learnMode });
   if (!questions.length) {
     toast('没有可测试的卡片', 'warn');
     return;
@@ -1537,7 +1630,7 @@ on('test-multi-submit', () => {
 function submitFill() {
   if (!T) return false;
   const q = T.questions[T.pos];
-  if (!q || q.type !== 'fill' || q.answered) return false;
+  if (!isFillLike(q) || q.answered) return false;
   const el = document.querySelector ? document.querySelector('.fill-field') : null;
   const val = el ? el.value : '';
   if (!normalizeAnswer(val)) return false; // 空输入不判题
@@ -1581,14 +1674,14 @@ on('listen-play', () => {
   if (!q) return;
   const deck = store.getDeck(T.deckId);
   const card = deck ? deck.cards.find((c) => c.id === q.cardId) : null;
-  if (card) speakWord(card.front);
+  if (card) speakWord(q.sub === 'back2front' ? card.back : card.front);
 });
 
 /** 填空「提示」按钮：多揭示一个字母（不消耗作答机会，并保留已输入内容） */
 on('test-fill-hint', () => {
   if (!T) return;
   const q = T.questions[T.pos];
-  if (!q || q.type !== 'fill' || q.answered) return;
+  if (!isFillLike(q) || q.answered) return;
   const el = document.querySelector ? document.querySelector('.fill-field') : null;
   q.draft = el ? el.value : ''; // 保留已输入内容
   const word = String(q.answer || '').trim();
