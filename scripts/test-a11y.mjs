@@ -303,8 +303,8 @@ console.log('\n[app.js / sw.js：播报接线与版本]');
 ok(/import \{[^}]*\bannounce\b[^}]*\} from '\.\/ui\.js'/.test(appSrc), 'app.js 从 ui.js 引入 announce');
 ok(/routeKey !== lastRouteKey/.test(appSrc), '仅路由变化时播报（同一路由重渲染不打扰读屏）');
 ok(/const pageTitle = renderAppbar\(route\)/.test(appSrc) && /announce\(pageTitle\)/.test(appSrc), 'render() 用顶栏标题播报当前页面');
-ok(/APP_VERSION = 'v0\.15\.0'/.test(appSrc), 'app.js 版本号 v0.15.0');
-ok(/const VERSION = 'v1\.27\.0'/.test(swSrc), 'sw.js VERSION v1.27.0');
+ok(/APP_VERSION = 'v0\.16\.0'/.test(appSrc), 'app.js 版本号 v0.16.0');
+ok(/const VERSION = 'v1\.28\.0'/.test(swSrc), 'sw.js VERSION v1.28.0');
 
 console.log('\n[明牌配对（#/match）的键盘可达性与标注]');
 {
@@ -372,10 +372,12 @@ console.log('\n[填字游戏（#/crossword）的键盘可达性与标注]');
     cwBannerInner.includes('cw-banner-body') && !/<button|<a |tabindex=/i.test(cwBannerInner),
     '填字入口横幅是原生 button，内部不嵌套可聚焦控件'
   );
-  ok(/<input class="cw-input"/.test(cwSrc), '答题格是原生 <input>（Tab / 输入法 / 移动端键盘天然可用）');
+  ok(/<input class="cw-input/.test(cwSrc), '答题格是原生 <input>（Tab / 输入法 / 移动端键盘天然可用）');
   ok(
-    /inputmode="\$\{kb\.inputMode\(\)\}"/.test(cwSrc) && /maxlength="1"/.test(cwSrc) && /autocapitalize="characters"/.test(cwSrc),
-    '答题格标注 inputmode（字母键盘展开时抑制系统输入法）/ maxlength / autocapitalize'
+    cwSrc.includes("inputmode=\"${zh ? 'text' : kb.inputMode()}\"") &&
+      /maxlength="1"/.test(cwSrc) &&
+      cwSrc.includes("autocapitalize=\"${zh ? 'off' : 'characters'}\""),
+    '答题格标注 inputmode（英文抑制系统输入法 / 中文允许输入法）/ maxlength / autocapitalize'
   );
   ok(
     /aria-label="\$\{esc\(cellAriaLabel\(cell, value\)\)\}"/.test(cwSrc),

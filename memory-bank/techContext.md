@@ -19,7 +19,8 @@
 | `data/confusables.json`（39 易混组 + 51 词多义） | 项目自编 | — |
 | `data/frequency.json`（17634 词频序） | COCA 2 万高频词表 | — |
 | `data/periodic-table.json`（118 种元素） | 内置元素周期表数据 | 随仓库提供 |
-| `data/countries-capitals.json`（195 个国家） | 内置世界各国与首都中英对照数据 | 随仓库提供 |
+| `data/countries-capitals.json`（195 个国家） | 内置世界各国与首都中英对照数据 + 一句话描述 | 随仓库提供；描述由 `scripts/gen-country-descs.mjs` 写入 |
+| `assets/flags/{iso2}.svg`（195 面国旗） | FlagCDN（MIT，基于 lipis/flag-icons） | `node scripts/gen-flags.mjs` |
 | `data/eng-defs.json`（14428 词英文释义） | GCIDE（`gcide-0.51/`，本地不入库） | `node scripts/build-engdefs.mjs` |
 | 在线查词 | Free Dictionary API（英/德/法/希腊/…）+ Jisho（日语） | 运行时 fetch，结果缓存进 IDB `lookup` |
 

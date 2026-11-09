@@ -7,8 +7,15 @@
  * 说明：发布新版本时递增 VERSION，新 SW 会 skipWaiting + claim 立即接管，
  *       配合 app.js 的 controllerchange 自动刷新，用户无需手动强刷即可看到新功能。
  * ============================================================ */
-const VERSION = 'v1.27.0';
+const VERSION = 'v1.28.0';
 const CACHE = 'mycard-' + VERSION;
+
+/* 195 个国家国旗（assets/flags/{iso2}.svg，由 scripts/gen-flags.mjs 下载） */
+const FLAG_ISO =
+  'af al dz ad ao ag ar am au at az bh bd bb by be bz bj bt bo ba bw br bn bg bf bi kh cm ca cv cf td cl cn co km cr hr cu cy cz cd dk dj dm do tl ec eg sv gq er ee sz et fj fi fr ga ge de gh gr gd gt gn gw gy ht hn hu is in id ir iq ie il it ci jm jp jo kz ke ki kw kg la lv lb ls lr ly li lt lu mg mw my mv ml mt mh mr mu mx fm md mc mn me ma mz mm na nr np nl nz ni ne ng kp mk no om pk pw ps pa pg py pe ph pl pt qa cg ro ru rw kn lc vc ws sm st sa sn rs sc sl sg sk si sb so za kr ss es lk sd sr se ch sy tj tz th bs gm tg to tt tn tr tm tv ug ua ae gb us uy uz vu va ve vn ye zm zw'.split(
+    ' '
+  );
+const FLAG_PRECACHE = FLAG_ISO.map((iso) => './assets/flags/' + iso + '.svg');
 
 const PRECACHE = [
   './',
@@ -60,7 +67,8 @@ const PRECACHE = [
   './icons/icon-192.png',
   './icons/icon-512.png',
   './icons/icon-maskable-512.png',
-  './icons/apple-touch-icon.png'
+  './icons/apple-touch-icon.png',
+  ...FLAG_PRECACHE
 ];
 
 /* 安装：预缓存全部资源 */

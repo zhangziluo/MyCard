@@ -3,7 +3,7 @@
 // 规则：以本关全部卡片为题目，每题均为 4 选 1（可选题型按配置启用）。
 // 通用卡组：word2def / def2word / sentence2word / fill / listen…
 // 元素周期表：9 种专属题型（见 js/periodic.js），随卡组 source / 标签自动切换。
-// 世界各国与首都：11 种专属题型（见 js/countries.js），随 source / 标签自动切换。
+// 世界各国与首都：15 种专属题型（见 js/countries.js），随 source / 标签自动切换。
 // 答错（机会用尽）时展示完整信息（front + back + example）。
 // 通关条件：整关翻转记忆完成 + 测试正确率 ≥ 80% → deck.passedLevels 置位。
 // ============================================================================
@@ -16,7 +16,7 @@ import * as cfg from './test-config.js';
 import * as engine from './test-engine.js';
 import * as engdefs from './engdefs.js';
 import * as periodic from './periodic.js'; // 元素周期表专属题型（9 种）
-import * as countries from './countries.js'; // 世界各国与首都专属题型（11 种）
+import * as countries from './countries.js'; // 世界各国与首都专属题型（15 种）
 import * as kb from './keyboard.js'; // v0.7.0 移动端英文字母键盘
 import * as lang from './lang.js'; // 语种检测 / 卡组同语种判定
 import { esc, on, navigate, toast, openModal } from './ui.js';
@@ -714,6 +714,19 @@ function buildSpecialQuestion(card, type, { specialPools, random }) {
     wrongPicks: [],
     lastPicked: null
   };
+  // 国旗题：题干 / 选项需要渲染图片（prompt / option.text 存的是 ISO 代码）
+  if (fields.prompt === 'flag') {
+    q.flag = prompt;
+    q.flagAlt = p.countryZh || '';
+  }
+  if (fields.answer === 'flag') {
+    const byFlag = new Map(pool.map((e) => [e.text, e]));
+    q.options = q.options.map((o) => ({
+      ...o,
+      flag: o.text,
+      flagAlt: (byFlag.get(o.text) || {}).countryZh || ''
+    }));
+  }
   if (fields.listen) q.speakText = prompt; // 听力题：进入题目时朗读题干
   return q;
 }
@@ -1124,10 +1137,18 @@ function blankSentenceHtml(sentence, word) {
 function questionPromptHtml(type, card, q) {
   if (isSpecialType(type)) {
     if (q && q.speakText) return listenHtml(card, q);
+    if (q && q.flag) {
+      const src = countries.flagPath(q.flag);
+      return `<div class="q-prompt q-prompt-flag">
+        <img class="flag-prompt" src="${esc(src)}" alt="${esc(q.flagAlt || '国旗')}国旗" loading="lazy" />
+      </div>`;
+    }
     const longText =
       type === 'zh2desc' ||
       type === 'desc2zh' ||
       type === 'enName2zh' ||
+      type === 'desc2countryZh' ||
+      type === 'countryZh2desc' ||
       countries.isCountriesType(type);
     return `<p class="q-prompt${longText ? ' q-prompt-def' : ''}">${esc(q.prompt)}</p>`;
   }
@@ -1158,12 +1179,16 @@ function questionPromptHtml(type, card, q) {
 function fullInfoHtml(card, deck) {
   if (countries.isCountriesDeck(deck)) {
     const c = countries.parseCountry(card);
+    const src = countries.flagPath(c.flag);
     return `
     <div class="quiz-full-info">
+      ${src ? `<div class="fi-row fi-row-flag"><span class="fi-label">国旗</span><span class="fi-val"><img class="flag-info" src="${esc(src)}" alt="${esc(c.countryZh)}国旗" loading="lazy" /></span></div>` : ''}
       <div class="fi-row"><span class="fi-label">国家</span><span class="fi-val">${esc(c.countryZh)}</span></div>
       <div class="fi-row"><span class="fi-label">国家英文</span><span class="fi-val">${esc(c.countryEn)}</span></div>
       <div class="fi-row"><span class="fi-label">首都</span><span class="fi-val">${esc(c.capitalZh)}</span></div>
       <div class="fi-row"><span class="fi-label">首都英文</span><span class="fi-val">${esc(c.capitalEn)}</span></div>
+      ${c.desc ? `<div class="fi-row"><span class="fi-label">简介</span><span class="fi-val">${esc(c.desc)}</span></div>` : ''}
+      ${c.descEn ? `<div class="fi-row"><span class="fi-label">英文描述</span><span class="fi-val fi-ex">${esc(c.descEn)}</span></div>` : ''}
     </div>`;
   }
   if (periodic.isPeriodicDeck(deck)) {
@@ -1188,6 +1213,15 @@ function fullInfoHtml(card, deck) {
   </div>`;
 }
 
+/** 选项正文：国旗题渲染图片，其余为纯文本 */
+function optionTextHtml(opt) {
+  if (opt && opt.flag) {
+    return `<span class="opt-text opt-flag"><img class="flag-opt" src="${esc(countries.flagPath(opt.flag))}"
+      alt="${esc(opt.flagAlt || '国旗')}国旗" loading="lazy" /></span>`;
+  }
+  return `<span class="opt-text">${esc(opt.text)}</span>`;
+}
+
 /** 选择题选项区 + 键盘提示；多义多选为「勾选 + 提交」模式 */
 function optionsHtml(q) {
   if (q.type === 'multi_sense') {
@@ -1198,7 +1232,7 @@ function optionsHtml(q) {
           <button class="opt opt-multi ${optionClass(q, opt, i)}" data-action="test-pick" data-i="${i}"
             ${q.answered ? 'disabled' : ''} aria-pressed="${isSelected(q, i) ? 'true' : 'false'}">
             <span class="opt-key">${String.fromCharCode(65 + i)}</span>
-            <span class="opt-text">${esc(opt.text)}</span>
+            ${optionTextHtml(opt)}
             ${optionMark(q, opt, i)}
           </button>`).join('')}
       </div>
@@ -1215,7 +1249,7 @@ function optionsHtml(q) {
           <button class="opt ${optionClass(q, opt, i)}" data-action="test-pick" data-i="${i}"
             ${q.answered || isWrongPick(q, i) ? 'disabled' : ''}>
             <span class="opt-key">${String.fromCharCode(65 + i)}</span>
-            <span class="opt-text">${esc(opt.text)}</span>
+            ${optionTextHtml(opt)}
             ${optionMark(q, opt, i)}
           </button>`).join('')}
       </div>

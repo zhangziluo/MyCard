@@ -23,6 +23,7 @@
 import * as store from './store.js';
 import * as lv from './levels.js';
 import * as kb from './keyboard.js'; // v0.7.0 移动端英文字母键盘
+import * as countries from './countries.js'; // 国家卡组：中文填字 + 国旗/描述线索
 import { esc, on, icon, navigate, announce, toast } from './ui.js';
 
 /** 解锁所需「已通关关卡」数（含）——通关 1 关即可玩（与明牌配对同门槛） */
@@ -159,6 +160,14 @@ export function clueText(card) {
   return extra || '（无释义）';
 }
 
+/** 国家卡组线索：一句话中文描述 + 英文翻译（缺失时回退首都名） */
+function countryClue(card) {
+  const c = countries.parseCountry(card);
+  const zh = c.desc || c.capitalZh;
+  const en = c.descEn || c.capitalEn;
+  return [zh, en].filter(Boolean).join(' · ');
+}
+
 /** 单词只保留字母并转大写（`ice cream` → `ICECREAM`）；供棋盘逐格填写 */
 export function sanitizeAnswer(front) {
   return String(front == null ? '' : front)
@@ -166,23 +175,46 @@ export function sanitizeAnswer(front) {
     .replace(/[^A-Z]/g, '');
 }
 
-/** 由卡片生成词条；正面不是「可填词的纯字母」或长度越界 → null */
-export function entryFromCard(card, maxLen = MAX_LEN) {
+/** 中文填字：只保留汉字（逐字填写；标点 / 空格 / 英文全部丢弃） */
+export function sanitizeAnswerZh(text) {
+  return Array.from(String(text == null ? '' : text))
+    .filter((ch) => /[\u3400-\u9FFF\uF900-\uFAFF\u3007]/.test(ch))
+    .join('');
+}
+
+/** 拆分「中文 · 英文」正面（国家卡的两种填字语言各取一半） */
+function splitFront(front) {
+  const text = String(front == null ? '' : front).trim();
+  const m = /^(.+?)\s*[·•]\s*(.+)$/.exec(text);
+  return m ? { zh: m[1].trim(), en: m[2].trim() } : { zh: text, en: text };
+}
+
+/**
+ * 由卡片生成词条；正面不是「可填词的纯字母 / 纯汉字」或长度越界 → null。
+ * opts.lang = 'zh' 时用中文名逐字填字，否则沿用英文单词。
+ * opts.clueFn 可覆盖线索（国家卡组用「一句话描述 + 英文翻译」）。
+ */
+export function entryFromCard(card, maxLen = MAX_LEN, opts = {}) {
   if (!card || card.id == null) return null;
-  const display = String(card.front || '').trim();
+  const lang = opts.lang === 'zh' ? 'zh' : 'en';
+  const front = String(card.front || '').trim();
+  if (!front) return null;
+  const parts = splitFront(front);
+  const display = lang === 'zh' ? parts.zh : front;
   if (!display) return null;
-  const answer = sanitizeAnswer(display);
+  const answer = lang === 'zh' ? sanitizeAnswerZh(display) : sanitizeAnswer(display);
   if (answer.length < MIN_LEN) return null;
   if (answer.length > posInt(maxLen, MAX_LEN)) return null;
-  return { cardId: card.id, answer, display, clue: clueText(card) };
+  const clue = typeof opts.clueFn === 'function' ? String(opts.clueFn(card) || '').trim() : clueText(card);
+  return { cardId: card.id, answer, display, clue, lang };
 }
 
 /** 候选词条：过滤不可填词的卡片，并按「答案」去重（同词只留第一张） */
-export function candidateEntries(cards, maxLen = MAX_LEN) {
+export function candidateEntries(cards, maxLen = MAX_LEN, opts = {}) {
   const seen = new Set();
   const out = [];
   for (const card of Array.isArray(cards) ? cards : []) {
-    const entry = entryFromCard(card, maxLen);
+    const entry = entryFromCard(card, maxLen, opts);
     if (!entry || seen.has(entry.answer)) continue;
     seen.add(entry.answer);
     out.push(entry);
@@ -311,14 +343,15 @@ export function findPlacement(grid, entry) {
 /**
  * 生成一盘填字棋盘（纯函数）。
  * @param {Array} cards 当前词库（卡组 / 某一关的卡片）
- * @param {{ size?: number, rng?: () => number, maxLen?: number }} opts
+ * @param {{ size?: number, rng?: () => number, maxLen?: number, lang?: 'en'|'zh', clueFn?: (card: object) => string }} opts
  * @returns 棋盘对象（见 buildBoard；凑不出词 → rows/cols = 0、cells/words 为空）
  */
 export function generateCrossword(cards, opts = {}) {
   const size = clampSize(opts.size);
   const maxLen = posInt(opts.maxLen, MAX_LEN);
   const rng = typeof opts.rng === 'function' ? opts.rng : Math.random;
-  const entries = candidateEntries(cards, maxLen);
+  const entryOpts = { lang: opts.lang === 'zh' ? 'zh' : 'en', clueFn: opts.clueFn };
+  const entries = candidateEntries(cards, maxLen, entryOpts);
   const picked = byLenDesc(shuffle(entries, rng)).slice(0, size);
   const grid = new Map();
   const placed = [];
@@ -471,6 +504,7 @@ export function newGame(board, opts = {}) {
     deckId: opts.deckId || '',
     source: opts.source || { kind: 'deck', level: null },
     size: clampSize(opts.size != null ? opts.size : board && board.size),
+    lang: opts.lang === 'zh' ? 'zh' : 'en',
     board,
     letters: {},
     wrong: [],
@@ -484,9 +518,14 @@ export function newGame(board, opts = {}) {
   };
 }
 
-/** 只保留 A–Z（非法输入 → 空串） */
-export function normalizeLetter(ch) {
-  const s = String(ch == null ? '' : ch).toUpperCase().replace(/[^A-Z]/g, '');
+/** 只保留合法字符：英文 A–Z；中文模式保留最后一个汉字 */
+export function normalizeLetter(ch, lang = 'en') {
+  const raw = String(ch == null ? '' : ch);
+  if (lang === 'zh') {
+    const chars = Array.from(raw).filter((c) => /[\u3400-\u9FFF\uF900-\uFAFF\u3007]/.test(c));
+    return chars.length ? chars[chars.length - 1] : '';
+  }
+  const s = raw.toUpperCase().replace(/[^A-Z]/g, '');
   return s ? s[s.length - 1] : '';
 }
 
@@ -502,7 +541,7 @@ export function setLetter(state, row, col, ch) {
   const map = cellMap(state.board);
   const key = cellKey(row, col);
   if (!map.has(key)) return state;
-  const letter = normalizeLetter(ch);
+  const letter = normalizeLetter(ch, state.lang);
   const letters = { ...(state.letters || {}) };
   if (letter) letters[key] = letter;
   else delete letters[key];
@@ -689,6 +728,7 @@ function loadSession(deckId) {
     s.revealed = Array.isArray(s.revealed) ? s.revealed.filter((k) => known.has(k)) : [];
     if (s.selected != null && !wordById(s.board, s.selected)) s.selected = null;
     if (s.dir !== 'down') s.dir = 'across';
+    if (s.lang !== 'zh') s.lang = 'en';
     return finalize(s);
   } catch (e) {
     return null;
@@ -790,14 +830,15 @@ function cellAriaLabel(cell, value) {
 function cellHtml(cell, state) {
   const key = cellKey(cell.row, cell.col);
   const value = (state.letters || {})[key] || '';
+  const zh = state.lang === 'zh';
   const cls = ['cw-cell'];
   if (state.revealed && state.revealed.includes(key)) cls.push('is-revealed');
   return `
     <div class="${cls.join(' ')}" data-cell="${key}">
       ${cell.num ? `<span class="cw-num" aria-hidden="true">${cell.num}</span>` : ''}
-      <input class="cw-input" type="text" data-action="cw-type" data-cell="${key}" value="${esc(value)}"
-        maxlength="1" autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false"
-        inputmode="${kb.inputMode()}" aria-label="${esc(cellAriaLabel(cell, value))}" />
+      <input class="cw-input${zh ? ' cw-input-zh' : ''}" type="text" data-action="cw-type" data-cell="${key}" value="${esc(value)}"
+        ${zh ? '' : 'maxlength="1"'} autocomplete="off" autocorrect="off" autocapitalize="${zh ? 'off' : 'characters'}" spellcheck="false"
+        inputmode="${zh ? 'text' : kb.inputMode()}" aria-label="${esc(cellAriaLabel(cell, value))}" />
     </div>`;
 }
 
@@ -864,6 +905,34 @@ function sizeChipsHtml(size) {
   return `<div class="cw-chips" role="group" aria-label="选择每局词数">${chips}</div>`;
 }
 
+/** 填字语言 chips（仅国家卡组：中文名 / 英文名两种填字方式） */
+function langChipsHtml(lang) {
+  const chip = (id, label) =>
+    `<button type="button" class="cw-chip${lang === id ? ' is-active' : ''}" data-action="cw-lang"
+      data-lang="${id}" aria-pressed="${lang === id ? 'true' : 'false'}">${label}</button>`;
+  return `<div class="cw-chips" role="group" aria-label="选择填字语言">${chip('zh', '中文填字')}${chip('en', '英文填字')}</div>`;
+}
+
+/** 棋盘上出现过的全部汉字（去重排序，供中文模式选字面板使用） */
+function boardHanzi(board) {
+  const set = new Set();
+  for (const cell of (board && board.cells) || []) if (cell.letter) set.add(cell.letter);
+  return [...set].sort((a, b) => a.localeCompare(b, 'zh-Hans-CN'));
+}
+
+/** 中文填字的选字面板：点汉字写入当前格（移动端无需切换输入法） */
+function hanziPanelHtml(board) {
+  const chars = boardHanzi(board);
+  if (!chars.length) return '';
+  return `<div class="cw-hanzi-panel glass" role="group" aria-label="汉字选字面板">
+    <div class="cw-hanzi-title">点字填入当前格</div>
+    <div class="cw-hanzi-grid">
+      ${chars.map((ch) => `<button type="button" class="cw-hanzi" data-action="cw-hanzi" data-hanzi="${esc(ch)}">${esc(ch)}</button>`).join('')}
+      <button type="button" class="cw-hanzi cw-hanzi-back" data-action="cw-hanzi-back" aria-label="删除当前格">⌫</button>
+    </div>
+  </div>`;
+}
+
 /** 结算面板（未完成时由外层 hidden） */
 function resultHtml(state) {
   const p = progress(state);
@@ -895,6 +964,7 @@ export function crosswordHtml(deck, state) {
   const hasBoard = !!(board.cells && board.cells.length);
   const touch = kb.isTouchDevice();
   const size = cellSize(board.cols, board.rows, { ...viewport(), touch });
+  const isCountry = countries.isCountriesDeck(deck);
 
   const body = hasBoard
     ? `
@@ -903,6 +973,7 @@ export function crosswordHtml(deck, state) {
           ${boardGridHtml(state)}
         </div>
       </div>
+      ${state.lang === 'zh' ? hanziPanelHtml(board) : ''}
       <div class="cw-clues">
         ${clueListHtml(state, 'across')}
         ${clueListHtml(state, 'down')}
@@ -917,7 +988,7 @@ export function crosswordHtml(deck, state) {
     : `<div class="empty glass">
         <div class="empty-icon" aria-hidden="true">${icon('grid', 28)}</div>
         <h3>这个来源凑不出填字棋盘</h3>
-        <p>需要「纯字母且长度 2–${MAX_LEN}」的单词。换个词源或增加卡片后再试。</p>
+        <p>${state.lang === 'zh' ? `需要「纯汉字且长度 2–${MAX_LEN}」的国家中文名。` : `需要「纯字母且长度 2–${MAX_LEN}」的单词。`}换个词源或增加卡片后再试。</p>
       </div>`;
 
   return `
@@ -925,7 +996,7 @@ export function crosswordHtml(deck, state) {
       <div class="cw-head glass">
         <div class="cw-title-row">
           <h2 class="screen-title">填字游戏 · ${esc(sourceLabel(source))}</h2>
-          <span class="sub-note">读释义 → 逐格拼出单词</span>
+          <span class="sub-note">${state.lang === 'zh' ? '读描述 → 逐字填出国家中文名' : '读释义 → 逐格拼出单词'}</span>
         </div>
         <div class="cw-status" id="cw-status">${esc(statusText(state, p))}</div>
         <div class="cw-stats">
@@ -937,6 +1008,7 @@ export function crosswordHtml(deck, state) {
         <div class="progress-track" id="cw-progress" role="progressbar" aria-label="填字进度"
           aria-valuemin="0" aria-valuemax="100" aria-valuenow="${p.percent}"><i class="progress-fill" style="width:${p.percent}%"></i></div>
         ${hasBoard ? `<span class="hint">已用 ${board.used}/${board.candidates} 个可用单词交叉排版${board.unplaced ? `（${board.unplaced} 个交叉不上已跳过）` : ''}</span>` : ''}
+        ${isCountry ? langChipsHtml(state.lang) : ''}
         ${sourceChipsHtml(deck, source)}
         ${sizeChipsHtml(state.size)}
       </div>
@@ -1198,8 +1270,8 @@ function keyboardBackspace() {
  * （页面上的「⌨ 字母键盘」按钮可再唤出；这一步在每次重渲染都会走到，所以不能清配置）。
  */
 function attachCrosswordKeyboard() {
-  if (!S || !S.board || !S.board.cells.length || S.solved) {
-    kb.closeKeyboard();
+  if (!S || !S.board || !S.board.cells.length || S.solved || S.lang === 'zh') {
+    kb.closeKeyboard(); // 中文填字用页面内选字面板，不弹字母键盘
     return;
   }
   if (kb.shouldAutoOpen()) {
@@ -1287,11 +1359,24 @@ function bindKeysOnce() {
 
 /* ------------------------------ 开局 / 路由 ------------------------------ */
 
-/** 开一局（可注入 rng 便于单测复现排版） */
-export function startGame(deck, source, size, rng = Math.random) {
+/** 开一局（可注入 rng 便于单测复现排版；lang 仅国家卡组支持 'zh'） */
+export function startGame(deck, source, size, rng = Math.random, lang = 'en') {
   const cards = sourceCards(deck, source);
-  const board = generateCrossword(cards, { size, rng });
-  S = newGame(board, { deckId: deck.id, source, size: clampSize(size), now: Date.now() });
+  const isCountry = countries.isCountriesDeck(deck);
+  const useZh = isCountry && lang === 'zh';
+  const board = generateCrossword(cards, {
+    size,
+    rng,
+    lang: useZh ? 'zh' : 'en',
+    clueFn: isCountry ? countryClue : undefined
+  });
+  S = newGame(board, {
+    deckId: deck.id,
+    source,
+    size: clampSize(size),
+    lang: useZh ? 'zh' : 'en',
+    now: Date.now()
+  });
   saveSession();
   if (!S.solved) startClock();
   return S;
@@ -1329,9 +1414,9 @@ export function renderCrossword(root, deckId) {
 /* ------------------------------- 事件（Action 委托） ------------------------------- */
 
 /** 同一词源 / 词数换一批新题（重新抽词 + 重新排版） */
-function regenerate(deck, source, size) {
+function regenerate(deck, source, size, lang) {
   if (!deck) return;
-  startGame(deck, source, size);
+  startGame(deck, source, size, Math.random, lang);
   renderCrossword(rootView(), deck.id);
 }
 
@@ -1343,7 +1428,7 @@ function applyTypedLetter(el) {
   if (!S || !el || !el.dataset) return;
   const key = el.dataset.cell;
   if (!key) return;
-  const letter = normalizeLetter(el.value);
+  const letter = normalizeLetter(el.value, S.lang);
   if (!letter) {
     if ('value' in el) el.value = '';
     return;
@@ -1362,7 +1447,15 @@ function applyTypedLetter(el) {
   advance(row, col);
 }
 
-on('cw-type', (el) => applyTypedLetter(el), 'input');
+/* 输入法合成期间不处理（等 compositionend 后的 input 事件再写入，避免打断候选框） */
+on(
+  'cw-type',
+  (el, evt) => {
+    if (evt && evt.isComposing) return;
+    applyTypedLetter(el);
+  },
+  'input'
+);
 
 /* 点线索：选中它并把焦点落到第一个空格 */
 on('cw-clue', (el) => {
@@ -1421,7 +1514,7 @@ on('cw-reset', () => {
   const deck = store.getDeck(S.deckId);
   const board = S.board;
   const { source, size } = S;
-  S = newGame(board, { deckId: S.deckId, source, size, now: Date.now() });
+  S = newGame(board, { deckId: S.deckId, source, size, lang: S.lang, now: Date.now() });
   saveSession();
   if (deck) renderCrossword(rootView(), deck.id);
   announce('已清空棋盘，重新开始');
@@ -1430,7 +1523,7 @@ on('cw-reset', () => {
 /* 换一批：同词源 / 同词数重新抽词排版 */
 on('cw-new', () => {
   if (!S) return;
-  regenerate(store.getDeck(S.deckId), S.source, S.size);
+  regenerate(store.getDeck(S.deckId), S.source, S.size, S.lang);
 });
 
 /* 换词源：整卡组 / 某个已通关关卡 */
@@ -1442,7 +1535,7 @@ on('cw-source', (el) => {
   const source = kind === 'level' ? { kind, level: Number(el.dataset.level) } : { kind: 'deck', level: null };
   if (!isValidSource(deck, source)) return;
   if (S.source && S.source.kind === source.kind && S.source.level === source.level) return;
-  regenerate(deck, source, S.size);
+  regenerate(deck, source, S.size, S.lang);
 });
 
 /* 换每局词数 */
@@ -1452,7 +1545,30 @@ on('cw-size', (el) => {
   if (!deck) return;
   const size = Number(el.dataset.size);
   if (clampSize(size) === S.size) return;
-  regenerate(deck, S.source, size);
+  regenerate(deck, S.source, size, S.lang);
+});
+
+/* 切换填字语言（仅国家卡组：中文名 / 英文名） */
+on('cw-lang', (el) => {
+  if (!S || !el || !el.dataset) return;
+  const deck = store.getDeck(S.deckId);
+  if (!deck) return;
+  const lang = el.dataset.lang === 'en' ? 'en' : 'zh';
+  if (S.lang === lang) return;
+  startGame(deck, S.source, S.size, Math.random, lang);
+  renderCrossword(rootView(), deck.id);
+});
+
+/* 中文选字面板：点汉字写入当前格（等价于敲一个键） */
+on('cw-hanzi', (el) => {
+  if (!S || !el || !el.dataset) return;
+  const ch = el.dataset.hanzi || '';
+  if (ch) keyboardType(ch);
+});
+
+on('cw-hanzi-back', () => {
+  if (!S) return;
+  keyboardBackspace();
 });
 
 /* 返回卡组（路由变化会清空会话） */

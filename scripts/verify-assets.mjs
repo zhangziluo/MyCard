@@ -4,12 +4,13 @@
 //   运行: node scripts/verify-assets.mjs
 // ============================================================================
 
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const rel = (p) => resolve(ROOT, p.replace(/^\.\//, ''));
+const { COUNTRY_ISO } = await import('../js/countries.js');
 let failed = 0;
 
 function must(cond, msg) {
@@ -82,6 +83,34 @@ must(
 );
 must(sw.includes("'./data/countries-capitals.json'"), 'sw.js 预缓存 countries-capitals.json');
 must(sw.includes("'./js/countries.js'"), 'sw.js 预缓存 countries.js（国家专属题型）');
+
+// 4.2.1) 国旗 SVG + 一句话描述（v0.16.0 起）
+console.log('\n[assets/flags + 国家描述]');
+const flagDir = rel('assets/flags');
+must(existsSync(flagDir), 'assets/flags 目录存在');
+const flagFiles = existsSync(flagDir) ? readdirSync(flagDir).filter((f) => f.endsWith('.svg')) : [];
+must(flagFiles.length === 195, '195 面国旗 SVG（当前 ' + flagFiles.length + '）');
+must(
+  countries.words.every((w) => {
+    const en = String(w.front).split(' · ').pop().trim();
+    return flagFiles.includes(`${COUNTRY_ISO[en]}.svg`);
+  }),
+  '每个国家都有对应 ISO 国旗文件'
+);
+must(
+  flagFiles.length === 195 &&
+    flagFiles.every((f) => readFileSync(resolve(flagDir, f), 'utf8').trim().startsWith('<svg')),
+  '所有国旗文件都是有效 SVG'
+);
+must(
+  countries.words.every((w) => typeof w.back3 === 'string' && w.back3.length >= 6 && /[。]$/.test(w.back3)),
+  '每条含一句话中文描述（back3）'
+);
+must(
+  countries.words.every((w) => typeof w.example === 'string' && w.example.length >= 8),
+  '每条含英文翻译（example）'
+);
+must(sw.includes('FLAG_PRECACHE') && sw.includes('./assets/flags/'), 'sw.js 预缓存国旗 SVG');
 
 // 5) v0.2 易混分组与多释义
 console.log('\n[data/confusables.json]');
@@ -642,7 +671,7 @@ console.log('\n[我的生词批量整理（js/wordbook.js + js/wordbook-view.js�
   must(existsSync(rel('js/wordbook-view.js')), 'js/wordbook-view.js 存在（整理页）');
   must(sw.includes("'./js/wordbook.js'"), 'sw.js PRECACHE 含 ./js/wordbook.js');
   must(sw.includes("'./js/wordbook-view.js'"), 'sw.js PRECACHE 含 ./js/wordbook-view.js');
-  must(/const VERSION = 'v1\.27\.0'/.test(sw), 'sw.js VERSION 已递增（v1.27.0）');
+  must(/const VERSION = 'v1\.28\.0'/.test(sw), 'sw.js VERSION 已递增（v1.28.0）');
 
   // 内核：去重合并 / 标签 / 筛选排序 / 选中集 / 补查目标
   must(/export function normKey/.test(wbSrc), 'wordbook.js：normKey（大小写 / 空格归一为同一个词）');
@@ -660,7 +689,7 @@ console.log('\n[我的生词批量整理（js/wordbook.js + js/wordbook-view.js�
   must(/merge: true/.test(storeSrc2) && /extraBacks/.test(storeSrc2), 'store.js：addWords 支持 { merge: true } 合并释义');
 
   // 路由与入口
-  must(/APP_VERSION = 'v0\.15\.0'/.test(appSrc), 'app.js 版本号更新为 v0.15.0');
+  must(/APP_VERSION = 'v0\.16\.0'/.test(appSrc), 'app.js 版本号更新为 v0.16.0');
   must(/from '\.\/wordbook-view\.js'/.test(appSrc) && /renderWordbook\(root\)/.test(appSrc), 'app.js 挂载 renderWordbook');
   must(/seg\[0\] === 'words'/.test(appSrc) && /#\/words/.test(appSrc), 'app.js 解析 #/words 路由（含 ?page=N 分页）');
   must(/on\('nav-words'/.test(decksSrc3), 'decks.js 提供 nav-words 入口动作');

@@ -1,8 +1,17 @@
 # Progress — 完成度与遗留
 
-> 更新时间：2026-11-08 ｜ APP `v0.15.0` / SW `v1.27.0` ｜ **世界各国与首都专属题型已交付**
+> 更新时间：2026-11-08 ｜ APP `v0.16.0` / SW `v1.28.0` ｜ **国家国旗 / 描述题型 + 填字中文模式已交付**
 
 ## 已交付（按版本）
+
+**v0.16.0（国家国旗 / 一句话描述题型 + 填字中文模式）**
+- **国旗资源**：`assets/flags/{iso2}.svg` 共 195 面（`scripts/gen-flags.mjs` 从 FlagCDN 下载，校验 195 国全覆盖）；`js/countries.js` 新增 `COUNTRY_ISO`（英文名 → ISO 3166-1 alpha-2）、`flagPath(iso)` / `flagSvg(countryEn)`；卡片不新增字段。
+- **4 种新题型（可选、默认关闭）**：`flag2countryZh` / `countryZh2flag` / `desc2countryZh` / `countryZh2desc`；专属题型 11 → **15**（4 必选 + 11 可选）。`COUNTRIES_FIELDS` / `TYPE_IDS` / `TYPE_LABELS` / `TYPE_HINTS` / `MANDATORY` / `OPTIONAL` / `canBuild` / `buildPools`（新增 `flag` / `desc` 池）全部同步。
+- **数据**：`data/countries-capitals.json` 195 条补 `back3`（一句话中文描述）+ `example`（英文翻译），`scripts/gen-country-descs.mjs` 幂等写入；`parseCountry` 返回 `flag` / `desc` / `descEn`。
+- **题面**：`js/test.js` 国旗题干 `<img class="flag-prompt">`、选项 `<img class="flag-opt">`（`q.flag` / `opt.flag` / `flagAlt`），答错信息卡补国旗 + 简介 + 英文描述；`css/style.css` 新增 `.flag-prompt` / `.flag-opt` / `.flag-info`。
+- **填字中文模式**：`js/crossword.js` 新增 `sanitizeAnswerZh`、`lang` / `clueFn` 参数（`entryFromCard` / `candidateEntries` / `generateCrossword` / `startGame` / `newGame` / `normalizeLetter` / `setLetter`）；国家卡组显示「中文填字 / 英文填字」chips，中文模式逐字填国家中文名 + 页面内汉字选字面板；两种模式线索统一为「`back3` 描述 · `example` 英文翻译」；`css/style.css` 新增 `.cw-hanzi-panel` / `.cw-hanzi` / `.cw-input-zh`。
+- **缓存与版本**：`sw.js v1.28.0`（`FLAG_PRECACHE` 动态预缓存 195 面国旗）；`APP_VERSION v0.16.0`。
+- **测试**：`test-countries` 118 → **145**（数据 `back3` / `example`、ISO 覆盖、195 个 SVG 存在、4 种新题型、配置页 15 种）；`test-crossword` 173 → **228**（中文词条 / 汉字棋盘 / 线索 / 状态机）；`test-a11y` 154、`test-match` 312、`test-periodic` 158、`smoke-dom` 339、`verify-assets` **687**；全量脚本 0 失败。
 
 **v0.15.0（世界各国与首都专属题型）**
 - 新增 `js/countries.js`：解析 `国家中文名 · 英文名` / `首都中文名 · 英文名`，构建 4 类选项池；定义 11 种国家专属题型（4 必选 + 7 可选）、权重归一化 / 开关 / 重刷调整；专属配置 `mycard-countries-test-config`。

@@ -5,7 +5,7 @@
 //   front  「国家中文名 · 英文名」（如 中国 · China）
 //   back   「首都中文名 · 英文名」（如 北京 · Beijing）
 //
-// 测试题型（前 4 种默认启用，后 7 种可选、默认关闭）：
+// 测试题型（前 4 种默认启用，后 11 种可选、默认关闭）：
 //   countryZh2capitalZh   国家中文 → 首都中文
 //   capitalZh2countryZh   首都中文 → 国家中文
 //   countryEn2capitalEn   国家英文 → 首都英文
@@ -17,6 +17,14 @@
 //   countryZh2capitalEn   国家中文 → 首都英文
 //   countryEn2capitalZh   国家英文 → 首都中文
 //   listenCountryEn2capitalEn  听国家英文 → 选首都英文
+//   flag2countryZh        看国旗 → 选国家中文
+//   countryZh2flag        看国家中文 → 选国旗
+//   desc2countryZh        看一句话描述 → 选国家中文
+//   countryZh2desc        看国家中文 → 选一句话描述
+//
+// 国旗：assets/flags/{iso2}.svg（195 个 SVG，由 scripts/gen-flags.mjs 下载）；
+//   数据不新增字段，由国家英文名经 COUNTRY_ISO 映射到 ISO 3166-1 alpha-2 代码。
+// 一句话描述：back3（中文描述）+ example（英文翻译），复用既有卡片字段。
 // ============================================================================
 
 export const COUNTRIES_TYPES = [
@@ -30,7 +38,11 @@ export const COUNTRIES_TYPES = [
   { id: 'capitalEn2capitalZh', label: '首都英文选首都中文', optional: true, desc: '看首都英文名，从首都中文名中选出正确项' },
   { id: 'countryZh2capitalEn', label: '国家中文选首都英文', optional: true, desc: '看国家中文名，从首都英文名中选出正确项' },
   { id: 'countryEn2capitalZh', label: '国家英文选首都中文', optional: true, desc: '看国家英文名，从首都中文名中选出正确项' },
-  { id: 'listenCountryEn2capitalEn', label: '听国家英文选首都英文', optional: true, desc: '听国家英文名（TTS），从首都英文名中选出正确项' }
+  { id: 'listenCountryEn2capitalEn', label: '听国家英文选首都英文', optional: true, desc: '听国家英文名（TTS），从首都英文名中选出正确项' },
+  { id: 'flag2countryZh', label: '看国旗选国家中文', optional: true, desc: '看国旗图片，从国家中文名中选出正确项' },
+  { id: 'countryZh2flag', label: '看国家中文选国旗', optional: true, desc: '看国家中文名，从 4 面国旗中选出正确项' },
+  { id: 'desc2countryZh', label: '看描述选国家中文', optional: true, desc: '看一句话中文描述，从国家中文名中选出正确项' },
+  { id: 'countryZh2desc', label: '看国家中文选描述', optional: true, desc: '看国家中文名，从 4 条一句话描述中选出正确项' }
 ];
 
 export const COUNTRIES_TYPE_IDS = COUNTRIES_TYPES.map((t) => t.id);
@@ -52,12 +64,16 @@ export const COUNTRIES_TYPE_HINTS = {
   capitalEn2capitalZh: '看首都英文名，选择对应的首都中文名',
   countryZh2capitalEn: '看国家中文名，选择对应的首都英文名',
   countryEn2capitalZh: '看国家英文名，选择对应的首都中文名',
-  listenCountryEn2capitalEn: '听国家英文名，选择对应的首都英文名'
+  listenCountryEn2capitalEn: '听国家英文名，选择对应的首都英文名',
+  flag2countryZh: '看国旗图片，选择对应的国家中文名',
+  countryZh2flag: '看国家中文名，选择对应的国旗',
+  desc2countryZh: '看一句话描述，选择对应的国家中文名',
+  countryZh2desc: '看国家中文名，选择最符合的一句话描述'
 };
 
 export const COUNTRIES_DEFAULT_ENABLED = Object.fromEntries(COUNTRIES_OPTIONAL_IDS.map((id) => [id, false]));
 
-/** 默认权重：4 种必选题各 25%，7 种可选题 0% */
+/** 默认权重：4 种必选题各 25%，11 种可选题 0% */
 export const COUNTRIES_DEFAULT_WEIGHTS = Object.fromEntries(
   COUNTRIES_TYPE_IDS.map((id) => [id, COUNTRIES_MANDATORY_IDS.includes(id) ? 25 : 0])
 );
@@ -95,12 +111,229 @@ function splitPair(raw) {
   return m ? [m[1].trim(), m[2].trim()] : [text, ''];
 }
 
+/**
+ * 国家英文名 → ISO 3166-1 alpha-2 代码（小写）。
+ * 国旗文件名即 `assets/flags/{iso}.svg`；英文名取自 data/countries-capitals.json 的 front。
+ */
+export const COUNTRY_ISO = {
+  Afghanistan: 'af',
+  Albania: 'al',
+  Algeria: 'dz',
+  Andorra: 'ad',
+  Angola: 'ao',
+  'Antigua and Barbuda': 'ag',
+  Argentina: 'ar',
+  Armenia: 'am',
+  Australia: 'au',
+  Austria: 'at',
+  Azerbaijan: 'az',
+  Bahrain: 'bh',
+  Bangladesh: 'bd',
+  Barbados: 'bb',
+  Belarus: 'by',
+  Belgium: 'be',
+  Belize: 'bz',
+  Benin: 'bj',
+  Bhutan: 'bt',
+  Bolivia: 'bo',
+  'Bosnia and Herzegovina': 'ba',
+  Botswana: 'bw',
+  Brazil: 'br',
+  Brunei: 'bn',
+  Bulgaria: 'bg',
+  'Burkina Faso': 'bf',
+  Burundi: 'bi',
+  Cambodia: 'kh',
+  Cameroon: 'cm',
+  Canada: 'ca',
+  'Cabo Verde': 'cv',
+  'Central African Republic': 'cf',
+  Chad: 'td',
+  Chile: 'cl',
+  China: 'cn',
+  Colombia: 'co',
+  Comoros: 'km',
+  'Costa Rica': 'cr',
+  Croatia: 'hr',
+  Cuba: 'cu',
+  Cyprus: 'cy',
+  'Czech Republic': 'cz',
+  'Democratic Republic of the Congo': 'cd',
+  Denmark: 'dk',
+  Djibouti: 'dj',
+  Dominica: 'dm',
+  'Dominican Republic': 'do',
+  'East Timor': 'tl',
+  Ecuador: 'ec',
+  Egypt: 'eg',
+  'El Salvador': 'sv',
+  'Equatorial Guinea': 'gq',
+  Eritrea: 'er',
+  Estonia: 'ee',
+  Eswatini: 'sz',
+  Ethiopia: 'et',
+  Fiji: 'fj',
+  Finland: 'fi',
+  France: 'fr',
+  Gabon: 'ga',
+  Georgia: 'ge',
+  Germany: 'de',
+  Ghana: 'gh',
+  Greece: 'gr',
+  Grenada: 'gd',
+  Guatemala: 'gt',
+  Guinea: 'gn',
+  'Guinea-Bissau': 'gw',
+  Guyana: 'gy',
+  Haiti: 'ht',
+  Honduras: 'hn',
+  Hungary: 'hu',
+  Iceland: 'is',
+  India: 'in',
+  Indonesia: 'id',
+  Iran: 'ir',
+  Iraq: 'iq',
+  Ireland: 'ie',
+  Israel: 'il',
+  Italy: 'it',
+  'Ivory Coast': 'ci',
+  Jamaica: 'jm',
+  Japan: 'jp',
+  Jordan: 'jo',
+  Kazakhstan: 'kz',
+  Kenya: 'ke',
+  Kiribati: 'ki',
+  Kuwait: 'kw',
+  Kyrgyzstan: 'kg',
+  Laos: 'la',
+  Latvia: 'lv',
+  Lebanon: 'lb',
+  Lesotho: 'ls',
+  Liberia: 'lr',
+  Libya: 'ly',
+  Liechtenstein: 'li',
+  Lithuania: 'lt',
+  Luxembourg: 'lu',
+  Madagascar: 'mg',
+  Malawi: 'mw',
+  Malaysia: 'my',
+  Maldives: 'mv',
+  Mali: 'ml',
+  Malta: 'mt',
+  'Marshall Islands': 'mh',
+  Mauritania: 'mr',
+  Mauritius: 'mu',
+  Mexico: 'mx',
+  Micronesia: 'fm',
+  Moldova: 'md',
+  Monaco: 'mc',
+  Mongolia: 'mn',
+  Montenegro: 'me',
+  Morocco: 'ma',
+  Mozambique: 'mz',
+  Myanmar: 'mm',
+  Namibia: 'na',
+  Nauru: 'nr',
+  Nepal: 'np',
+  Netherlands: 'nl',
+  'New Zealand': 'nz',
+  Nicaragua: 'ni',
+  Niger: 'ne',
+  Nigeria: 'ng',
+  'North Korea': 'kp',
+  'North Macedonia': 'mk',
+  Norway: 'no',
+  Oman: 'om',
+  Pakistan: 'pk',
+  Palau: 'pw',
+  Palestine: 'ps',
+  Panama: 'pa',
+  'Papua New Guinea': 'pg',
+  Paraguay: 'py',
+  Peru: 'pe',
+  Philippines: 'ph',
+  Poland: 'pl',
+  Portugal: 'pt',
+  Qatar: 'qa',
+  'Republic of the Congo': 'cg',
+  Romania: 'ro',
+  Russia: 'ru',
+  Rwanda: 'rw',
+  'Saint Kitts and Nevis': 'kn',
+  'Saint Lucia': 'lc',
+  'Saint Vincent and the Grenadines': 'vc',
+  Samoa: 'ws',
+  'San Marino': 'sm',
+  'São Tomé and Príncipe': 'st',
+  'Saudi Arabia': 'sa',
+  Senegal: 'sn',
+  Serbia: 'rs',
+  Seychelles: 'sc',
+  'Sierra Leone': 'sl',
+  Singapore: 'sg',
+  Slovakia: 'sk',
+  Slovenia: 'si',
+  'Solomon Islands': 'sb',
+  Somalia: 'so',
+  'South Africa': 'za',
+  'South Korea': 'kr',
+  'South Sudan': 'ss',
+  Spain: 'es',
+  'Sri Lanka': 'lk',
+  Sudan: 'sd',
+  Suriname: 'sr',
+  Sweden: 'se',
+  Switzerland: 'ch',
+  Syria: 'sy',
+  Tajikistan: 'tj',
+  Tanzania: 'tz',
+  Thailand: 'th',
+  Bahamas: 'bs',
+  Gambia: 'gm',
+  Togo: 'tg',
+  Tonga: 'to',
+  'Trinidad and Tobago': 'tt',
+  Tunisia: 'tn',
+  Turkey: 'tr',
+  Turkmenistan: 'tm',
+  Tuvalu: 'tv',
+  Uganda: 'ug',
+  Ukraine: 'ua',
+  'United Arab Emirates': 'ae',
+  'United Kingdom': 'gb',
+  'United States': 'us',
+  Uruguay: 'uy',
+  Uzbekistan: 'uz',
+  Vanuatu: 'vu',
+  'Vatican City': 'va',
+  Venezuela: 've',
+  Vietnam: 'vn',
+  Yemen: 'ye',
+  Zambia: 'zm',
+  Zimbabwe: 'zw'
+};
+
+/** ISO 代码 → 国旗图片路径（供题目选项 / 题干直接使用） */
+export function flagPath(iso) {
+  const code = String(iso || '').trim().toLowerCase();
+  return code ? `assets/flags/${code}.svg` : '';
+}
+
+/** 国家英文名对应的国旗图片路径（未知国家返回空串） */
+export function flagSvg(countryEn) {
+  const iso = COUNTRY_ISO[String(countryEn || '').trim()];
+  return iso ? flagPath(iso) : '';
+}
+
 /** 解析一张国家卡；缺字段时返回空串（canBuild 会据此决定题型是否可用） */
 export function parseCountry(card) {
   const c = card || {};
   const [countryZh, countryEn] = splitPair(c.front);
   const [capitalZh, capitalEn] = splitPair(c.back);
-  return { countryZh, countryEn, capitalZh, capitalEn };
+  const flag = COUNTRY_ISO[countryEn] || '';
+  const desc = String(c.back3 == null ? '' : c.back3).trim();
+  const descEn = String(c.example == null ? '' : c.example).trim();
+  return { countryZh, countryEn, capitalZh, capitalEn, flag, desc, descEn };
 }
 
 /** 供通用出题层调用（与 periodic.parseElement 同接口） */
@@ -142,7 +375,9 @@ export function buildPools(deck) {
     countryZh: make('countryZh'),
     countryEn: make('countryEn'),
     capitalZh: make('capitalZh'),
-    capitalEn: make('capitalEn')
+    capitalEn: make('capitalEn'),
+    flag: make('flag'),
+    desc: make('desc')
   };
 }
 
@@ -158,7 +393,11 @@ export const COUNTRIES_FIELDS = {
   capitalEn2capitalZh: { prompt: 'capitalEn', answer: 'capitalZh', pool: 'capitalZh' },
   countryZh2capitalEn: { prompt: 'countryZh', answer: 'capitalEn', pool: 'capitalEn' },
   countryEn2capitalZh: { prompt: 'countryEn', answer: 'capitalZh', pool: 'capitalZh' },
-  listenCountryEn2capitalEn: { prompt: 'countryEn', answer: 'capitalEn', pool: 'capitalEn', listen: true }
+  listenCountryEn2capitalEn: { prompt: 'countryEn', answer: 'capitalEn', pool: 'capitalEn', listen: true },
+  flag2countryZh: { prompt: 'flag', answer: 'countryZh', pool: 'countryZh' },
+  countryZh2flag: { prompt: 'countryZh', answer: 'flag', pool: 'flag' },
+  desc2countryZh: { prompt: 'desc', answer: 'countryZh', pool: 'countryZh' },
+  countryZh2desc: { prompt: 'countryZh', answer: 'desc', pool: 'desc' }
 };
 
 

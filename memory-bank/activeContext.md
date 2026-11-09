@@ -1,18 +1,26 @@
 # Active Context — 当前焦点
 
-> 更新时间：2026-11-08 ｜ APP `v0.15.0` / SW `v1.27.0` ｜ 世界各国与首都专属题型
+> 更新时间：2026-11-08 ｜ APP `v0.16.0` / SW `v1.28.0` ｜ 国家国旗 / 描述题型 + 中文填字
 
 ## 当前状态
-**v0.15.0（世界各国与首都专属题型）已实现、相关测试通过**。**没有进行中的功能**。
+**v0.16.0（国家国旗 / 一句话描述题型 + 填字中文模式）已实现、相关测试通过**。**没有进行中的功能**。
 
-## 最新完成（v0.15.0）
+## 最新完成（v0.16.0）
+- **195 面国旗 SVG**：`assets/flags/{iso2}.svg`，由 `scripts/gen-flags.mjs` 从 FlagCDN 下载并校验全覆盖；`js/countries.js` 新增 `COUNTRY_ISO`（195 条英文名 → ISO 3166-1 alpha-2）与 `flagPath(iso)` / `flagSvg(countryEn)`。卡片**不新增字段**，运行时由国家英文名查 ISO 拼路径。
+- **4 种新题型（可选、默认关闭、默认权重 0%）**：`flag2countryZh`（看国旗选国家中文）、`countryZh2flag`（选国旗）、`desc2countryZh`（看描述选国家）、`countryZh2desc`（选描述）；国家专属题型 11 → **15**（4 必选 + 11 可选）。
+- **一句话描述数据**：`data/countries-capitals.json` 的 195 条全部补 `back3`（中文描述）+ `example`（英文翻译），由 `scripts/gen-country-descs.mjs` 幂等写入；`parseCountry` 增 `flag` / `desc` / `descEn`，`buildPools` 增 `flag` / `desc` 池。
+- **题面渲染**：`js/test.js` 题干 `q.flag` → `<img class="flag-prompt">`；选项 `opt.flag` → `<img class="flag-opt">`；答错信息卡补国旗 + 简介 + 英文描述。
+- **填字中文模式**：`js/crossword.js` 新增 `sanitizeAnswerZh`、`entryFromCard/candidateEntries/generateCrossword` 的 `lang` / `clueFn` 参数、`normalizeLetter(ch, lang)`、`newGame/startGame` 的 `lang`；国家卡组显示「中文填字 / 英文填字」chips，中文模式逐字填国家中文名 + 棋盘下方汉字选字面板（本局汉字去重）；两种模式线索统一为「`back3` 描述 · `example` 英文翻译」。
+- 版本：`APP_VERSION v0.16.0`，`sw.js v1.28.0`（动态 `FLAG_PRECACHE` 预缓存 195 面国旗）；`test-countries` 118 → **145**，`test-crossword` 173 → **228**，`test-a11y` 154，`verify-assets` **687**，全量脚本 + `smoke-dom` 0 失败。
+- 文档：README 补国旗 / 描述题型与中文填字章节、数据来源（FlagCDN）；`scripts/gen-flags.mjs`、`scripts/gen-country-descs.mjs` 入库。
+
+## 上一版完成（v0.15.0）
 - 新增 `js/countries.js`：从卡片 `front` / `back` 解析国家 / 首都中英文，构建 `countryZh` / `countryEn` / `capitalZh` / `capitalEn` 选项池；共 11 种专属题型。
 - **默认 4 种**：`countryZh2capitalZh` / `capitalZh2countryZh` / `countryEn2capitalEn` / `capitalEn2countryEn`（各 25%）。
 - **可选 7 种（默认关闭）**：国家 / 首都中英对照、跨字段配对、`listenCountryEn2capitalEn`（TTS 朗读国家英文名）。配置键 `mycard-countries-test-config`。
 - `js/test.js` 抽出通用专属题型分发：周期表与世界各国共用出题、回退、题干 / TTS、答错信息卡与整卡组配置页；选项池过滤「同一题干对应多张卡」的歧义干扰项。
 - `js/decks.js` 的 `isCountriesDeck` 委托新模块，按 `source='countries'` 或「世界各国」标签 + 字段完整性识别。
 - 版本：`APP_VERSION v0.15.0`，`sw.js v1.27.0`；`test-countries` 65 → **118**，`test-periodic` **158**，`test-a11y` / `test-match` / `test-deck-test` / `smoke-dom` / `verify-assets` 全绿。
-
 ## 上一版完成（v0.14.0）
 - 新增 `data/countries-capitals.json`：195 个国家（193 个联合国会员国 ＋ 巴勒斯坦、梵蒂冈），按英文名字母顺序；`front` = `国家中文名 · 英文名`（如 `中国 · China`），`back` = `首都中文名 · 英文名`（如 `北京 · Beijing`），每条带「世界各国」标签，`levelSize: 20`。
 - `js/decks.js`：`importCountriesDeck()`（`source='countries'`、`arrange:false`、保持字母顺序、每关 20 张 → 10 关）；`ensureCountriesDeck()` 首次启动自动导入；`isCountriesDeck()` 先看 source，JSON 备份回导丢失 source 时按标签「世界各国」兜底。

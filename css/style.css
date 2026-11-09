@@ -1102,6 +1102,7 @@ body.modal-open { overflow: hidden; }
   caret-color: var(--accent-tx);
 }
 .cw-input.is-active { border-color: var(--accent-tx); background: var(--accent-soft); }
+.cw-input-zh { text-transform: none; letter-spacing: 0; }
 .cw-input.is-revealed { color: var(--amber-tx); }
 .cw-input.is-wrong {
   border-color: var(--fb-again);
@@ -1148,6 +1149,34 @@ body.modal-open { overflow: hidden; }
 /* 操作按钮：主按钮（检查）+ 提示 / 显示本词 / 重新开始 / 换一批 */
 .cw-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .cw-actions .btn { flex: 1; min-width: 128px; }
+
+/* 中文填字选字面板（棋盘上的汉字点一下就填入当前格） */
+.cw-hanzi-panel {
+  padding: 10px 12px;
+  border-radius: var(--r-lg);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.cw-hanzi-title { font-size: 12px; font-weight: 700; color: var(--tx3); }
+.cw-hanzi-grid { display: flex; flex-wrap: wrap; gap: 6px; }
+.cw-hanzi {
+  min-width: 38px;
+  height: 38px;
+  padding: 0 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 19px;
+  font-weight: 700;
+  color: var(--tx);
+  background: var(--ovl-1);
+  border: 1px solid var(--glass-brd);
+  border-radius: 10px;
+  cursor: pointer;
+}
+.cw-hanzi:active { transform: scale(0.96); }
+.cw-hanzi-back { font-size: 16px; color: var(--tx2); }
 
 /* 结算面板（全部填对） */
 .cw-result[hidden] { display: none; }
@@ -1860,6 +1889,37 @@ body.kb-open #view { padding-bottom: calc(var(--safe-b) + 76px + var(--kb-h, 190
 }
 .fi-val { flex: 1; font-weight: 700; color: var(--tx); word-break: break-word; }
 .fi-ex { font-weight: 500; color: var(--tx2); font-style: italic; }
+
+/* 国旗：题干 / 选项 / 完整信息卡 */
+.q-prompt-flag { display: flex; justify-content: center; }
+.flag-prompt {
+  width: min(240px, 62vw);
+  max-height: 150px;
+  object-fit: contain;
+  border-radius: 8px;
+  border: 1px solid var(--glass-brd-strong);
+  background: #fff;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.18);
+}
+.opt-flag { display: flex; align-items: center; }
+.flag-opt {
+  height: 40px;
+  width: auto;
+  max-width: 100%;
+  object-fit: contain;
+  border-radius: 5px;
+  border: 1px solid var(--glass-brd);
+  background: #fff;
+}
+.flag-info {
+  height: 34px;
+  width: auto;
+  object-fit: contain;
+  border-radius: 4px;
+  border: 1px solid var(--glass-brd);
+  background: #fff;
+  vertical-align: middle;
+}
 
 /* ------------------------------ 设置页 ------------------------------ */
 .settings-view { padding-top: 4px; }

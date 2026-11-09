@@ -333,7 +333,7 @@ ok(decksSrc.includes("on('import-periodic'"), '注册 import-periodic 点击动�
 const appSrc = read('js/app.js');
 ok(appSrc.includes('ensurePeriodicDeck()') && appSrc.includes('seededPeriodic'), '启动时按 seededPeriodic 自动导入');
 ok(appSrc.includes('ensurePeriodicBack3()'), '已导入过时启动自动补齐背面 3');
-ok(/APP_VERSION = 'v0\.15\.0'/.test(appSrc), 'APP_VERSION = v0.15.0');
+ok(/APP_VERSION = 'v0\.16\.0'/.test(appSrc), 'APP_VERSION = v0.16.0');
 
 const storeSrc = read('js/store.js');
 ok(storeSrc.includes('back2: String(c.back2') && storeSrc.includes('back3: String(c.back3'), 'store 规范化保留背面 2 / 背面 3');
@@ -363,7 +363,7 @@ ok(cssSrc.includes('.face-back2') && cssSrc.includes('.card-row-back2') && cssSr
 const swSrc = read('sw.js');
 ok(swSrc.includes("'./data/periodic-table.json'"), 'SW 预缓存元素周期表');
 ok(swSrc.includes("'./js/periodic.js'"), 'SW 预缓存周期表专属逻辑 periodic.js');
-ok(/VERSION = 'v1\.27\.0'/.test(swSrc), 'SW 版本 v1.27.0');
+ok(/VERSION = 'v1\.28\.0'/.test(swSrc), 'SW 版本 v1.28.0');
 
 console.log(`\n元素周期表结果: ${pass} 通过, ${fail} 失败`);
 process.exit(fail ? 1 : 0);

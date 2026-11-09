@@ -1,13 +1,14 @@
 #!/usr/bin/env node
 // ============================================================================
-// test-countries.mjs — 内置「世界各国与首都（中英对照）」（v0.15.0）
+// test-countries.mjs — 内置「世界各国与首都（中英对照）」（v0.16.0）
 //   运行: node scripts/test-countries.mjs
-// 覆盖：195 个国家数据完整性 / 中文名 · 英文名与首都字段 / 播种与关卡 /
-//       11 种专属题型（4 必选 + 7 可选）/ 配置页 / 首页横幅与自动导入 /
+// 覆盖：195 个国家数据完整性（含一句话描述 + 英文翻译）/ 中文名 · 英文名与首都字段 /
+//       195 面国旗 SVG / ISO 映射 / 播种与关卡 /
+//       15 种专属题型（4 必选 + 11 可选）/ 配置页 / 首页横幅与自动导入 /
 //       source 去重与标签兜底 / SW 预缓存 / 版本号
 // ============================================================================
 
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -95,6 +96,50 @@ ok(
   '背面没有明显脏数据（大学 / 多余的「的」/ 星号 / 句号）'
 );
 
+console.log('\n[数据：一句话描述 + 国旗]');
+ok(
+  words.every((w) => typeof w.back3 === 'string' && w.back3.trim().length >= 6 && /[。！]$/.test(w.back3.trim())),
+  '每条都有一句话中文描述（back3，以句号结尾）'
+);
+ok(
+  words.every((w) => typeof w.example === 'string' && w.example.trim().length >= 8 && /^[A-Z]/.test(w.example.trim())),
+  '每条都有英文翻译（example，首字母大写）'
+);
+ok(new Set(words.map((w) => w.back3)).size === 195, '195 条中文描述互不重复');
+ok(
+  Object.keys(countries.COUNTRY_ISO).length === 195 &&
+    new Set(Object.values(countries.COUNTRY_ISO)).size === 195,
+  'COUNTRY_ISO 覆盖 195 个国家且 ISO 代码唯一'
+);
+ok(
+  words.every((w) => {
+    const en = w.front.split(' · ').pop().trim();
+    return /^[a-z]{2}$/.test(countries.COUNTRY_ISO[en] || '');
+  }),
+  '每个国家英文名都能映射到 2 位 ISO 代码'
+);
+ok(
+  countries.flagSvg('China') === 'assets/flags/cn.svg' &&
+    countries.flagSvg('United States') === 'assets/flags/us.svg' &&
+    countries.flagPath('AF') === 'assets/flags/af.svg' &&
+    countries.flagSvg('Atlantis') === '',
+  '国旗路径映射正确（含大小写与未知国家兜底）'
+);
+const flagFiles = readdirSync(resolve(ROOT, 'assets/flags')).filter((f) => f.endsWith('.svg'));
+ok(flagFiles.length === 195, 'assets/flags 下恰好 195 个 SVG', flagFiles.length);
+ok(
+  words.every((w) => {
+    const en = w.front.split(' · ').pop().trim();
+    return existsSync(resolve(ROOT, 'assets/flags', `${countries.COUNTRY_ISO[en]}.svg`));
+  }),
+  '每个国家的国旗 SVG 文件都存在'
+);
+ok(
+  existsSync(resolve(ROOT, 'scripts/gen-flags.mjs')) &&
+    read('scripts/gen-flags.mjs').includes('flagcdn.com'),
+  '提供可复现的国旗下载脚本（FlagCDN）'
+);
+
 const byFront = new Map(words.map((w) => [w.front, w.back]));
 const entry = (zh, en) => byFront.get(`${zh} · ${en}`);
 ok(entry('中国', 'China') === '北京 · Beijing', '中国 → 北京', entry('中国', 'China'));
@@ -163,13 +208,19 @@ ok(w2d.every((q) => q.options.filter((o) => o.isCorrect).length === 1), '每个�
  * ========================================================================== */
 
 console.log('\n[国家专属题型与配置]');
-ok(countries.COUNTRIES_TYPE_IDS.length === 11, '共 11 种国家专属题型');
+ok(countries.COUNTRIES_TYPE_IDS.length === 15, '共 15 种国家专属题型');
 ok(
   countries.COUNTRIES_MANDATORY_IDS.join(',') ===
     'countryZh2capitalZh,capitalZh2countryZh,countryEn2capitalEn,capitalEn2countryEn',
   '默认启用 4 种「国家 ↔ 首都」必选题型'
 );
-ok(countries.COUNTRIES_OPTIONAL_IDS.length === 7, '另有 7 种可选中英对照 / 听力题型');
+ok(countries.COUNTRIES_OPTIONAL_IDS.length === 11, '另有 11 种可选中英对照 / 听力 / 国旗 / 描述题型');
+ok(
+  ['flag2countryZh', 'countryZh2flag', 'desc2countryZh', 'countryZh2desc'].every((id) =>
+    countries.COUNTRIES_OPTIONAL_IDS.includes(id)
+  ),
+  '4 种国旗 / 描述题型均为可选题型'
+);
 ok(countries.COUNTRIES_OPTIONAL_IDS.every((id) => countries.COUNTRIES_DEFAULT_ENABLED[id] === false), '可选题型默认关闭');
 const cDefault = countries.loadConfig();
 ok(
@@ -214,8 +265,11 @@ ok(
 const china = countries.parseCountry(chinaCard);
 ok(china.countryZh === '中国' && china.countryEn === 'China', '解析国家中文 / 英文');
 ok(china.capitalZh === '北京' && china.capitalEn === 'Beijing', '解析首都中文 / 英文');
+ok(china.flag === 'cn' && !!china.desc && !!china.descEn, '解析国旗 / 一句话描述 / 英文翻译');
 ok(countries.canBuild(chinaCard, 'countryZh2capitalZh'), '必选题型字段齐全');
 ok(countries.canBuild(chinaCard, 'listenCountryEn2capitalEn'), '听力题型字段齐全');
+ok(countries.canBuild(chinaCard, 'flag2countryZh') && countries.canBuild(chinaCard, 'countryZh2flag'), '国旗题型字段齐全');
+ok(countries.canBuild(chinaCard, 'desc2countryZh') && countries.canBuild(chinaCard, 'countryZh2desc'), '描述题型字段齐全');
 ok(
   countries.isCountriesDeck({ source: null, tags: ['世界各国'] }) === true,
   '轻量卡组对象可用标签兜底'
@@ -228,10 +282,11 @@ const cPools = countries.buildPools(deck);
 ok(cPools.byId.size === 195, '选项池收录 195 个国家');
 ok(cPools.countryZh.length === 195 && cPools.countryEn.length === 195, '国家中英文池各 195 条');
 ok(cPools.capitalZh.length >= 193 && cPools.capitalEn.length >= 194, '首都中英文池按文本去重（同名首都允许重复）');
+ok(cPools.flag.length === 195 && cPools.desc.length === 195, '国旗 / 描述池各 195 条');
 
 
 /* ==========================================================================
- * ③-c 专属出题：11 种题型 / 选项池 / 抽题计划
+ * ③-c 专属出题：15 种题型 / 选项池 / 抽题计划
  * ========================================================================== */
 
 console.log('\n[国家专属出题]');
@@ -251,7 +306,11 @@ const cases = [
   ['capitalEn2capitalZh', firstFields.capitalEn, firstFields.capitalZh],
   ['countryZh2capitalEn', firstFields.countryZh, firstFields.capitalEn],
   ['countryEn2capitalZh', firstFields.countryEn, firstFields.capitalZh],
-  ['listenCountryEn2capitalEn', firstFields.countryEn, firstFields.capitalEn]
+  ['listenCountryEn2capitalEn', firstFields.countryEn, firstFields.capitalEn],
+  ['flag2countryZh', firstFields.flag, firstFields.countryZh],
+  ['countryZh2flag', firstFields.countryZh, firstFields.flag],
+  ['desc2countryZh', firstFields.desc, firstFields.countryZh],
+  ['countryZh2desc', firstFields.countryZh, firstFields.desc]
 ];
 for (const [type, prompt, answer] of cases) {
   const q = oneQ(type);
@@ -264,6 +323,21 @@ ok(cases.every(([type]) => oneQ(type).options.length >= 2), '每种题型都生�
 ok(cases.every(([type]) => oneQ(type).options.filter((o) => o.isCorrect).length === 1), '每种题型只有 1 个正确项');
 ok(cases.every(([type]) => new Set(oneQ(type).options.map((o) => o.text)).size === oneQ(type).options.length), '选项文本不重复');
 ok(oneQ('listenCountryEn2capitalEn').speakText === firstFields.countryEn, '听力题朗读国家英文名');
+const flagPromptQ = oneQ('flag2countryZh');
+ok(
+  flagPromptQ.flag === firstFields.flag && flagPromptQ.flagAlt === firstFields.countryZh,
+  '国旗题干带 ISO 代码与国家名 alt'
+);
+const flagOptQ = oneQ('countryZh2flag');
+ok(
+  flagOptQ.options.length === 4 &&
+    flagOptQ.options.every((o) => /^[a-z]{2}$/.test(o.flag) && !!o.flagAlt),
+  '国旗题的 4 个选项都带 flag / alt'
+);
+ok(
+  countries.flagPath(firstFields.flag) === `assets/flags/${firstFields.flag}.svg`,
+  '国旗题输出可渲染的 SVG 路径'
+);
 
 // 耶路撒冷同时是两个国家的首都：出「首都中文选国家中文」时，不能把另一个正确答案当干扰项
 const israelIdx = deck.cards.findIndex((c) => c.front.startsWith('以色列'));
@@ -314,8 +388,10 @@ testMod.renderDeckTestConfig(cfgRoot, deck.id);
 const cfgHtml = cfgRoot.innerHTML || '';
 ok(cfgHtml.includes('国家中文选首都中文') && cfgHtml.includes('首都英文选国家英文'), '配置页列出 4 种必选题型');
 ok(cfgHtml.includes('听国家英文选首都英文'), '配置页列出可选的听力题型');
-ok((cfgHtml.match(/deck-test-type-toggle/g) || []).length === 7, '配置页提供 7 个可选题型开关');
-ok((cfgHtml.match(/weight-name-wide/g) || []).length === 11, '配置页 11 种题型均使用宽标签布局');
+ok(cfgHtml.includes('看国旗选国家中文') && cfgHtml.includes('看国家中文选国旗'), '配置页列出 2 种国旗题型');
+ok(cfgHtml.includes('看描述选国家中文') && cfgHtml.includes('看国家中文选描述'), '配置页列出 2 种描述题型');
+ok((cfgHtml.match(/deck-test-type-toggle/g) || []).length === 11, '配置页提供 11 个可选题型开关');
+ok((cfgHtml.match(/weight-name-wide/g) || []).length === 15, '配置页 15 种题型均使用宽标签布局');
 ok(cfgHtml.includes('195 个国家'), '配置页显示 195 个国家');
 ok(cfgHtml.includes('data-action="deck-test-start"'), '配置页提供开始测试按钮');
 ok(cfgHtml.includes('世界各国卡组默认启用 4 种'), '配置页说明国家专属题型规则');
@@ -323,6 +399,8 @@ ok(cfgHtml.includes('世界各国卡组默认启用 4 种'), '配置页说明国
 const testSrc = read('js/test.js');
 ok(testSrc.includes('countries.isCountriesDeck(deck)') && testSrc.includes('国家英文'), '答错后展示国家 / 首都中英字段');
 ok(testSrc.includes("'播放国家英文名'"), '听力题提供「播放国家英文名」按钮');
+ok(testSrc.includes('flag-prompt') && testSrc.includes('flag-opt'), '题干 / 选项渲染国旗 SVG');
+ok(testSrc.includes('flag-info') && testSrc.includes('英文描述'), '完整信息卡展示国旗 / 描述 / 英文翻译');
 
 
 
@@ -342,7 +420,7 @@ ok(decksSrc.includes('195 个国家') && decksSrc.includes('正面国家名称�
 
 const appSrc = read('js/app.js');
 ok(appSrc.includes('ensureCountriesDeck()') && appSrc.includes('seededCountries'), '启动时按 seededCountries 自动导入');
-ok(/APP_VERSION = 'v0\.15\.0'/.test(appSrc), 'APP_VERSION = v0.15.0');
+ok(/APP_VERSION = 'v0\.16\.0'/.test(appSrc), 'APP_VERSION = v0.16.0');
 
 const storeSrc = read('js/store.js');
 ok(storeSrc.includes('seededCountries: false'), 'store 默认数据库包含 seededCountries');
@@ -354,7 +432,9 @@ ok(storeSrc.includes("source === 'countries'"), '播种 countries 来源时置�
 const swSrc = read('sw.js');
 ok(swSrc.includes("'./data/countries-capitals.json'"), 'SW 预缓存 countries-capitals.json');
 ok(swSrc.includes("'./js/countries.js'"), 'SW 预缓存 countries.js');
-ok(/VERSION = 'v1\.27\.0'/.test(swSrc), 'SW 版本 v1.27.0');
+ok(swSrc.includes('FLAG_PRECACHE') && swSrc.includes('./assets/flags/'), 'SW 预缓存 195 面国旗 SVG');
+ok(swSrc.includes("'af al dz") && swSrc.includes('zm zw'), 'SW 国旗清单包含全部 ISO 代码');
+ok(/VERSION = 'v1\.28\.0'/.test(swSrc), 'SW 版本 v1.28.0');
 
 console.log(`\n世界各国与首都结果: ${pass} 通过, ${fail} 失败`);
 process.exit(fail ? 1 : 0);

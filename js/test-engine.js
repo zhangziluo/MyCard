@@ -235,7 +235,7 @@ export function buildCardSequence(cards, n, priorityIds = new Set(), random = Ma
  * 生成抽题计划：[{ cardId, type }]
  * @param {{ count?:number, weights?:object, priorityIds?:Set, random?:Function, enabled?:object,
  *           types?:string[]|null, canType?:Function|null, omitTypes?:string[] }} [opts]
- *   `types`（可选）：显式指定题型集合（如元素周期表的 9 种 / 世界各国的 11 种专属题型），优先于 `enabled`。
+ *   `types`（可选）：显式指定题型集合（如元素周期表的 9 种 / 世界各国的 15 种专属题型），优先于 `enabled`。
  *   `canType(card, type) → boolean`（可选）：把「卡片级可用性」纳入题型分配 —— 例如没开
  *   「英英选择」时「多义多选」只派给有 ≥2 条中文释义的卡（见 js/test.js 的 canBuildType）。
  *   `omitTypes`（可选）：本次完全不参与的题型（如卡组正反面同语种时不含 `sentence2word`）。

@@ -1,203 +1,1767 @@
 {
   "name": "世界各国与首都（中英对照）",
   "description": "195 个国家：正面国家名称与英文名，背面首都与英文名。",
-  "tags": ["世界各国","地理","首都"],
+  "tags": [
+    "世界各国",
+    "地理",
+    "首都"
+  ],
   "levelSize": 20,
   "words": [
-    {"front":"阿富汗 · Afghanistan","back":"喀布尔 · Kabul","tags":["世界各国"]},
-    {"front":"阿尔巴尼亚 · Albania","back":"地拉那 · Tirana","tags":["世界各国"]},
-    {"front":"阿尔及利亚 · Algeria","back":"阿尔及尔 · Algiers","tags":["世界各国"]},
-    {"front":"安道尔 · Andorra","back":"安道尔城 · Andorra la Vella","tags":["世界各国"]},
-    {"front":"安哥拉 · Angola","back":"罗安达 · Luanda","tags":["世界各国"]},
-    {"front":"安提瓜和巴布达 · Antigua and Barbuda","back":"圣约翰 · Saint John's","tags":["世界各国"]},
-    {"front":"阿根廷 · Argentina","back":"布宜诺斯艾利斯 · Buenos Aires","tags":["世界各国"]},
-    {"front":"亚美尼亚 · Armenia","back":"埃里温 · Yerevan","tags":["世界各国"]},
-    {"front":"澳大利亚 · Australia","back":"堪培拉 · Canberra","tags":["世界各国"]},
-    {"front":"奥地利 · Austria","back":"维也纳 · Vienna","tags":["世界各国"]},
-    {"front":"阿塞拜疆 · Azerbaijan","back":"巴库 · Baku","tags":["世界各国"]},
-    {"front":"巴林 · Bahrain","back":"麦纳麦 · Manama","tags":["世界各国"]},
-    {"front":"孟加拉国 · Bangladesh","back":"达卡 · Dhaka","tags":["世界各国"]},
-    {"front":"巴巴多斯 · Barbados","back":"布里奇敦 · Bridgetown","tags":["世界各国"]},
-    {"front":"白俄罗斯 · Belarus","back":"明斯克 · Minsk","tags":["世界各国"]},
-    {"front":"比利时 · Belgium","back":"布鲁塞尔 · Brussels","tags":["世界各国"]},
-    {"front":"伯利兹 · Belize","back":"贝尔莫潘 · Belmopan","tags":["世界各国"]},
-    {"front":"贝宁 · Benin","back":"波多诺伏 · Porto-Novo","tags":["世界各国"]},
-    {"front":"不丹 · Bhutan","back":"廷布 · Thimphu","tags":["世界各国"]},
-    {"front":"玻利维亚 · Bolivia","back":"苏克雷 · Sucre","tags":["世界各国"]},
-    {"front":"波黑 · Bosnia and Herzegovina","back":"萨拉热窝 · Sarajevo","tags":["世界各国"]},
-    {"front":"博茨瓦纳 · Botswana","back":"哈博罗内 · Gaborone","tags":["世界各国"]},
-    {"front":"巴西 · Brazil","back":"巴西利亚 · Brasília","tags":["世界各国"]},
-    {"front":"文莱 · Brunei","back":"斯里巴加湾市 · Bandar Seri Begawan","tags":["世界各国"]},
-    {"front":"保加利亚 · Bulgaria","back":"索菲亚 · Sofia","tags":["世界各国"]},
-    {"front":"布基纳法索 · Burkina Faso","back":"瓦加杜古 · Ouagadougou","tags":["世界各国"]},
-    {"front":"布隆迪 · Burundi","back":"布琼布拉 · Bujumbura","tags":["世界各国"]},
-    {"front":"柬埔寨 · Cambodia","back":"金边 · Phnom Penh","tags":["世界各国"]},
-    {"front":"喀麦隆 · Cameroon","back":"雅温得 · Yaoundé","tags":["世界各国"]},
-    {"front":"加拿大 · Canada","back":"渥太华 · Ottawa","tags":["世界各国"]},
-    {"front":"佛得角 · Cabo Verde","back":"普拉亚 · Praia","tags":["世界各国"]},
-    {"front":"中非共和国 · Central African Republic","back":"班吉 · Bangui","tags":["世界各国"]},
-    {"front":"乍得 · Chad","back":"恩贾梅纳 · N'Djamena","tags":["世界各国"]},
-    {"front":"智利 · Chile","back":"圣地亚哥 · Santiago","tags":["世界各国"]},
-    {"front":"中国 · China","back":"北京 · Beijing","tags":["世界各国"]},
-    {"front":"哥伦比亚 · Colombia","back":"波哥大 · Bogotá","tags":["世界各国"]},
-    {"front":"科摩罗 · Comoros","back":"莫罗尼 · Moroni","tags":["世界各国"]},
-    {"front":"哥斯达黎加 · Costa Rica","back":"圣何塞 · San José","tags":["世界各国"]},
-    {"front":"克罗地亚 · Croatia","back":"萨格勒布 · Zagreb","tags":["世界各国"]},
-    {"front":"古巴 · Cuba","back":"哈瓦那 · Havana","tags":["世界各国"]},
-    {"front":"塞浦路斯 · Cyprus","back":"尼科西亚 · Nicosia","tags":["世界各国"]},
-    {"front":"捷克 · Czech Republic","back":"布拉格 · Prague","tags":["世界各国"]},
-    {"front":"刚果民主共和国 · Democratic Republic of the Congo","back":"金沙萨 · Kinshasa","tags":["世界各国"]},
-    {"front":"丹麦 · Denmark","back":"哥本哈根 · Copenhagen","tags":["世界各国"]},
-    {"front":"吉布提 · Djibouti","back":"吉布提 · Djibouti","tags":["世界各国"]},
-    {"front":"多米尼克 · Dominica","back":"罗索 · Roseau","tags":["世界各国"]},
-    {"front":"多米尼加共和国 · Dominican Republic","back":"圣多明各 · Santo Domingo","tags":["世界各国"]},
-    {"front":"东帝汶 · East Timor","back":"帝力 · Dili","tags":["世界各国"]},
-    {"front":"厄瓜多尔 · Ecuador","back":"基多 · Quito","tags":["世界各国"]},
-    {"front":"埃及 · Egypt","back":"开罗 · Cairo","tags":["世界各国"]},
-    {"front":"萨尔瓦多 · El Salvador","back":"圣萨尔瓦多 · San Salvador","tags":["世界各国"]},
-    {"front":"赤道几内亚 · Equatorial Guinea","back":"马拉博 · Malabo","tags":["世界各国"]},
-    {"front":"厄立特里亚 · Eritrea","back":"阿斯马拉 · Asmara","tags":["世界各国"]},
-    {"front":"爱沙尼亚 · Estonia","back":"塔林 · Tallinn","tags":["世界各国"]},
-    {"front":"斯威士兰 · Eswatini","back":"姆巴巴内 · Mbabane","tags":["世界各国"]},
-    {"front":"埃塞俄比亚 · Ethiopia","back":"亚的斯亚贝巴 · Addis Ababa","tags":["世界各国"]},
-    {"front":"斐济 · Fiji","back":"苏瓦 · Suva","tags":["世界各国"]},
-    {"front":"芬兰 · Finland","back":"赫尔辛基 · Helsinki","tags":["世界各国"]},
-    {"front":"法国 · France","back":"巴黎 · Paris","tags":["世界各国"]},
-    {"front":"加蓬 · Gabon","back":"利伯维尔 · Libreville","tags":["世界各国"]},
-    {"front":"格鲁吉亚 · Georgia","back":"第比利斯 · Tbilisi","tags":["世界各国"]},
-    {"front":"德国 · Germany","back":"柏林 · Berlin","tags":["世界各国"]},
-    {"front":"加纳 · Ghana","back":"阿克拉 · Accra","tags":["世界各国"]},
-    {"front":"希腊 · Greece","back":"雅典 · Athens","tags":["世界各国"]},
-    {"front":"格林纳达 · Grenada","back":"圣乔治 · St. George's","tags":["世界各国"]},
-    {"front":"危地马拉 · Guatemala","back":"危地马拉城 · Guatemala City","tags":["世界各国"]},
-    {"front":"几内亚 · Guinea","back":"科纳克里 · Conakry","tags":["世界各国"]},
-    {"front":"几内亚比绍 · Guinea-Bissau","back":"比绍 · Bissau","tags":["世界各国"]},
-    {"front":"圭亚那 · Guyana","back":"乔治敦 · Georgetown","tags":["世界各国"]},
-    {"front":"海地 · Haiti","back":"太子港 · Port-au-Prince","tags":["世界各国"]},
-    {"front":"洪都拉斯 · Honduras","back":"特古西加尔巴 · Tegucigalpa","tags":["世界各国"]},
-    {"front":"匈牙利 · Hungary","back":"布达佩斯 · Budapest","tags":["世界各国"]},
-    {"front":"冰岛 · Iceland","back":"雷克雅未克 · Reykjavik","tags":["世界各国"]},
-    {"front":"印度 · India","back":"新德里 · New Delhi","tags":["世界各国"]},
-    {"front":"印度尼西亚 · Indonesia","back":"雅加达 · Jakarta","tags":["世界各国"]},
-    {"front":"伊朗 · Iran","back":"德黑兰 · Tehran","tags":["世界各国"]},
-    {"front":"伊拉克 · Iraq","back":"巴格达 · Baghdad","tags":["世界各国"]},
-    {"front":"爱尔兰 · Ireland","back":"都柏林 · Dublin","tags":["世界各国"]},
-    {"front":"以色列 · Israel","back":"耶路撒冷 · Jerusalem","tags":["世界各国"]},
-    {"front":"意大利 · Italy","back":"罗马 · Rome","tags":["世界各国"]},
-    {"front":"科特迪瓦 · Ivory Coast","back":"亚穆苏克罗 · Yamoussoukro","tags":["世界各国"]},
-    {"front":"牙买加 · Jamaica","back":"金斯敦 · Kingston","tags":["世界各国"]},
-    {"front":"日本 · Japan","back":"东京 · Tokyo","tags":["世界各国"]},
-    {"front":"约旦 · Jordan","back":"安曼 · Amman","tags":["世界各国"]},
-    {"front":"哈萨克斯坦 · Kazakhstan","back":"阿斯塔纳 · Astana","tags":["世界各国"]},
-    {"front":"肯尼亚 · Kenya","back":"内罗毕 · Nairobi","tags":["世界各国"]},
-    {"front":"基里巴斯 · Kiribati","back":"南塔拉瓦 · South Tarawa","tags":["世界各国"]},
-    {"front":"科威特 · Kuwait","back":"科威特城 · Kuwait City","tags":["世界各国"]},
-    {"front":"吉尔吉斯斯坦 · Kyrgyzstan","back":"比什凯克 · Bishkek","tags":["世界各国"]},
-    {"front":"老挝 · Laos","back":"万象 · Vientiane","tags":["世界各国"]},
-    {"front":"拉脱维亚 · Latvia","back":"里加 · Riga","tags":["世界各国"]},
-    {"front":"黎巴嫩 · Lebanon","back":"贝鲁特 · Beirut","tags":["世界各国"]},
-    {"front":"莱索托 · Lesotho","back":"马塞卢 · Maseru","tags":["世界各国"]},
-    {"front":"利比里亚 · Liberia","back":"蒙罗维亚 · Monrovia","tags":["世界各国"]},
-    {"front":"利比亚 · Libya","back":"的黎波里 · Tripoli","tags":["世界各国"]},
-    {"front":"列支敦士登 · Liechtenstein","back":"瓦杜兹 · Vaduz","tags":["世界各国"]},
-    {"front":"立陶宛 · Lithuania","back":"维尔纽斯 · Vilnius","tags":["世界各国"]},
-    {"front":"卢森堡 · Luxembourg","back":"卢森堡 · Luxembourg","tags":["世界各国"]},
-    {"front":"马达加斯加 · Madagascar","back":"塔那那利佛 · Antananarivo","tags":["世界各国"]},
-    {"front":"马拉维 · Malawi","back":"利隆圭 · Lilongwe","tags":["世界各国"]},
-    {"front":"马来西亚 · Malaysia","back":"吉隆坡 · Kuala Lumpur","tags":["世界各国"]},
-    {"front":"马尔代夫 · Maldives","back":"马累 · Malé","tags":["世界各国"]},
-    {"front":"马里 · Mali","back":"巴马科 · Bamako","tags":["世界各国"]},
-    {"front":"马耳他 · Malta","back":"瓦莱塔 · Valletta","tags":["世界各国"]},
-    {"front":"马绍尔群岛 · Marshall Islands","back":"马朱罗 · Majuro","tags":["世界各国"]},
-    {"front":"毛里塔尼亚 · Mauritania","back":"努瓦克肖特 · Nouakchott","tags":["世界各国"]},
-    {"front":"毛里求斯 · Mauritius","back":"路易港 · Port Louis","tags":["世界各国"]},
-    {"front":"墨西哥 · Mexico","back":"墨西哥城 · Mexico City","tags":["世界各国"]},
-    {"front":"密克罗尼西亚联邦 · Micronesia","back":"帕利基尔 · Palikir","tags":["世界各国"]},
-    {"front":"摩尔多瓦 · Moldova","back":"基希讷乌 · Chișinău","tags":["世界各国"]},
-    {"front":"摩纳哥 · Monaco","back":"摩纳哥 · Monaco","tags":["世界各国"]},
-    {"front":"蒙古 · Mongolia","back":"乌兰巴托 · Ulaanbaatar","tags":["世界各国"]},
-    {"front":"黑山 · Montenegro","back":"波德戈里察 · Podgorica","tags":["世界各国"]},
-    {"front":"摩洛哥 · Morocco","back":"拉巴特 · Rabat","tags":["世界各国"]},
-    {"front":"莫桑比克 · Mozambique","back":"马普托 · Maputo","tags":["世界各国"]},
-    {"front":"缅甸 · Myanmar","back":"奈比多 · Naypyidaw","tags":["世界各国"]},
-    {"front":"纳米比亚 · Namibia","back":"温得和克 · Windhoek","tags":["世界各国"]},
-    {"front":"瑙鲁 · Nauru","back":"亚伦 · Yaren","tags":["世界各国"]},
-    {"front":"尼泊尔 · Nepal","back":"加德满都 · Kathmandu","tags":["世界各国"]},
-    {"front":"荷兰 · Netherlands","back":"阿姆斯特丹 · Amsterdam","tags":["世界各国"]},
-    {"front":"新西兰 · New Zealand","back":"惠灵顿 · Wellington","tags":["世界各国"]},
-    {"front":"尼加拉瓜 · Nicaragua","back":"马那瓜 · Managua","tags":["世界各国"]},
-    {"front":"尼日尔 · Niger","back":"尼亚美 · Niamey","tags":["世界各国"]},
-    {"front":"尼日利亚 · Nigeria","back":"阿布贾 · Abuja","tags":["世界各国"]},
-    {"front":"朝鲜 · North Korea","back":"平壤 · Pyongyang","tags":["世界各国"]},
-    {"front":"北马其顿 · North Macedonia","back":"斯科普里 · Skopje","tags":["世界各国"]},
-    {"front":"挪威 · Norway","back":"奥斯陆 · Oslo","tags":["世界各国"]},
-    {"front":"阿曼 · Oman","back":"马斯喀特 · Muscat","tags":["世界各国"]},
-    {"front":"巴基斯坦 · Pakistan","back":"伊斯兰堡 · Islamabad","tags":["世界各国"]},
-    {"front":"帕劳 · Palau","back":"恩吉鲁穆德 · Ngerulmud","tags":["世界各国"]},
-    {"front":"巴勒斯坦 · Palestine","back":"耶路撒冷 · Jerusalem","tags":["世界各国"]},
-    {"front":"巴拿马 · Panama","back":"巴拿马城 · Panama City","tags":["世界各国"]},
-    {"front":"巴布亚新几内亚 · Papua New Guinea","back":"莫尔兹比港 · Port Moresby","tags":["世界各国"]},
-    {"front":"巴拉圭 · Paraguay","back":"亚松森 · Asunción","tags":["世界各国"]},
-    {"front":"秘鲁 · Peru","back":"利马 · Lima","tags":["世界各国"]},
-    {"front":"菲律宾 · Philippines","back":"马尼拉 · Manila","tags":["世界各国"]},
-    {"front":"波兰 · Poland","back":"华沙 · Warsaw","tags":["世界各国"]},
-    {"front":"葡萄牙 · Portugal","back":"里斯本 · Lisbon","tags":["世界各国"]},
-    {"front":"卡塔尔 · Qatar","back":"多哈 · Doha","tags":["世界各国"]},
-    {"front":"刚果共和国 · Republic of the Congo","back":"布拉柴维尔 · Brazzaville","tags":["世界各国"]},
-    {"front":"罗马尼亚 · Romania","back":"布加勒斯特 · Bucharest","tags":["世界各国"]},
-    {"front":"俄罗斯 · Russia","back":"莫斯科 · Moscow","tags":["世界各国"]},
-    {"front":"卢旺达 · Rwanda","back":"基加利 · Kigali","tags":["世界各国"]},
-    {"front":"圣基茨和尼维斯 · Saint Kitts and Nevis","back":"巴斯特尔 · Basseterre","tags":["世界各国"]},
-    {"front":"圣卢西亚 · Saint Lucia","back":"卡斯特里 · Castries","tags":["世界各国"]},
-    {"front":"圣文森特和格林纳丁斯 · Saint Vincent and the Grenadines","back":"金斯敦 · Kingstown","tags":["世界各国"]},
-    {"front":"萨摩亚 · Samoa","back":"阿皮亚 · Apia","tags":["世界各国"]},
-    {"front":"圣马力诺 · San Marino","back":"圣马力诺 · San Marino","tags":["世界各国"]},
-    {"front":"圣多美和普林西比 · São Tomé and Príncipe","back":"圣多美 · São Tomé","tags":["世界各国"]},
-    {"front":"沙特阿拉伯 · Saudi Arabia","back":"利雅得 · Riyadh","tags":["世界各国"]},
-    {"front":"塞内加尔 · Senegal","back":"达喀尔 · Dakar","tags":["世界各国"]},
-    {"front":"塞尔维亚 · Serbia","back":"贝尔格莱德 · Belgrade","tags":["世界各国"]},
-    {"front":"塞舌尔 · Seychelles","back":"维多利亚 · Victoria","tags":["世界各国"]},
-    {"front":"塞拉利昂 · Sierra Leone","back":"弗里敦 · Freetown","tags":["世界各国"]},
-    {"front":"新加坡 · Singapore","back":"新加坡 · Singapore","tags":["世界各国"]},
-    {"front":"斯洛伐克 · Slovakia","back":"布拉迪斯拉发 · Bratislava","tags":["世界各国"]},
-    {"front":"斯洛文尼亚 · Slovenia","back":"卢布尔雅那 · Ljubljana","tags":["世界各国"]},
-    {"front":"所罗门群岛 · Solomon Islands","back":"霍尼亚拉 · Honiara","tags":["世界各国"]},
-    {"front":"索马里 · Somalia","back":"摩加迪沙 · Mogadishu","tags":["世界各国"]},
-    {"front":"南非 · South Africa","back":"比勒陀利亚 · Pretoria","tags":["世界各国"]},
-    {"front":"韩国 · South Korea","back":"首尔 · Seoul","tags":["世界各国"]},
-    {"front":"南苏丹 · South Sudan","back":"朱巴 · Juba","tags":["世界各国"]},
-    {"front":"西班牙 · Spain","back":"马德里 · Madrid","tags":["世界各国"]},
-    {"front":"斯里兰卡 · Sri Lanka","back":"科伦坡 · Colombo","tags":["世界各国"]},
-    {"front":"苏丹 · Sudan","back":"喀土穆 · Khartoum","tags":["世界各国"]},
-    {"front":"苏里南 · Suriname","back":"帕拉马里博 · Paramaribo","tags":["世界各国"]},
-    {"front":"瑞典 · Sweden","back":"斯德哥尔摩 · Stockholm","tags":["世界各国"]},
-    {"front":"瑞士 · Switzerland","back":"伯尔尼 · Bern","tags":["世界各国"]},
-    {"front":"叙利亚 · Syria","back":"大马士革 · Damascus","tags":["世界各国"]},
-    {"front":"塔吉克斯坦 · Tajikistan","back":"杜尚别 · Dushanbe","tags":["世界各国"]},
-    {"front":"坦桑尼亚 · Tanzania","back":"多多马 · Dodoma","tags":["世界各国"]},
-    {"front":"泰国 · Thailand","back":"曼谷 · Bangkok","tags":["世界各国"]},
-    {"front":"巴哈马 · Bahamas","back":"拿骚 · Nassau","tags":["世界各国"]},
-    {"front":"冈比亚 · Gambia","back":"班珠尔 · Banjul","tags":["世界各国"]},
-    {"front":"多哥 · Togo","back":"洛美 · Lomé","tags":["世界各国"]},
-    {"front":"汤加 · Tonga","back":"努库阿洛法 · Nuku'alofa","tags":["世界各国"]},
-    {"front":"特立尼达和多巴哥 · Trinidad and Tobago","back":"西班牙港 · Port of Spain","tags":["世界各国"]},
-    {"front":"突尼斯 · Tunisia","back":"突尼斯 · Tunis","tags":["世界各国"]},
-    {"front":"土耳其 · Turkey","back":"安卡拉 · Ankara","tags":["世界各国"]},
-    {"front":"土库曼斯坦 · Turkmenistan","back":"阿什哈巴德 · Ashgabat","tags":["世界各国"]},
-    {"front":"图瓦卢 · Tuvalu","back":"富纳富提 · Funafuti","tags":["世界各国"]},
-    {"front":"乌干达 · Uganda","back":"坎帕拉 · Kampala","tags":["世界各国"]},
-    {"front":"乌克兰 · Ukraine","back":"基辅 · Kyiv","tags":["世界各国"]},
-    {"front":"阿拉伯联合酋长国 · United Arab Emirates","back":"阿布扎比 · Abu Dhabi","tags":["世界各国"]},
-    {"front":"英国 · United Kingdom","back":"伦敦 · London","tags":["世界各国"]},
-    {"front":"美国 · United States","back":"华盛顿 · Washington, D.C.","tags":["世界各国"]},
-    {"front":"乌拉圭 · Uruguay","back":"蒙得维的亚 · Montevideo","tags":["世界各国"]},
-    {"front":"乌兹别克斯坦 · Uzbekistan","back":"塔什干 · Tashkent","tags":["世界各国"]},
-    {"front":"瓦努阿图 · Vanuatu","back":"维拉港 · Port Vila","tags":["世界各国"]},
-    {"front":"梵蒂冈 · Vatican City","back":"梵蒂冈城 · Vatican City","tags":["世界各国"]},
-    {"front":"委内瑞拉 · Venezuela","back":"加拉加斯 · Caracas","tags":["世界各国"]},
-    {"front":"越南 · Vietnam","back":"河内 · Hanoi","tags":["世界各国"]},
-    {"front":"也门 · Yemen","back":"萨那 · Sana'a","tags":["世界各国"]},
-    {"front":"赞比亚 · Zambia","back":"卢萨卡 · Lusaka","tags":["世界各国"]},
-    {"front":"津巴布韦 · Zimbabwe","back":"哈拉雷 · Harare","tags":["世界各国"]}
+    {
+      "front": "阿富汗 · Afghanistan",
+      "back": "喀布尔 · Kabul",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "位于中亚南部的内陆山国，兴都库什山脉贯穿全境。",
+      "example": "A landlocked, mountainous country in South-Central Asia crossed by the Hindu Kush."
+    },
+    {
+      "front": "阿尔巴尼亚 · Albania",
+      "back": "地拉那 · Tirana",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "位于巴尔干半岛西部的沿海国家，以碉堡和亚得里亚海海岸闻名。",
+      "example": "A coastal country in the western Balkans known for its bunkers and Adriatic beaches."
+    },
+    {
+      "front": "阿尔及利亚 · Algeria",
+      "back": "阿尔及尔 · Algiers",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "非洲面积最大的国家，撒哈拉沙漠占据大部分国土。",
+      "example": "Africa's largest country, most of which lies in the Sahara Desert."
+    },
+    {
+      "front": "安道尔 · Andorra",
+      "back": "安道尔城 · Andorra la Vella",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "位于法国与西班牙之间的比利牛斯山小国，以滑雪和免税购物著称。",
+      "example": "A tiny Pyrenean country between France and Spain known for skiing and duty-free shopping."
+    },
+    {
+      "front": "安哥拉 · Angola",
+      "back": "罗安达 · Luanda",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "位于非洲西南部的大西洋沿岸国家，石油与钻石资源丰富。",
+      "example": "An Atlantic coastal country in southwestern Africa rich in oil and diamonds."
+    },
+    {
+      "front": "安提瓜和巴布达 · Antigua and Barbuda",
+      "back": "圣约翰 · Saint John's",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "加勒比海东部的双岛国家，以海滩和帆船节闻名。",
+      "example": "A twin-island Caribbean nation known for its beaches and sailing week."
+    },
+    {
+      "front": "阿根廷 · Argentina",
+      "back": "布宜诺斯艾利斯 · Buenos Aires",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "南美洲南部大国，以探戈、潘帕斯草原和足球闻名。",
+      "example": "A large South American country famous for tango, the Pampas and football."
+    },
+    {
+      "front": "亚美尼亚 · Armenia",
+      "back": "埃里温 · Yerevan",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "位于高加索地区的内陆国，是最早将基督教定为国教的国家之一。",
+      "example": "A landlocked Caucasus country, one of the first to adopt Christianity."
+    },
+    {
+      "front": "澳大利亚 · Australia",
+      "back": "堪培拉 · Canberra",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "位于南半球的大洋洲国家，拥有大堡礁与广袤的内陆荒漠。",
+      "example": "An Oceanian country in the Southern Hemisphere with the Great Barrier Reef and vast outback."
+    },
+    {
+      "front": "奥地利 · Austria",
+      "back": "维也纳 · Vienna",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "中欧内陆国，阿尔卑斯山与古典音乐传统闻名于世。",
+      "example": "A landlocked Central European country known for the Alps and classical music."
+    },
+    {
+      "front": "阿塞拜疆 · Azerbaijan",
+      "back": "巴库 · Baku",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "位于高加索东部的里海沿岸国家，被称为「火之国」。",
+      "example": "A Caspian coastal country in the eastern Caucasus known as the Land of Fire."
+    },
+    {
+      "front": "巴林 · Bahrain",
+      "back": "麦纳麦 · Manama",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "波斯湾的岛国，以珍珠养殖历史和金融业著称。",
+      "example": "An island country in the Persian Gulf known for pearling history and finance."
+    },
+    {
+      "front": "孟加拉国 · Bangladesh",
+      "back": "达卡 · Dhaka",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "位于南亚的三角洲国家，河流密布、人口稠密。",
+      "example": "A densely populated delta country in South Asia crisscrossed by rivers."
+    },
+    {
+      "front": "巴巴多斯 · Barbados",
+      "back": "布里奇敦 · Bridgetown",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "加勒比海最东端的珊瑚岛国，以朗姆酒和甘蔗种植闻名。",
+      "example": "The easternmost Caribbean coral island, known for rum and sugarcane."
+    },
+    {
+      "front": "白俄罗斯 · Belarus",
+      "back": "明斯克 · Minsk",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "东欧内陆国，森林与沼泽广布，素有「欧洲之肺」之称。",
+      "example": "A landlocked Eastern European country of forests and marshes, called the lungs of Europe."
+    },
+    {
+      "front": "比利时 · Belgium",
+      "back": "布鲁塞尔 · Brussels",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "西欧国家，以巧克力、华夫饼和欧盟总部所在地闻名。",
+      "example": "A Western European country known for chocolate, waffles and the EU headquarters."
+    },
+    {
+      "front": "伯利兹 · Belize",
+      "back": "贝尔莫潘 · Belmopan",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "中美洲唯一以英语为官方语言的国家，拥有世界第二大珊瑚礁。",
+      "example": "Central America's only English-speaking country, with the world's second-largest reef."
+    },
+    {
+      "front": "贝宁 · Benin",
+      "back": "波多诺伏 · Porto-Novo",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "西非几内亚湾沿岸国家，历史上是达荷美王国的所在地。",
+      "example": "A West African Gulf of Guinea country, once home to the Kingdom of Dahomey."
+    },
+    {
+      "front": "不丹 · Bhutan",
+      "back": "廷布 · Thimphu",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "喜马拉雅山东段的内陆国，以国民幸福总值和佛教文化著称。",
+      "example": "A landlocked Himalayan country known for Gross National Happiness and Buddhism."
+    },
+    {
+      "front": "玻利维亚 · Bolivia",
+      "back": "苏克雷 · Sucre",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "南美洲内陆国，拥有乌尤尼盐沼和世界上海拔最高的首都。",
+      "example": "A landlocked South American country with the Uyuni salt flat and the world's highest capital."
+    },
+    {
+      "front": "波黑 · Bosnia and Herzegovina",
+      "back": "萨拉热窝 · Sarajevo",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "巴尔干半岛国家，以莫斯塔尔古桥和多元文化交融闻名。",
+      "example": "A Balkan country known for the Old Bridge of Mostar and its cultural mix."
+    },
+    {
+      "front": "博茨瓦纳 · Botswana",
+      "back": "哈博罗内 · Gaborone",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "南部非洲内陆国，奥卡万戈三角洲与钻石产业闻名。",
+      "example": "A landlocked southern African country known for the Okavango Delta and diamonds."
+    },
+    {
+      "front": "巴西 · Brazil",
+      "back": "巴西利亚 · Brasília",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "南美洲面积最大的国家，亚马逊雨林与狂欢节举世闻名。",
+      "example": "South America's largest country, famous for the Amazon rainforest and Carnival."
+    },
+    {
+      "front": "文莱 · Brunei",
+      "back": "斯里巴加湾市 · Bandar Seri Begawan",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "婆罗洲北部的苏丹国，以石油财富和水上村落著称。",
+      "example": "A sultanate on northern Borneo known for oil wealth and water villages."
+    },
+    {
+      "front": "保加利亚 · Bulgaria",
+      "back": "索菲亚 · Sofia",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "巴尔干半岛东部的国家，以玫瑰谷和酸奶闻名。",
+      "example": "A country in the eastern Balkans known for its Valley of Roses and yogurt."
+    },
+    {
+      "front": "布基纳法索 · Burkina Faso",
+      "back": "瓦加杜古 · Ouagadougou",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "西非内陆国，名称意为「正人君子之国」。",
+      "example": "A landlocked West African country whose name means Land of Upright People."
+    },
+    {
+      "front": "布隆迪 · Burundi",
+      "back": "布琼布拉 · Bujumbura",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "东非大裂谷旁的小国，坦干伊喀湖为其西部边界。",
+      "example": "A small East African country bordering Lake Tanganyika on the Great Rift Valley."
+    },
+    {
+      "front": "柬埔寨 · Cambodia",
+      "back": "金边 · Phnom Penh",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "东南亚国家，以吴哥窟古迹和湄公河闻名。",
+      "example": "A Southeast Asian country known for Angkor Wat and the Mekong River."
+    },
+    {
+      "front": "喀麦隆 · Cameroon",
+      "back": "雅温得 · Yaoundé",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "中西非国家，地形与气候多样，被称为「微型非洲」。",
+      "example": "A Central African country of diverse landscapes, called Africa in miniature."
+    },
+    {
+      "front": "加拿大 · Canada",
+      "back": "渥太华 · Ottawa",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "北美洲北部大国，湖泊众多、森林广袤，以枫叶为象征。",
+      "example": "A vast northern North American country of lakes and forests, symbolized by the maple leaf."
+    },
+    {
+      "front": "佛得角 · Cabo Verde",
+      "back": "普拉亚 · Praia",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "大西洋上的火山群岛国家，以音乐和克里奥尔文化著称。",
+      "example": "An Atlantic volcanic island nation known for its music and Creole culture."
+    },
+    {
+      "front": "中非共和国 · Central African Republic",
+      "back": "班吉 · Bangui",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "非洲中部的内陆国，热带雨林与稀树草原并存。",
+      "example": "A landlocked Central African country of rainforest and savanna."
+    },
+    {
+      "front": "乍得 · Chad",
+      "back": "恩贾梅纳 · N'Djamena",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "非洲中北部的内陆国，乍得湖与撒哈拉沙漠占据大片国土。",
+      "example": "A landlocked north-central African country of Lake Chad and the Sahara."
+    },
+    {
+      "front": "智利 · Chile",
+      "back": "圣地亚哥 · Santiago",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "南美洲狭长的太平洋沿岸国家，以铜矿和复活节岛闻名。",
+      "example": "A long, narrow Pacific coastal country in South America, known for copper and Easter Island."
+    },
+    {
+      "front": "中国 · China",
+      "back": "北京 · Beijing",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "东亚大国，拥有悠久历史、长城与众多人口。",
+      "example": "A large East Asian country with a long history, the Great Wall and a huge population."
+    },
+    {
+      "front": "哥伦比亚 · Colombia",
+      "back": "波哥大 · Bogotá",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "南美洲西北部国家，以咖啡、翡翠和生物多样性著称。",
+      "example": "A northwestern South American country known for coffee, emeralds and biodiversity."
+    },
+    {
+      "front": "科摩罗 · Comoros",
+      "back": "莫罗尼 · Moroni",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "印度洋上的火山群岛国家，以香草和丁香出口闻名。",
+      "example": "A volcanic island nation in the Indian Ocean known for vanilla and cloves."
+    },
+    {
+      "front": "哥斯达黎加 · Costa Rica",
+      "back": "圣何塞 · San José",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "中美洲国家，以生态旅游和国家公园制度闻名。",
+      "example": "A Central American country known for ecotourism and its national park system."
+    },
+    {
+      "front": "克罗地亚 · Croatia",
+      "back": "萨格勒布 · Zagreb",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "巴尔干半岛西北部的亚得里亚海沿岸国家，岛屿众多。",
+      "example": "An Adriatic coastal country in the northwestern Balkans with many islands."
+    },
+    {
+      "front": "古巴 · Cuba",
+      "back": "哈瓦那 · Havana",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "加勒比海最大的岛国，以雪茄、蔗糖和老爷车闻名。",
+      "example": "The largest Caribbean island country, known for cigars, sugar and classic cars."
+    },
+    {
+      "front": "塞浦路斯 · Cyprus",
+      "back": "尼科西亚 · Nicosia",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "地中海东部的岛国，传说为爱神维纳斯的诞生地。",
+      "example": "An eastern Mediterranean island, mythically the birthplace of Aphrodite."
+    },
+    {
+      "front": "捷克 · Czech Republic",
+      "back": "布拉格 · Prague",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "中欧内陆国，以布拉格古城和啤酒文化闻名。",
+      "example": "A landlocked Central European country known for Prague and beer culture."
+    },
+    {
+      "front": "刚果民主共和国 · Democratic Republic of the Congo",
+      "back": "金沙萨 · Kinshasa",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "非洲中部大国，刚果雨林是地球第二大热带雨林。",
+      "example": "A large Central African country containing the world's second-largest rainforest."
+    },
+    {
+      "front": "丹麦 · Denmark",
+      "back": "哥本哈根 · Copenhagen",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "北欧国家，以童话、风能和自行车文化著称。",
+      "example": "A Nordic country known for fairy tales, wind power and cycling."
+    },
+    {
+      "front": "吉布提 · Djibouti",
+      "back": "吉布提 · Djibouti",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "非洲之角的小国，位于红海与亚丁湾交汇处。",
+      "example": "A small Horn of Africa country at the meeting of the Red Sea and Gulf of Aden."
+    },
+    {
+      "front": "多米尼克 · Dominica",
+      "back": "罗索 · Roseau",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "加勒比海的火山岛国，以温泉和雨林闻名。",
+      "example": "A volcanic Caribbean island nation known for hot springs and rainforest."
+    },
+    {
+      "front": "多米尼加共和国 · Dominican Republic",
+      "back": "圣多明各 · Santo Domingo",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "加勒比海国家，与海地共处伊斯帕尼奥拉岛。",
+      "example": "A Caribbean country sharing Hispaniola with Haiti."
+    },
+    {
+      "front": "东帝汶 · East Timor",
+      "back": "帝力 · Dili",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "东南亚的年轻国家，位于帝汶岛东半部。",
+      "example": "A young Southeast Asian nation on the eastern half of Timor Island."
+    },
+    {
+      "front": "厄瓜多尔 · Ecuador",
+      "back": "基多 · Quito",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "南美洲西北部国家，赤道穿过其国土，拥有加拉帕戈斯群岛。",
+      "example": "A northwestern South American country crossed by the equator, with the Galápagos Islands."
+    },
+    {
+      "front": "埃及 · Egypt",
+      "back": "开罗 · Cairo",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "北非国家，尼罗河与金字塔是其文明象征。",
+      "example": "A North African country whose civilization is symbolized by the Nile and the pyramids."
+    },
+    {
+      "front": "萨尔瓦多 · El Salvador",
+      "back": "圣萨尔瓦多 · San Salvador",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "中美洲面积最小的国家，以火山和咖啡闻名。",
+      "example": "Central America's smallest country, known for volcanoes and coffee."
+    },
+    {
+      "front": "赤道几内亚 · Equatorial Guinea",
+      "back": "马拉博 · Malabo",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "非洲中西部的小国，由大陆部分与几座岛屿组成。",
+      "example": "A small Central African country made up of a mainland part and several islands."
+    },
+    {
+      "front": "厄立特里亚 · Eritrea",
+      "back": "阿斯马拉 · Asmara",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "非洲之角的红海沿岸国家，首都阿斯马拉以装饰艺术建筑著称。",
+      "example": "A Red Sea coastal country in the Horn of Africa, whose capital is famed for Art Deco."
+    },
+    {
+      "front": "爱沙尼亚 · Estonia",
+      "back": "塔林 · Tallinn",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "波罗的海三国之一，以数字化社会和森林闻名。",
+      "example": "One of the Baltic states, known for its digital society and forests."
+    },
+    {
+      "front": "斯威士兰 · Eswatini",
+      "back": "姆巴巴内 · Mbabane",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "南部非洲的内陆小国，是非洲最后的君主专制国家之一。",
+      "example": "A small landlocked southern African country, one of Africa's last absolute monarchies."
+    },
+    {
+      "front": "埃塞俄比亚 · Ethiopia",
+      "back": "亚的斯亚贝巴 · Addis Ababa",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "东非高原国家，是人类起源地之一，以咖啡发源地著称。",
+      "example": "An East African highland country, a cradle of humanity and origin of coffee."
+    },
+    {
+      "front": "斐济 · Fiji",
+      "back": "苏瓦 · Suva",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "南太平洋的群岛国家，以珊瑚礁和橄榄球闻名。",
+      "example": "A South Pacific archipelago known for coral reefs and rugby."
+    },
+    {
+      "front": "芬兰 · Finland",
+      "back": "赫尔辛基 · Helsinki",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "北欧国家，以湖泊、桑拿和极光闻名。",
+      "example": "A Nordic country known for lakes, saunas and the northern lights."
+    },
+    {
+      "front": "法国 · France",
+      "back": "巴黎 · Paris",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "西欧国家，以葡萄酒、艺术和埃菲尔铁塔闻名。",
+      "example": "A Western European country known for wine, art and the Eiffel Tower."
+    },
+    {
+      "front": "加蓬 · Gabon",
+      "back": "利伯维尔 · Libreville",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "中西非的大西洋沿岸国家，雨林覆盖率极高。",
+      "example": "An Atlantic coastal Central African country with very high rainforest cover."
+    },
+    {
+      "front": "格鲁吉亚 · Georgia",
+      "back": "第比利斯 · Tbilisi",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "位于高加索地区，以葡萄酒酿造传统和雪山风光著称。",
+      "example": "A Caucasus country known for winemaking traditions and snowy mountains."
+    },
+    {
+      "front": "德国 · Germany",
+      "back": "柏林 · Berlin",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "中欧大国，以汽车工业、啤酒节和古典音乐闻名。",
+      "example": "A large Central European country known for cars, beer festivals and classical music."
+    },
+    {
+      "front": "加纳 · Ghana",
+      "back": "阿克拉 · Accra",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "西非国家，以黄金、可可和传统编织闻名。",
+      "example": "A West African country known for gold, cocoa and traditional weaving."
+    },
+    {
+      "front": "希腊 · Greece",
+      "back": "雅典 · Athens",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "南欧国家，是西方哲学与民主的发源地，岛屿众多。",
+      "example": "A Southern European country, birthplace of Western philosophy and democracy, with many islands."
+    },
+    {
+      "front": "格林纳达 · Grenada",
+      "back": "圣乔治 · St. George's",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "加勒比海的香料岛国，以肉豆蔻出口闻名。",
+      "example": "A Caribbean spice island known for nutmeg exports."
+    },
+    {
+      "front": "危地马拉 · Guatemala",
+      "back": "危地马拉城 · Guatemala City",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "中美洲国家，以玛雅遗址和火山湖泊闻名。",
+      "example": "A Central American country known for Maya ruins and volcanic lakes."
+    },
+    {
+      "front": "几内亚 · Guinea",
+      "back": "科纳克里 · Conakry",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "西非国家，被称为「西非水塔」，河流多发源于此。",
+      "example": "A West African country called the water tower of West Africa for its river sources."
+    },
+    {
+      "front": "几内亚比绍 · Guinea-Bissau",
+      "back": "比绍 · Bissau",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "西非小国，以比热戈斯群岛和腰果出口著称。",
+      "example": "A small West African country known for the Bijagós Islands and cashew exports."
+    },
+    {
+      "front": "圭亚那 · Guyana",
+      "back": "乔治敦 · Georgetown",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "南美洲唯一以英语为官方语言的国家，以雨林和瀑布闻名。",
+      "example": "South America's only English-speaking country, known for rainforest and waterfalls."
+    },
+    {
+      "front": "海地 · Haiti",
+      "back": "太子港 · Port-au-Prince",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "加勒比海国家，是拉丁美洲第一个独立的国家。",
+      "example": "A Caribbean country, the first independent nation in Latin America."
+    },
+    {
+      "front": "洪都拉斯 · Honduras",
+      "back": "特古西加尔巴 · Tegucigalpa",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "中美洲国家，以玛雅遗址科潘和香蕉出口闻名。",
+      "example": "A Central American country known for the Maya site of Copán and banana exports."
+    },
+    {
+      "front": "匈牙利 · Hungary",
+      "back": "布达佩斯 · Budapest",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "中欧内陆国，以温泉浴场和匈牙利舞曲闻名。",
+      "example": "A landlocked Central European country known for thermal baths and Hungarian dances."
+    },
+    {
+      "front": "冰岛 · Iceland",
+      "back": "雷克雅未克 · Reykjavik",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "北大西洋岛国，以火山、冰川和地热闻名。",
+      "example": "A North Atlantic island country known for volcanoes, glaciers and geothermal energy."
+    },
+    {
+      "front": "印度 · India",
+      "back": "新德里 · New Delhi",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "南亚大国，以多元文化、香料和宝莱坞闻名。",
+      "example": "A large South Asian country known for cultural diversity, spices and Bollywood."
+    },
+    {
+      "front": "印度尼西亚 · Indonesia",
+      "back": "雅加达 · Jakarta",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "东南亚的万岛之国，横跨赤道，火山众多。",
+      "example": "A Southeast Asian archipelago straddling the equator with many volcanoes."
+    },
+    {
+      "front": "伊朗 · Iran",
+      "back": "德黑兰 · Tehran",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "西亚国家，古称波斯，以地毯和诗歌传统闻名。",
+      "example": "A Western Asian country, ancient Persia, known for carpets and poetry."
+    },
+    {
+      "front": "伊拉克 · Iraq",
+      "back": "巴格达 · Baghdad",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "西亚国家，两河流域孕育了美索不达米亚文明。",
+      "example": "A Western Asian country where the Tigris and Euphrates nurtured Mesopotamia."
+    },
+    {
+      "front": "爱尔兰 · Ireland",
+      "back": "都柏林 · Dublin",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "西欧岛国，以绿野、音乐和吉尼斯黑啤闻名。",
+      "example": "A Western European island known for green fields, music and Guinness."
+    },
+    {
+      "front": "以色列 · Israel",
+      "back": "耶路撒冷 · Jerusalem",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "中东国家，以宗教圣地、创新科技和死海闻名。",
+      "example": "A Middle Eastern country known for holy sites, tech innovation and the Dead Sea."
+    },
+    {
+      "front": "意大利 · Italy",
+      "back": "罗马 · Rome",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "南欧国家，以古罗马遗迹、美食和文艺复兴艺术闻名。",
+      "example": "A Southern European country known for Roman ruins, cuisine and Renaissance art."
+    },
+    {
+      "front": "科特迪瓦 · Ivory Coast",
+      "back": "亚穆苏克罗 · Yamoussoukro",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "西非国家，是世界上最大的可可生产国。",
+      "example": "A West African country, the world's largest cocoa producer."
+    },
+    {
+      "front": "牙买加 · Jamaica",
+      "back": "金斯敦 · Kingston",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "加勒比海岛国，以雷鬼音乐和短跑名将闻名。",
+      "example": "A Caribbean island country known for reggae and sprint champions."
+    },
+    {
+      "front": "日本 · Japan",
+      "back": "东京 · Tokyo",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "东亚岛国，以樱花、寿司和新干线闻名。",
+      "example": "An East Asian island country known for cherry blossoms, sushi and bullet trains."
+    },
+    {
+      "front": "约旦 · Jordan",
+      "back": "安曼 · Amman",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "西亚国家，以佩特拉古城和死海海岸闻名。",
+      "example": "A Western Asian country known for the ancient city of Petra and the Dead Sea."
+    },
+    {
+      "front": "哈萨克斯坦 · Kazakhstan",
+      "back": "阿斯塔纳 · Astana",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "中亚面积最大的内陆国，以草原和航天发射场闻名。",
+      "example": "Central Asia's largest landlocked country, known for steppe and its spaceport."
+    },
+    {
+      "front": "肯尼亚 · Kenya",
+      "back": "内罗毕 · Nairobi",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "东非国家，以野生动物迁徙和长跑运动员闻名。",
+      "example": "An East African country known for wildlife migration and long-distance runners."
+    },
+    {
+      "front": "基里巴斯 · Kiribati",
+      "back": "南塔拉瓦 · South Tarawa",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "太平洋上的珊瑚环礁国家，横跨赤道与国际日期变更线。",
+      "example": "A Pacific atoll nation straddling the equator and the International Date Line."
+    },
+    {
+      "front": "科威特 · Kuwait",
+      "back": "科威特城 · Kuwait City",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "波斯湾的石油富国，以高塔和海湾战争历史闻名。",
+      "example": "An oil-rich Persian Gulf state known for its towers and Gulf War history."
+    },
+    {
+      "front": "吉尔吉斯斯坦 · Kyrgyzstan",
+      "back": "比什凯克 · Bishkek",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "中亚内陆山国，天山山脉占据大部分国土。",
+      "example": "A landlocked Central Asian mountain country dominated by the Tian Shan."
+    },
+    {
+      "front": "老挝 · Laos",
+      "back": "万象 · Vientiane",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "东南亚唯一的内陆国，湄公河贯穿全境，佛教文化浓厚。",
+      "example": "Southeast Asia's only landlocked country, crossed by the Mekong with strong Buddhist culture."
+    },
+    {
+      "front": "拉脱维亚 · Latvia",
+      "back": "里加 · Riga",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "波罗的海三国之一，以里加老城和森林闻名。",
+      "example": "One of the Baltic states, known for Riga's old town and forests."
+    },
+    {
+      "front": "黎巴嫩 · Lebanon",
+      "back": "贝鲁特 · Beirut",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "中东地中海沿岸国家，以雪松和美食闻名。",
+      "example": "A Mediterranean coastal Middle Eastern country known for cedars and cuisine."
+    },
+    {
+      "front": "莱索托 · Lesotho",
+      "back": "马塞卢 · Maseru",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "被南非完全包围的高山王国，被称为「天空之国」。",
+      "example": "A mountainous kingdom entirely surrounded by South Africa, called the Kingdom in the Sky."
+    },
+    {
+      "front": "利比里亚 · Liberia",
+      "back": "蒙罗维亚 · Monrovia",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "西非国家，是非洲最早建立的共和国之一。",
+      "example": "A West African country, one of Africa's earliest republics."
+    },
+    {
+      "front": "利比亚 · Libya",
+      "back": "的黎波里 · Tripoli",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "北非国家，沙漠广布，拥有古罗马遗址。",
+      "example": "A North African country of vast deserts with Roman ruins."
+    },
+    {
+      "front": "列支敦士登 · Liechtenstein",
+      "back": "瓦杜兹 · Vaduz",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "位于瑞士与奥地利之间的阿尔卑斯山小国，以金融业著称。",
+      "example": "A tiny Alpine country between Switzerland and Austria known for finance."
+    },
+    {
+      "front": "立陶宛 · Lithuania",
+      "back": "维尔纽斯 · Vilnius",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "波罗的海三国之一，以十字架山和琥珀闻名。",
+      "example": "One of the Baltic states, known for the Hill of Crosses and amber."
+    },
+    {
+      "front": "卢森堡 · Luxembourg",
+      "back": "卢森堡 · Luxembourg",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "西欧小国，是欧盟的重要机构所在地。",
+      "example": "A small Western European country hosting key EU institutions."
+    },
+    {
+      "front": "马达加斯加 · Madagascar",
+      "back": "塔那那利佛 · Antananarivo",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "印度洋岛国，以狐猴和独特物种闻名。",
+      "example": "An Indian Ocean island country famous for lemurs and unique wildlife."
+    },
+    {
+      "front": "马拉维 · Malawi",
+      "back": "利隆圭 · Lilongwe",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "东南非内陆国，马拉维湖占国土很大比例。",
+      "example": "A landlocked southeastern African country dominated by Lake Malawi."
+    },
+    {
+      "front": "马来西亚 · Malaysia",
+      "back": "吉隆坡 · Kuala Lumpur",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "东南亚国家，由马来半岛与婆罗洲部分组成，以雨林和双子塔闻名。",
+      "example": "A Southeast Asian country of peninsular and Borneo parts, known for rainforest and twin towers."
+    },
+    {
+      "front": "马尔代夫 · Maldives",
+      "back": "马累 · Malé",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "印度洋上的珊瑚岛国，以白色沙滩和潜水闻名。",
+      "example": "An Indian Ocean coral island nation known for white beaches and diving."
+    },
+    {
+      "front": "马里 · Mali",
+      "back": "巴马科 · Bamako",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "西非内陆国，历史上是马里帝国的中心，廷巴克图闻名。",
+      "example": "A landlocked West African country, heart of the Mali Empire and home of Timbuktu."
+    },
+    {
+      "front": "马耳他 · Malta",
+      "back": "瓦莱塔 · Valletta",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "地中海岛国，以骑士团历史和巨石神庙闻名。",
+      "example": "A Mediterranean island country known for knightly history and megalithic temples."
+    },
+    {
+      "front": "马绍尔群岛 · Marshall Islands",
+      "back": "马朱罗 · Majuro",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "太平洋上的珊瑚环礁国家，由众多小岛组成。",
+      "example": "A Pacific nation of coral atolls made up of many small islands."
+    },
+    {
+      "front": "毛里塔尼亚 · Mauritania",
+      "back": "努瓦克肖特 · Nouakchott",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "西北非国家，撒哈拉沙漠占据大部分国土。",
+      "example": "A northwestern African country mostly covered by the Sahara."
+    },
+    {
+      "front": "毛里求斯 · Mauritius",
+      "back": "路易港 · Port Louis",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "印度洋岛国，以渡渡鸟、甘蔗和海滩闻名。",
+      "example": "An Indian Ocean island country known for the dodo, sugarcane and beaches."
+    },
+    {
+      "front": "墨西哥 · Mexico",
+      "back": "墨西哥城 · Mexico City",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "北美洲国家，以玛雅与阿兹特克文明、美食和龙舌兰闻名。",
+      "example": "A North American country known for Maya and Aztec civilizations, cuisine and tequila."
+    },
+    {
+      "front": "密克罗尼西亚联邦 · Micronesia",
+      "back": "帕利基尔 · Palikir",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "太平洋上的群岛国家，由数百个小岛组成。",
+      "example": "A Pacific island nation made up of hundreds of small islands."
+    },
+    {
+      "front": "摩尔多瓦 · Moldova",
+      "back": "基希讷乌 · Chișinău",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "东欧内陆国，以葡萄酒窖和农业闻名。",
+      "example": "A landlocked Eastern European country known for wine cellars and agriculture."
+    },
+    {
+      "front": "摩纳哥 · Monaco",
+      "back": "摩纳哥 · Monaco",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "地中海沿岸的城邦国家，以赌场和一级方程式赛车闻名。",
+      "example": "A Mediterranean city-state known for its casino and Formula One race."
+    },
+    {
+      "front": "蒙古 · Mongolia",
+      "back": "乌兰巴托 · Ulaanbaatar",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "中亚内陆国，以草原游牧文化和戈壁沙漠闻名。",
+      "example": "A landlocked Central Asian country known for nomadic steppe culture and the Gobi Desert."
+    },
+    {
+      "front": "黑山 · Montenegro",
+      "back": "波德戈里察 · Podgorica",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "巴尔干半岛的亚得里亚海沿岸小国，以峡湾风光闻名。",
+      "example": "A small Adriatic Balkan country known for its fjord-like scenery."
+    },
+    {
+      "front": "摩洛哥 · Morocco",
+      "back": "拉巴特 · Rabat",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "北非国家，以撒哈拉沙丘、集市和薄荷茶闻名。",
+      "example": "A North African country known for Sahara dunes, souks and mint tea."
+    },
+    {
+      "front": "莫桑比克 · Mozambique",
+      "back": "马普托 · Maputo",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "东南非印度洋沿岸国家，以海岸线和腰果闻名。",
+      "example": "A southeastern African Indian Ocean coastal country known for its coastline and cashews."
+    },
+    {
+      "front": "缅甸 · Myanmar",
+      "back": "奈比多 · Naypyidaw",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "东南亚国家，以佛塔、翡翠和茵莱湖闻名。",
+      "example": "A Southeast Asian country known for pagodas, jade and Inle Lake."
+    },
+    {
+      "front": "纳米比亚 · Namibia",
+      "back": "温得和克 · Windhoek",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "西南非国家，以纳米布沙漠和沙丘闻名。",
+      "example": "A southwestern African country known for the Namib Desert and dunes."
+    },
+    {
+      "front": "瑙鲁 · Nauru",
+      "back": "亚伦 · Yaren",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "太平洋上的小岛国，曾因磷酸盐矿开采而富裕。",
+      "example": "A tiny Pacific island nation once wealthy from phosphate mining."
+    },
+    {
+      "front": "尼泊尔 · Nepal",
+      "back": "加德满都 · Kathmandu",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "南亚内陆山国，拥有珠穆朗玛峰和众多寺庙。",
+      "example": "A landlocked South Asian mountain country home to Mount Everest and many temples."
+    },
+    {
+      "front": "荷兰 · Netherlands",
+      "back": "阿姆斯特丹 · Amsterdam",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "西欧低地国家，以风车、郁金香和运河闻名。",
+      "example": "A low-lying Western European country known for windmills, tulips and canals."
+    },
+    {
+      "front": "新西兰 · New Zealand",
+      "back": "惠灵顿 · Wellington",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "南太平洋岛国，以毛利文化、峡湾和极限运动闻名。",
+      "example": "A South Pacific island country known for Māori culture, fjords and adventure sports."
+    },
+    {
+      "front": "尼加拉瓜 · Nicaragua",
+      "back": "马那瓜 · Managua",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "中美洲国家，以湖泊和火山闻名。",
+      "example": "A Central American country known for lakes and volcanoes."
+    },
+    {
+      "front": "尼日尔 · Niger",
+      "back": "尼亚美 · Niamey",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "西非内陆国，撒哈拉沙漠覆盖大部分国土。",
+      "example": "A landlocked West African country mostly covered by the Sahara."
+    },
+    {
+      "front": "尼日利亚 · Nigeria",
+      "back": "阿布贾 · Abuja",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "西非人口最多的国家，以石油、诺莱坞和音乐闻名。",
+      "example": "West Africa's most populous country, known for oil, Nollywood and music."
+    },
+    {
+      "front": "朝鲜 · North Korea",
+      "back": "平壤 · Pyongyang",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "东亚朝鲜半岛北部的国家，社会高度封闭。",
+      "example": "A highly isolated country in the northern part of the Korean Peninsula."
+    },
+    {
+      "front": "北马其顿 · North Macedonia",
+      "back": "斯科普里 · Skopje",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "巴尔干半岛内陆国，以奥赫里德湖闻名。",
+      "example": "A landlocked Balkan country known for Lake Ohrid."
+    },
+    {
+      "front": "挪威 · Norway",
+      "back": "奥斯陆 · Oslo",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "北欧国家，以峡湾、极光和石油财富闻名。",
+      "example": "A Nordic country known for fjords, northern lights and oil wealth."
+    },
+    {
+      "front": "阿曼 · Oman",
+      "back": "马斯喀特 · Muscat",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "阿拉伯半岛东南部的国家，以沙漠、乳香和堡垒闻名。",
+      "example": "A country in southeastern Arabia known for deserts, frankincense and forts."
+    },
+    {
+      "front": "巴基斯坦 · Pakistan",
+      "back": "伊斯兰堡 · Islamabad",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "南亚国家，以印度河文明、喀喇昆仑山脉和板球闻名。",
+      "example": "A South Asian country known for the Indus civilization, Karakoram peaks and cricket."
+    },
+    {
+      "front": "帕劳 · Palau",
+      "back": "恩吉鲁穆德 · Ngerulmud",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "西太平洋岛国，以岩石群岛和潜水闻名。",
+      "example": "A western Pacific island nation known for its Rock Islands and diving."
+    },
+    {
+      "front": "巴勒斯坦 · Palestine",
+      "back": "耶路撒冷 · Jerusalem",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "位于中东地中海东岸的地区，以耶路撒冷等圣地闻名。",
+      "example": "A Middle Eastern region on the eastern Mediterranean known for holy sites such as Jerusalem."
+    },
+    {
+      "front": "巴拿马 · Panama",
+      "back": "巴拿马城 · Panama City",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "中美洲国家，以巴拿马运河连接两大洋闻名。",
+      "example": "A Central American country known for the Panama Canal linking two oceans."
+    },
+    {
+      "front": "巴布亚新几内亚 · Papua New Guinea",
+      "back": "莫尔兹比港 · Port Moresby",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "太平洋西南部的岛国，语言与部落文化极为多样。",
+      "example": "A southwestern Pacific island country with extraordinary linguistic and tribal diversity."
+    },
+    {
+      "front": "巴拉圭 · Paraguay",
+      "back": "亚松森 · Asunción",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "南美洲内陆国，以瓜拉尼文化和伊泰普水电站闻名。",
+      "example": "A landlocked South American country known for Guaraní culture and the Itaipu Dam."
+    },
+    {
+      "front": "秘鲁 · Peru",
+      "back": "利马 · Lima",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "南美洲国家，以印加遗址马丘比丘和安第斯山脉闻名。",
+      "example": "A South American country known for the Inca site of Machu Picchu and the Andes."
+    },
+    {
+      "front": "菲律宾 · Philippines",
+      "back": "马尼拉 · Manila",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "东南亚群岛国家，以海滩、台风和海外劳工闻名。",
+      "example": "A Southeast Asian archipelago known for beaches, typhoons and overseas workers."
+    },
+    {
+      "front": "波兰 · Poland",
+      "back": "华沙 · Warsaw",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "中欧国家，以历史古城、肖邦和琥珀闻名。",
+      "example": "A Central European country known for historic cities, Chopin and amber."
+    },
+    {
+      "front": "葡萄牙 · Portugal",
+      "back": "里斯本 · Lisbon",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "南欧伊比利亚半岛国家，以航海历史、瓷砖和蛋挞闻名。",
+      "example": "A Southern European country on the Iberian Peninsula known for seafaring history, tiles and custard tarts."
+    },
+    {
+      "front": "卡塔尔 · Qatar",
+      "back": "多哈 · Doha",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "波斯湾的半岛国家，以天然气财富和世界杯闻名。",
+      "example": "A Persian Gulf peninsula state known for natural gas wealth and the World Cup."
+    },
+    {
+      "front": "刚果共和国 · Republic of the Congo",
+      "back": "布拉柴维尔 · Brazzaville",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "非洲中西部国家，刚果河贯穿，雨林广布。",
+      "example": "A Central African country crossed by the Congo River with vast rainforest."
+    },
+    {
+      "front": "罗马尼亚 · Romania",
+      "back": "布加勒斯特 · Bucharest",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "东欧国家，以喀尔巴阡山脉、吸血鬼传说和古堡闻名。",
+      "example": "An Eastern European country known for the Carpathians, vampire legends and castles."
+    },
+    {
+      "front": "俄罗斯 · Russia",
+      "back": "莫斯科 · Moscow",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "横跨欧亚大陆的世界面积最大国家，以寒冷气候和文学闻名。",
+      "example": "The world's largest country, spanning Europe and Asia, known for cold winters and literature."
+    },
+    {
+      "front": "卢旺达 · Rwanda",
+      "back": "基加利 · Kigali",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "东非小国，以千丘之国和山地大猩猩闻名。",
+      "example": "A small East African country known as the Land of a Thousand Hills and for mountain gorillas."
+    },
+    {
+      "front": "圣基茨和尼维斯 · Saint Kitts and Nevis",
+      "back": "巴斯特尔 · Basseterre",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "加勒比海最小的双岛国家，以火山和海滩闻名。",
+      "example": "The smallest Caribbean twin-island nation, known for volcanoes and beaches."
+    },
+    {
+      "front": "圣卢西亚 · Saint Lucia",
+      "back": "卡斯特里 · Castries",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "加勒比海岛国，以皮通山和硫磺温泉闻名。",
+      "example": "A Caribbean island country known for the Pitons and sulphur springs."
+    },
+    {
+      "front": "圣文森特和格林纳丁斯 · Saint Vincent and the Grenadines",
+      "back": "金斯敦 · Kingstown",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "加勒比海群岛国家，以帆船和珊瑚礁闻名。",
+      "example": "A Caribbean island chain known for sailing and coral reefs."
+    },
+    {
+      "front": "萨摩亚 · Samoa",
+      "back": "阿皮亚 · Apia",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "南太平洋岛国，以传统村落和瀑布闻名。",
+      "example": "A South Pacific island country known for traditional villages and waterfalls."
+    },
+    {
+      "front": "圣马力诺 · San Marino",
+      "back": "圣马力诺 · San Marino",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "位于意大利境内的微型国家，是世界上最古老的共和国。",
+      "example": "A microstate within Italy, the world's oldest surviving republic."
+    },
+    {
+      "front": "圣多美和普林西比 · São Tomé and Príncipe",
+      "back": "圣多美 · São Tomé",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "非洲几内亚湾的火山岛国，以可可闻名。",
+      "example": "A volcanic island nation in the Gulf of Guinea known for cocoa."
+    },
+    {
+      "front": "沙特阿拉伯 · Saudi Arabia",
+      "back": "利雅得 · Riyadh",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "阿拉伯半岛大国，以沙漠、石油和麦加朝圣闻名。",
+      "example": "A large Arabian Peninsula country known for deserts, oil and the Mecca pilgrimage."
+    },
+    {
+      "front": "塞内加尔 · Senegal",
+      "back": "达喀尔 · Dakar",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "西非大西洋沿岸国家，以音乐和粉红湖闻名。",
+      "example": "A West African Atlantic coastal country known for music and its pink lake."
+    },
+    {
+      "front": "塞尔维亚 · Serbia",
+      "back": "贝尔格莱德 · Belgrade",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "巴尔干半岛内陆国，以河流、修道院和体育闻名。",
+      "example": "A landlocked Balkan country known for rivers, monasteries and sports."
+    },
+    {
+      "front": "塞舌尔 · Seychelles",
+      "back": "维多利亚 · Victoria",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "印度洋群岛国家，以花岗岩岛屿和巨龟闻名。",
+      "example": "An Indian Ocean archipelago known for granite islands and giant tortoises."
+    },
+    {
+      "front": "塞拉利昂 · Sierra Leone",
+      "back": "弗里敦 · Freetown",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "西非大西洋沿岸国家，以钻石和海滩闻名。",
+      "example": "A West African Atlantic coastal country known for diamonds and beaches."
+    },
+    {
+      "front": "新加坡 · Singapore",
+      "back": "新加坡 · Singapore",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "东南亚的城市国家，以港口、金融和花园闻名。",
+      "example": "A Southeast Asian city-state known for its port, finance and gardens."
+    },
+    {
+      "front": "斯洛伐克 · Slovakia",
+      "back": "布拉迪斯拉发 · Bratislava",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "中欧内陆国，以喀尔巴阡山、城堡和冰球闻名。",
+      "example": "A landlocked Central European country known for the Carpathians, castles and ice hockey."
+    },
+    {
+      "front": "斯洛文尼亚 · Slovenia",
+      "back": "卢布尔雅那 · Ljubljana",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "中欧小国，以阿尔卑斯山、湖泊和喀斯特地貌闻名。",
+      "example": "A small Central European country known for the Alps, lakes and karst landscapes."
+    },
+    {
+      "front": "所罗门群岛 · Solomon Islands",
+      "back": "霍尼亚拉 · Honiara",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "南太平洋群岛国家，以二战战场和潜水闻名。",
+      "example": "A South Pacific archipelago known for WWII sites and diving."
+    },
+    {
+      "front": "索马里 · Somalia",
+      "back": "摩加迪沙 · Mogadishu",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "非洲之角国家，拥有非洲大陆最长的海岸线。",
+      "example": "A Horn of Africa country with the longest coastline in mainland Africa."
+    },
+    {
+      "front": "南非 · South Africa",
+      "back": "比勒陀利亚 · Pretoria",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "非洲最南端的国家，以黄金、钻石和野生动物闻名。",
+      "example": "Africa's southernmost country, known for gold, diamonds and wildlife."
+    },
+    {
+      "front": "韩国 · South Korea",
+      "back": "首尔 · Seoul",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "东亚朝鲜半岛南部的国家，以科技、流行文化和美食闻名。",
+      "example": "A country in the southern Korean Peninsula known for technology, pop culture and cuisine."
+    },
+    {
+      "front": "南苏丹 · South Sudan",
+      "back": "朱巴 · Juba",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "东非内陆国，是世界上最年轻的国家之一。",
+      "example": "A landlocked East African country, one of the world's youngest nations."
+    },
+    {
+      "front": "西班牙 · Spain",
+      "back": "马德里 · Madrid",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "南欧伊比利亚半岛国家，以弗拉门戈、足球和高迪建筑闻名。",
+      "example": "A Southern European country on the Iberian Peninsula known for flamenco, football and Gaudí."
+    },
+    {
+      "front": "斯里兰卡 · Sri Lanka",
+      "back": "科伦坡 · Colombo",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "印度洋岛国，以红茶、香料和佛教遗址闻名。",
+      "example": "An Indian Ocean island country known for black tea, spices and Buddhist sites."
+    },
+    {
+      "front": "苏丹 · Sudan",
+      "back": "喀土穆 · Khartoum",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "东北非国家，尼罗河贯穿，拥有金字塔遗址。",
+      "example": "A northeastern African country crossed by the Nile with pyramid ruins."
+    },
+    {
+      "front": "苏里南 · Suriname",
+      "back": "帕拉马里博 · Paramaribo",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "南美洲小国，以雨林和多元族群闻名。",
+      "example": "A small South American country known for rainforest and diverse ethnic groups."
+    },
+    {
+      "front": "瑞典 · Sweden",
+      "back": "斯德哥尔摩 · Stockholm",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "北欧国家，以森林、设计、宜家和诺贝尔奖闻名。",
+      "example": "A Nordic country known for forests, design, IKEA and the Nobel Prize."
+    },
+    {
+      "front": "瑞士 · Switzerland",
+      "back": "伯尔尼 · Bern",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "中欧内陆国，以阿尔卑斯山、巧克力和银行业闻名。",
+      "example": "A landlocked Central European country known for the Alps, chocolate and banking."
+    },
+    {
+      "front": "叙利亚 · Syria",
+      "back": "大马士革 · Damascus",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "西亚国家，以古城大马士革和阿勒颇闻名。",
+      "example": "A Western Asian country known for the ancient cities of Damascus and Aleppo."
+    },
+    {
+      "front": "塔吉克斯坦 · Tajikistan",
+      "back": "杜尚别 · Dushanbe",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "中亚内陆山国，帕米尔高原占据大部分国土。",
+      "example": "A landlocked Central Asian mountain country dominated by the Pamir Plateau."
+    },
+    {
+      "front": "坦桑尼亚 · Tanzania",
+      "back": "多多马 · Dodoma",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "东非国家，以塞伦盖蒂、乞力马扎罗山和桑给巴尔闻名。",
+      "example": "An East African country known for the Serengeti, Mount Kilimanjaro and Zanzibar."
+    },
+    {
+      "front": "泰国 · Thailand",
+      "back": "曼谷 · Bangkok",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "东南亚国家，以佛寺、美食和热带海滩闻名。",
+      "example": "A Southeast Asian country known for temples, cuisine and tropical beaches."
+    },
+    {
+      "front": "巴哈马 · Bahamas",
+      "back": "拿骚 · Nassau",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "加勒比海群岛国家，以海滩和邮轮旅游闻名。",
+      "example": "A Caribbean archipelago known for beaches and cruise tourism."
+    },
+    {
+      "front": "冈比亚 · Gambia",
+      "back": "班珠尔 · Banjul",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "西非小国，沿冈比亚河狭长分布，被塞内加尔包围。",
+      "example": "A narrow West African country along the Gambia River, surrounded by Senegal."
+    },
+    {
+      "front": "多哥 · Togo",
+      "back": "洛美 · Lomé",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "西非小国，以磷酸盐和传统市场闻名。",
+      "example": "A small West African country known for phosphates and traditional markets."
+    },
+    {
+      "front": "汤加 · Tonga",
+      "back": "努库阿洛法 · Nuku'alofa",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "南太平洋岛国，是仍保留君主制的波利尼西亚王国。",
+      "example": "A South Pacific island nation, a Polynesian kingdom that retains its monarchy."
+    },
+    {
+      "front": "特立尼达和多巴哥 · Trinidad and Tobago",
+      "back": "西班牙港 · Port of Spain",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "加勒比海南部的双岛国家，以钢鼓和狂欢节闻名。",
+      "example": "A twin-island southern Caribbean nation known for steelpan and Carnival."
+    },
+    {
+      "front": "突尼斯 · Tunisia",
+      "back": "突尼斯 · Tunis",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "北非国家，以迦太基遗址和地中海海滩闻名。",
+      "example": "A North African country known for Carthaginian ruins and Mediterranean beaches."
+    },
+    {
+      "front": "土耳其 · Turkey",
+      "back": "安卡拉 · Ankara",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "横跨欧亚的国家，以博斯普鲁斯海峡、热气球和烤肉闻名。",
+      "example": "A transcontinental country known for the Bosphorus, hot-air balloons and kebabs."
+    },
+    {
+      "front": "土库曼斯坦 · Turkmenistan",
+      "back": "阿什哈巴德 · Ashgabat",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "中亚内陆国，以沙漠、天然气和汗血马闻名。",
+      "example": "A landlocked Central Asian country known for deserts, natural gas and Akhal-Teke horses."
+    },
+    {
+      "front": "图瓦卢 · Tuvalu",
+      "back": "富纳富提 · Funafuti",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "太平洋上的珊瑚岛国，地势极低，易受海平面上升影响。",
+      "example": "A low-lying Pacific atoll nation highly vulnerable to sea-level rise."
+    },
+    {
+      "front": "乌干达 · Uganda",
+      "back": "坎帕拉 · Kampala",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "东非内陆国，以尼罗河源头和野生动物闻名。",
+      "example": "A landlocked East African country known for the Nile's source and wildlife."
+    },
+    {
+      "front": "乌克兰 · Ukraine",
+      "back": "基辅 · Kyiv",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "东欧国家，以黑土地、向日葵和东正教建筑闻名。",
+      "example": "An Eastern European country known for black soil, sunflowers and Orthodox architecture."
+    },
+    {
+      "front": "阿拉伯联合酋长国 · United Arab Emirates",
+      "back": "阿布扎比 · Abu Dhabi",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "波斯湾的联邦国家，以摩天大楼和沙漠旅游闻名。",
+      "example": "A Persian Gulf federation known for skyscrapers and desert tourism."
+    },
+    {
+      "front": "英国 · United Kingdom",
+      "back": "伦敦 · London",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "西欧岛国，以君主制、文学和工业革命起源闻名。",
+      "example": "A Western European island country known for its monarchy, literature and the Industrial Revolution."
+    },
+    {
+      "front": "美国 · United States",
+      "back": "华盛顿 · Washington, D.C.",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "北美洲大国，以多元文化、科技和娱乐产业闻名。",
+      "example": "A large North American country known for cultural diversity, technology and entertainment."
+    },
+    {
+      "front": "乌拉圭 · Uruguay",
+      "back": "蒙得维的亚 · Montevideo",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "南美洲小国，以足球、牛肉和稳定的民主制度闻名。",
+      "example": "A small South American country known for football, beef and stable democracy."
+    },
+    {
+      "front": "乌兹别克斯坦 · Uzbekistan",
+      "back": "塔什干 · Tashkent",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "中亚内陆国，以丝绸之路古城撒马尔罕和布哈拉闻名。",
+      "example": "A landlocked Central Asian country known for Silk Road cities Samarkand and Bukhara."
+    },
+    {
+      "front": "瓦努阿图 · Vanuatu",
+      "back": "维拉港 · Port Vila",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "南太平洋群岛国家，以火山、潜水和水下邮局闻名。",
+      "example": "A South Pacific archipelago known for volcanoes, diving and its underwater post office."
+    },
+    {
+      "front": "梵蒂冈 · Vatican City",
+      "back": "梵蒂冈城 · Vatican City",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "位于罗马城内的世界最小国家，是天主教会的中心。",
+      "example": "The world's smallest country, inside Rome, center of the Catholic Church."
+    },
+    {
+      "front": "委内瑞拉 · Venezuela",
+      "back": "加拉加斯 · Caracas",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "南美洲北部国家，以石油、天使瀑布和选美闻名。",
+      "example": "A northern South American country known for oil, Angel Falls and beauty pageants."
+    },
+    {
+      "front": "越南 · Vietnam",
+      "back": "河内 · Hanoi",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "东南亚国家，以狭长海岸线、米粉和下龙湾闻名。",
+      "example": "A Southeast Asian country known for its long coastline, pho and Ha Long Bay."
+    },
+    {
+      "front": "也门 · Yemen",
+      "back": "萨那 · Sana'a",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "阿拉伯半岛西南部的国家，以古城和咖啡起源闻名。",
+      "example": "A country in southwestern Arabia known for ancient cities and coffee's origins."
+    },
+    {
+      "front": "赞比亚 · Zambia",
+      "back": "卢萨卡 · Lusaka",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "东南非内陆国，以维多利亚瀑布和铜矿闻名。",
+      "example": "A landlocked southeastern African country known for Victoria Falls and copper."
+    },
+    {
+      "front": "津巴布韦 · Zimbabwe",
+      "back": "哈拉雷 · Harare",
+      "tags": [
+        "世界各国"
+      ],
+      "back3": "东南非内陆国，以维多利亚瀑布和大津巴布韦遗迹闻名。",
+      "example": "A landlocked southeastern African country known for Victoria Falls and Great Zimbabwe."
+    }
   ]
 }

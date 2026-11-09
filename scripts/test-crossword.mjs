@@ -913,6 +913,74 @@ ok(kb.isKeyboardOpen() === false && cw.getCrosswordSession() === null, '离开�
 setTouch(false);
 
 /* ==========================================================================
+ * ⑦ 中文填字（国家卡组）
+ * ========================================================================== */
+
+console.log('\n[中文填字：国家名逐字 / 描述线索]');
+ok(cw.sanitizeAnswerZh('中国 · China') === '中国', '中文答案只保留汉字');
+ok(cw.sanitizeAnswerZh('a中b国!·  ' ) === '中国', '剔除字母 / 标点 / 空格');
+ok(cw.normalizeLetter('中a文', 'zh') === '文', '中文模式取最后一个汉字');
+ok(cw.normalizeLetter('a中', 'en') === 'A', '英文模式仍只取 A–Z');
+
+const zhCards = [
+  { id: 'z1', front: '中国 · China', back: '北京 · Beijing', back3: '东亚大国，拥有悠久历史与长城。', example: 'A large East Asian country with a long history and the Great Wall.' },
+  { id: 'z2', front: '日本 · Japan', back: '东京 · Tokyo', back3: '东亚岛国，以樱花和寿司闻名。', example: 'An East Asian island country known for cherry blossoms and sushi.' },
+  { id: 'z3', front: '韩国 · South Korea', back: '首尔 · Seoul', back3: '朝鲜半岛南部的国家，以科技和流行文化闻名。', example: 'A country in the southern Korean Peninsula known for technology and pop culture.' },
+  { id: 'z4', front: '美国 · United States', back: '华盛顿 · Washington, D.C.', back3: '北美洲大国，以多元文化和科技闻名。', example: 'A large North American country known for diversity and technology.' },
+  { id: 'z5', front: '英国 · United Kingdom', back: '伦敦 · London', back3: '西欧岛国，以君主制和文学闻名。', example: 'A Western European island country known for its monarchy and literature.' },
+  { id: 'z6', front: '法国 · France', back: '巴黎 · Paris', back3: '西欧国家，以葡萄酒和艺术闻名。', example: 'A Western European country known for wine and art.' },
+  { id: 'z7', front: '德国 · Germany', back: '柏林 · Berlin', back3: '中欧大国，以汽车工业和啤酒节闻名。', example: 'A large Central European country known for cars and beer festivals.' },
+  { id: 'z8', front: '印度 · India', back: '新德里 · New Delhi', back3: '南亚大国，以多元文化和香料闻名。', example: 'A large South Asian country known for diversity and spices.' },
+  { id: 'z9', front: '加拿大 · Canada', back: '渥太华 · Ottawa', back3: '北美洲北部大国，湖泊与森林众多。', example: 'A vast northern North American country of lakes and forests.' },
+  { id: 'z10', front: '澳大利亚 · Australia', back: '堪培拉 · Canberra', back3: '南半球大洋洲国家，拥有大堡礁与内陆荒漠。', example: 'An Oceanian country with the Great Barrier Reef and vast outback.' },
+  { id: 'z11', front: '西班牙 · Spain', back: '马德里 · Madrid', back3: '南欧伊比利亚半岛国家，以弗拉门戈和足球闻名。', example: 'A Southern European country known for flamenco and football.' },
+  { id: 'z12', front: '意大利 · Italy', back: '罗马 · Rome', back3: '南欧国家，以古罗马遗迹和文艺复兴艺术闻名。', example: 'A Southern European country known for Roman ruins and Renaissance art.' },
+  { id: 'z13', front: '墨西哥 · Mexico', back: '墨西哥城 · Mexico City', back3: '北美洲国家，以玛雅文明和美食闻名。', example: 'A North American country known for Maya civilization and cuisine.' },
+  { id: 'z14', front: '新加坡 · Singapore', back: '新加坡 · Singapore', back3: '东南亚的城市国家，以港口和金融闻名。', example: 'A Southeast Asian city-state known for its port and finance.' }
+];
+const zhClue = (card) => [card.back3, card.example].filter(Boolean).join(' · ');
+
+const zhEntry = cw.entryFromCard(zhCards[0], cw.MAX_LEN, { lang: 'zh', clueFn: zhClue });
+ok(
+  zhEntry && zhEntry.answer === '中国' && zhEntry.display === '中国' && zhEntry.lang === 'zh',
+  '中文词条：答案 = 国家中文名'
+);
+ok(zhEntry.clue.includes('东亚大国') && zhEntry.clue.includes(' · A large East Asian'), '中文词条线索 = 描述 + 英文翻译');
+const enEntry = cw.entryFromCard(zhCards[0], cw.MAX_LEN, { lang: 'en', clueFn: zhClue });
+ok(enEntry && enEntry.answer === 'CHINA', '英文词条：答案 = 英文名（剔除中文）');
+
+const zhBoard = cw.generateCrossword(zhCards, { size: 12, rng: () => 0.42, lang: 'zh', clueFn: zhClue });
+ok(zhBoard.words.length >= 2, '中文棋盘正常生成（至少 2 条交叉线索）', zhBoard.words.length);
+ok(
+  zhBoard.words.every((w) => /^[\u4e00-\u9fff]+$/.test(w.answer)),
+  '棋盘上的答案全部是汉字'
+);
+ok(
+  zhBoard.words.every((w) => w.clue.includes(' · ')),
+  '每条线索都是「中文描述 · 英文翻译」'
+);
+ok(
+  zhBoard.words.every((w) => {
+    const cells = cw.wordCells(zhBoard, w.id);
+    return cells.every((c, i) => c.letter === w.answer[i]);
+  }),
+  '每个格子的汉字与词条答案一致'
+);
+
+let zhState = cw.newGame(zhBoard, { deckId: 'country-deck', lang: 'zh' });
+ok(zhState.lang === 'zh', '新对局保留中文模式');
+const firstWord = zhBoard.words[0];
+for (const c of cw.wordCells(zhBoard, firstWord.id)) {
+  zhState = cw.setLetter(zhState, c.row, c.col, c.letter);
+}
+ok(cw.wordProgress(zhState, firstWord.id).done === true, '逐字填入后该线索判定完成');
+for (const w of zhBoard.words) {
+  for (const c of cw.wordCells(zhBoard, w.id)) zhState = cw.setLetter(zhState, c.row, c.col, c.letter);
+}
+ok(cw.isSolved(zhState) === true, '中文棋盘可全部填对并完成');
+ok(cw.normalizeLetter('x', zhState.lang) === '', '中文模式拒绝英文字母');
+
+/* ==========================================================================
  * 汇总
  * ========================================================================== */
 
